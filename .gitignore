@@ -49,3 +49,4 @@ backend/build/
 .DS_Store
 *.pem
 .vscode/
+plan.md
