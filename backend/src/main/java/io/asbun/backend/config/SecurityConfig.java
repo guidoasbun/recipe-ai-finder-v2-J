@@ -2,6 +2,7 @@ package io.asbun.backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -29,11 +30,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/health").permitAll()
                 .anyRequest().authenticated()
             );
-
-        // uncomment to enable JWT validation
-        // .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+            //.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 
         return http.build();
     }
-    
 }
