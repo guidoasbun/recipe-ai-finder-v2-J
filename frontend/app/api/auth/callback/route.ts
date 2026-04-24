@@ -1,0 +1,30 @@
+import { NextRequest, NextResponse } from "next/server";
+import { setSession } from "@/lib/session";
+import { COGNITO_DOMAIN, COGNITO_CLIENT_ID, COGNITO_REDIRECT_URI } from "@/lib/constants";
+
+export async function GET(request: NextRequest) {
+  const code = request.nextUrl.searchParams.get("code");
+  if (!code) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  const tokenRes = await fetch(`https://${COGNITO_DOMAIN}/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: COGNITO_CLIENT_ID,
+      redirect_uri: COGNITO_REDIRECT_URI,
+      code,
+    }),
+  });
+
+  if (!tokenRes.ok) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  const { id_token } = await tokenRes.json();
+  await setSession(id_token);
+
+  return NextResponse.redirect(new URL("/dashboard", request.url));
+}
