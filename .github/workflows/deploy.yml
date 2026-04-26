@@ -1,0 +1,77 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./docker/backend.Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/recipe-ai/backend:latest
+            ${{ steps.ecr-login.outputs.registry }}/recipe-ai/backend:${{ env.IMAGE_TAG }}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./docker/frontend.Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:latest
+            ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:${{ env.IMAGE_TAG }}
+
+      - name: Deploy to ECS
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          aws ecs update-service \
+            --cluster "recipe-ai-${ENV}-cluster" \
+            --service "recipe-ai-${ENV}-backend" \
+            --force-new-deployment --output none
+          aws ecs update-service \
+            --cluster "recipe-ai-${ENV}-cluster" \
+            --service "recipe-ai-${ENV}-frontend" \
+            --force-new-deployment --output none
