@@ -50,3 +50,27 @@ backend/build/
 *.pem
 .vscode/
 plan.md
+
+# ── Terraform ─────────────────────────────────────────────
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+infrastructure/environments/*.tfvars
+
+# ── AWS / Secrets ─────────────────────────────────────────
+.aws/
+*.credentials
+*credentials*
+aws-exports.js
+**/*secret*
+**/*secrets*
+
+# ── Backend local config ──────────────────────────────────
+backend/src/main/resources/application-local.properties
