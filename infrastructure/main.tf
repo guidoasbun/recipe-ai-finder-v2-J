@@ -63,6 +63,8 @@ module "ecs" {
   dynamodb_recipes_table = module.dynamodb.recipes_table_name
   s3_bucket              = module.s3.bucket_name
   cognito_issuer_uri     = module.cognito.issuer_uri
+  cognito_domain         = module.cognito.cognito_domain
+  cognito_client_id      = module.cognito.client_id
   domain_name            = var.domain_name
   ecs_security_group_id  = module.networking.ecs_security_group_id
 }

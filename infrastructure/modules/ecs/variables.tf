@@ -69,3 +69,11 @@ variable "domain_name" {
 variable "ecs_security_group_id" {
   type = string
 }
+
+variable "cognito_domain" {
+  type = string
+}
+
+variable "cognito_client_id" {
+  type = string
+}

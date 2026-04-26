@@ -7,7 +7,7 @@ output "client_id" {
 }
 
 output "cognito_domain" {
-  value = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${data.aws_region.current.name}.amazoncognito.com"
+  value = "${aws_cognito_user_pool_domain.main.domain}.auth.${data.aws_region.current.name}.amazoncognito.com"
 }
 
 output "issuer_uri" {
