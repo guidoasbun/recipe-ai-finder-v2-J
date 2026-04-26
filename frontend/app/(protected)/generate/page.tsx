@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { GeneratedRecipe } from "@/types/recipe";
 import RecipeCard from "@/components/recipe/RecipeCard";
 
-export default function GeneratePage() {
+function GenerateContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [recipes, setRecipes] = useState<GeneratedRecipe[]>([]);
@@ -80,5 +80,18 @@ export default function GeneratePage() {
         ))}
       </div>
     </div>
+  );
+}
+
+export default function GeneratePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+        <p className="text-gray-500 text-sm">Loading...</p>
+      </div>
+    }>
+      <GenerateContent />
+    </Suspense>
   );
 }
