@@ -85,10 +85,10 @@ resource "aws_ecs_task_definition" "frontend" {
     }]
 
     environment = [
-      { name = "NEXT_PUBLIC_BACKEND_URL",          value = "https://${var.domain_name}/api" },
-      { name = "NEXT_PUBLIC_COGNITO_DOMAIN",        value = var.cognito_domain },
-      { name = "NEXT_PUBLIC_COGNITO_CLIENT_ID",     value = var.cognito_client_id },
-      { name = "NEXT_PUBLIC_COGNITO_REDIRECT_URI",  value = "https://${var.domain_name}/api/auth/callback" }
+      { name = "BACKEND_URL",          value = "https://${var.domain_name}/api" },
+      { name = "COGNITO_DOMAIN",        value = var.cognito_domain },
+      { name = "COGNITO_CLIENT_ID",     value = var.cognito_client_id },
+      { name = "COGNITO_REDIRECT_URI",  value = "https://${var.domain_name}/api/auth/callback" }
     ]
 
     logConfiguration = {
