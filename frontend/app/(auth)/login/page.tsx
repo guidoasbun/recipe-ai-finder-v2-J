@@ -1,5 +1,7 @@
 import { COGNITO_DOMAIN, COGNITO_CLIENT_ID, COGNITO_REDIRECT_URI } from "@/lib/constants";
 
+export const dynamic = "force-dynamic";
+
 export default function LoginPage() {
   const googleLoginUrl =
     `https://${COGNITO_DOMAIN}/oauth2/authorize` +
