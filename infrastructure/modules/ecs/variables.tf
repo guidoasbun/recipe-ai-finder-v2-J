@@ -18,6 +18,10 @@ variable "private_subnets" {
   type = list(string)
 }
 
+variable "public_subnets" {
+  type = list(string)
+}
+
 variable "execution_role_arn" {
   type = string
 }
