@@ -25,6 +25,11 @@ resource "aws_ecs_task_definition" "backend" {
   execution_role_arn       = var.execution_role_arn
   task_role_arn            = var.task_role_arn
 
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
+
   container_definitions = jsonencode([{
     name      = "backend"
     image     = "${var.backend_ecr_url}:latest"
@@ -63,6 +68,11 @@ resource "aws_ecs_task_definition" "frontend" {
   memory                   = 512
   execution_role_arn       = var.execution_role_arn
   task_role_arn            = var.task_role_arn
+
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
 
   container_definitions = jsonencode([{
     name      = "frontend"
