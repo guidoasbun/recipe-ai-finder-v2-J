@@ -53,6 +53,7 @@ jobs:
           file: ./docker/backend.Dockerfile
           platforms: linux/arm64
           push: true
+          provenance: false
           tags: |
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/backend:latest
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/backend:${{ env.IMAGE_TAG }}
@@ -64,6 +65,7 @@ jobs:
           file: ./docker/frontend.Dockerfile
           platforms: linux/arm64
           push: true
+          provenance: false
           tags: |
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:latest
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:${{ env.IMAGE_TAG }}
