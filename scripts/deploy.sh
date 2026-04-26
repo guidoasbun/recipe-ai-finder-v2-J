@@ -47,15 +47,13 @@ aws ecs update-service \
   --cluster "$CLUSTER" \
   --service "$BACKEND_SERVICE" \
   --force-new-deployment \
-  --region "$AWS_REGION" \
-  --output none
+  --region "$AWS_REGION" > /dev/null
 
 aws ecs update-service \
   --cluster "$CLUSTER" \
   --service "$FRONTEND_SERVICE" \
   --force-new-deployment \
-  --region "$AWS_REGION" \
-  --output none
+  --region "$AWS_REGION" > /dev/null
 
 echo "==> Deploy complete. ECS is pulling the new images."
 echo "    Monitor progress: AWS Console → ECS → $CLUSTER"

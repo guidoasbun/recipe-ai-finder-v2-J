@@ -76,8 +76,8 @@ jobs:
           aws ecs update-service \
             --cluster "recipe-ai-${ENV}-cluster" \
             --service "recipe-ai-${ENV}-backend" \
-            --force-new-deployment --output none
+            --force-new-deployment > /dev/null
           aws ecs update-service \
             --cluster "recipe-ai-${ENV}-cluster" \
             --service "recipe-ai-${ENV}-frontend" \
-            --force-new-deployment --output none
+            --force-new-deployment > /dev/null
