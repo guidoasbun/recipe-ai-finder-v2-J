@@ -52,6 +52,7 @@ module "ecs" {
   aws_region             = var.aws_region
   vpc_id                 = module.networking.vpc_id
   private_subnets        = module.networking.private_subnet_ids
+  public_subnets         = module.networking.public_subnet_ids
   execution_role_arn     = module.iam.execution_role_arn
   task_role_arn          = module.iam.task_role_arn
   backend_ecr_url        = module.ecr.backend_repository_url
