@@ -20,7 +20,7 @@ public class ImageGenerationService {
     private final S3Service s3Service;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final String IMAGE_MODEL_ID = "amazon.titan-image-generator-v1";
+    private static final String IMAGE_MODEL_ID = "amazon.titan-image-generator-v2:0";
 
     public String generateAndUploadImage(String recipeId, String recipeTitle) {
         try {

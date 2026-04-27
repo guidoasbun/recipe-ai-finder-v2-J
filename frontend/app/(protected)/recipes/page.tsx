@@ -16,7 +16,7 @@ export default async function RecipesPage() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {recipes.map((recipe) => (
-            <RecipeCard key={recipe.id} recipe={recipe} saved />
+            <RecipeCard key={recipe.recipeId} recipe={recipe} saved />
           ))}
         </div>
       )}
