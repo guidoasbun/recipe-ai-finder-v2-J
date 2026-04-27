@@ -3,10 +3,12 @@ import { setSession } from "@/lib/session";
 import { cookies } from "next/headers";
 import { COGNITO_DOMAIN, COGNITO_CLIENT_ID, COGNITO_REDIRECT_URI } from "@/lib/constants";
 
+const APP_ORIGIN = new URL(COGNITO_REDIRECT_URI).origin;
+
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   if (!code) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(new URL("/login", APP_ORIGIN));
   }
 
   const tokenRes = await fetch(`https://${COGNITO_DOMAIN}/oauth2/token`, {
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
   });
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(new URL("/login", APP_ORIGIN));
   }
 
   const { id_token, refresh_token } = await tokenRes.json();
@@ -38,5 +40,5 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  return NextResponse.redirect(new URL("/dashboard", request.url));
+  return NextResponse.redirect(new URL("/dashboard", APP_ORIGIN));
 }
