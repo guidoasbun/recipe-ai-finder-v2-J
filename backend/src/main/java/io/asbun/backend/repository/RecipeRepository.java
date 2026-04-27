@@ -1,6 +1,7 @@
 package io.asbun.backend.repository;
 
 import io.asbun.backend.model.Recipe;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbIndex;
@@ -19,8 +20,9 @@ public class RecipeRepository {
     private final DynamoDbTable<Recipe> table;
     private final DynamoDbIndex<Recipe> userIndex;
 
-    public RecipeRepository(DynamoDbEnhancedClient enhancedClient) {
-        this.table = enhancedClient.table("Recipes", TableSchema.fromBean(Recipe.class));
+    public RecipeRepository(DynamoDbEnhancedClient enhancedClient,
+                            @Value("${dynamodb.recipes-table}") String tableName) {
+        this.table = enhancedClient.table(tableName, TableSchema.fromBean(Recipe.class));
         this.userIndex = table.index("userId-index");
     }
 
