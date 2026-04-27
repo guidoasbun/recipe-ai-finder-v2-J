@@ -62,13 +62,17 @@ public class BedrockService {
                     message.put("content", prompt);
                 }
                 case AMAZON_TITAN -> {
-                    body.put("inputText", prompt);
-                    ObjectNode config = body.putObject("textGenerationConfig");
-                    config.put("maxTokenCount", 4096);
-                    config.put("temperature", 0.7);
+                    ArrayNode messages = body.putArray("messages");
+                    ObjectNode message = messages.addObject();
+                    message.put("role", "user");
+                    ArrayNode content = message.putArray("content");
+                    content.addObject().put("text", prompt);
                 }
                 case LLAMA3 -> {
-                    body.put("prompt", prompt);
+                    String llama3Prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n"
+                            + prompt
+                            + "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
+                    body.put("prompt", llama3Prompt);
                     body.put("max_gen_len", 4096);
                     body.put("temperature", 0.7);
                 }
@@ -93,7 +97,7 @@ public class BedrockService {
                 case CLAUDE_HAIKU, CLAUDE_SONNET ->
                     root.path("content").get(0).path("text").asText();
                 case AMAZON_TITAN ->
-                    root.path("results").get(0).path("outputText").asText();
+                    root.path("output").path("message").path("content").get(0).path("text").asText();
                 case LLAMA3 ->
                     root.path("generation").asText();
                 case NOVA_LITE ->

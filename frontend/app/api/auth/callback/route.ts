@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setSession } from "@/lib/session";
+import { cookies } from "next/headers";
 import { COGNITO_DOMAIN, COGNITO_CLIENT_ID, COGNITO_REDIRECT_URI } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
@@ -23,8 +24,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  const { id_token } = await tokenRes.json();
+  const { id_token, refresh_token } = await tokenRes.json();
   await setSession(id_token);
+
+  if (refresh_token) {
+    const cookieStore = await cookies();
+    cookieStore.set("refresh_token", refresh_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+  }
 
   return NextResponse.redirect(new URL("/dashboard", request.url));
 }

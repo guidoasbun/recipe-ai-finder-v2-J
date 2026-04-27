@@ -74,6 +74,22 @@ resource "aws_lb_listener" "http_redirect" {
   }
 }
 
+resource "aws_lb_listener_rule" "frontend_auth" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 5
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/auth/*"]
+    }
+  }
+}
+
 resource "aws_lb_listener_rule" "backend" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 10

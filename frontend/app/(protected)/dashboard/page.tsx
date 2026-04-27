@@ -27,7 +27,7 @@ export default function DashboardPage() {
       <h1 className="mb-2 text-3xl font-bold text-gray-900">What's in your fridge?</h1>
       <p className="mb-8 text-gray-500">Enter your ingredients and we'll generate recipes for you.</p>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 text-gray-800">
         <textarea
           value={ingredients}
           onChange={(e) => setIngredients(e.target.value)}

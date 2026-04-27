@@ -1,9 +1,9 @@
 package io.asbun.backend.model.enums;
 
 public enum BedrockModel {
-    CLAUDE_HAIKU("anthropic.claude-3-haiku-20240307-v1:0"),
-    CLAUDE_SONNET("anthropic.claude-3-5-sonnet-20241022-v2:0"),
-    AMAZON_TITAN("amazon.titan-text-express-v1"),
+    CLAUDE_HAIKU("us.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    CLAUDE_SONNET("us.anthropic.claude-sonnet-4-6"),
+    AMAZON_TITAN("amazon.nova-micro-v1:0"),
     LLAMA3("meta.llama3-8b-instruct-v1:0"),
     NOVA_LITE("amazon.nova-lite-v1:0");
 

@@ -11,7 +11,7 @@ export const MODELS = [
   { id: "CLAUDE_SONNET", label: "Claude Sonnet (Smart)" },
   { id: "NOVA_LITE", label: "Amazon Nova Lite" },
   { id: "LLAMA3", label: "Llama 3" },
-  { id: "AMAZON_TITAN", label: "Amazon Titan" },
+  { id: "AMAZON_TITAN", label: "Amazon Nova Micro (Fast)" },
 ] as const;
 
 export type ModelId = (typeof MODELS)[number]["id"];
