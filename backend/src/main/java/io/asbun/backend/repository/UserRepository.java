@@ -1,6 +1,7 @@
 package io.asbun.backend.repository;
 
 import io.asbun.backend.model.User;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
@@ -14,8 +15,9 @@ public class UserRepository {
     
     private final DynamoDbTable<User> table;
 
-    public UserRepository(DynamoDbEnhancedClient enhancedClient) {
-        this.table = enhancedClient.table("Users", TableSchema.fromBean(User.class));
+    public UserRepository(DynamoDbEnhancedClient enhancedClient,
+                          @Value("${dynamodb.users-table}") String tableName) {
+        this.table = enhancedClient.table(tableName, TableSchema.fromBean(User.class));
     }
 
     public User save(User user) {

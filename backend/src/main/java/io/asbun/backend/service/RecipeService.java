@@ -18,16 +18,21 @@ import java.util.stream.Collectors;
 public class RecipeService {
 
     private final RecipeRepository recipeRepository;
+    private final ImageGenerationService imageGenerationService;
+    private final S3Service s3Service;
 
     public RecipeDto saveRecipe(SaveRecipeRequest request, String userId) {
+        String recipeId = UUID.randomUUID().toString();
+        String imageUrl = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle());
+
         Recipe recipe = Recipe.builder()
-                .recipeId(UUID.randomUUID().toString())
+                .recipeId(recipeId)
                 .userId(userId)
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .ingredients(request.getIngredients())
                 .steps(request.getSteps())
-                .imageUrl(request.getImageUrl())
+                .imageUrl(imageUrl)
                 .model(request.getModel())
                 .createdAt(Instant.now())
                 .build();
@@ -66,6 +71,9 @@ public class RecipeService {
     }
 
     private RecipeDto toDto(Recipe recipe) {
+        String imageUrl = recipe.getImageUrl() != null
+                ? s3Service.generatePresignedUrl(recipe.getImageUrl())
+                : null;
         return RecipeDto.builder()
                 .recipeId(recipe.getRecipeId())
                 .userId(recipe.getUserId())
@@ -73,7 +81,7 @@ public class RecipeService {
                 .description(recipe.getDescription())
                 .ingredients(recipe.getIngredients())
                 .steps(recipe.getSteps())
-                .imageUrl(recipe.getImageUrl())
+                .imageUrl(imageUrl)
                 .model(recipe.getModel())
                 .createdAt(recipe.getCreatedAt())
                 .build();

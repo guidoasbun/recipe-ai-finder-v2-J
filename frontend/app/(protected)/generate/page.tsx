@@ -76,7 +76,7 @@ function GenerateContent() {
       </div>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {recipes.map((recipe, i) => (
-          <RecipeCard key={i} recipe={recipe} />
+          <RecipeCard key={i} recipe={recipe} model={model} />
         ))}
       </div>
     </div>

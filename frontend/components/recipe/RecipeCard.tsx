@@ -7,13 +7,14 @@ import { Recipe, GeneratedRecipe } from "@/types/recipe";
 interface Props {
   recipe: Recipe | GeneratedRecipe;
   saved?: boolean;
+  model?: string;
 }
 
-export default function RecipeCard({ recipe, saved = false }: Props) {
+export default function RecipeCard({ recipe, saved = false, model }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved_, setSaved_] = useState(saved);
 
-  const id = "id" in recipe ? recipe.id : null;
+  const id = "recipeId" in recipe ? recipe.recipeId : null;
   const imageUrl = "imageUrl" in recipe ? recipe.imageUrl : undefined;
 
   async function handleSave() {
@@ -27,6 +28,7 @@ export default function RecipeCard({ recipe, saved = false }: Props) {
           description: recipe.description,
           ingredients: recipe.ingredients,
           steps: recipe.steps,
+          model,
         }),
       });
       setSaved_(true);
