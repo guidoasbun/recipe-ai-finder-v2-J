@@ -6,6 +6,7 @@ import io.asbun.backend.exception.ResourceNotFoundException;
 import io.asbun.backend.model.Recipe;
 import io.asbun.backend.repository.RecipeRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RecipeService {
@@ -23,7 +25,12 @@ public class RecipeService {
 
     public RecipeDto saveRecipe(SaveRecipeRequest request, String userId) {
         String recipeId = UUID.randomUUID().toString();
-        String imageUrl = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle());
+        String imageUrl = null;
+        try {
+            imageUrl = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle());
+        } catch (Exception e) {
+            log.warn("Image generation failed for recipe {}, saving without image: {}", recipeId, e.getMessage());
+        }
 
         Recipe recipe = Recipe.builder()
                 .recipeId(recipeId)
