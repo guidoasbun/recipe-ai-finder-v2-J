@@ -9,6 +9,8 @@ FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ARG NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
+ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
 RUN npm run build
 
 # Stage 3: runtime (Next.js standalone)
