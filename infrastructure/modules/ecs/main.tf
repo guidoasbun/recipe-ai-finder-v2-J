@@ -85,7 +85,7 @@ resource "aws_ecs_task_definition" "frontend" {
     }]
 
     environment = [
-      { name = "BACKEND_URL",          value = "https://${var.domain_name}/api" },
+      { name = "BACKEND_URL",          value = "https://${var.domain_name}" },
       { name = "COGNITO_DOMAIN",        value = var.cognito_domain },
       { name = "COGNITO_CLIENT_ID",     value = var.cognito_client_id },
       { name = "COGNITO_REDIRECT_URI",  value = "https://${var.domain_name}/api/auth/callback" }
