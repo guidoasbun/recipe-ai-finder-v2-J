@@ -90,6 +90,22 @@ resource "aws_lb_listener_rule" "frontend_auth" {
   }
 }
 
+resource "aws_lb_listener_rule" "frontend_backend_proxy" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 7
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/backend/*"]
+    }
+  }
+}
+
 resource "aws_lb_listener_rule" "backend" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 10
