@@ -67,7 +67,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            NEXT_PUBLIC_BACKEND_URL=https://recipe-ai-finder.com
+            BACKEND_URL=https://recipe-ai-finder.com
           tags: |
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:latest
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:${{ env.IMAGE_TAG }}
