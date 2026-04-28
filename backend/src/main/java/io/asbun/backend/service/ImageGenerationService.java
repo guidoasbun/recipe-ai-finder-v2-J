@@ -20,7 +20,7 @@ public class ImageGenerationService {
     private final S3Service s3Service;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final String IMAGE_MODEL_ID = "amazon.titan-image-generator-v2:0";
+    private static final String IMAGE_MODEL_ID = "stability.stable-image-core-v1:0";
 
     public String generateAndUploadImage(String recipeId, String recipeTitle) {
         try {
@@ -46,18 +46,11 @@ public class ImageGenerationService {
 
     private String buildImageRequest(String recipeTitle) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("taskType", "TEXT_IMAGE");
-
-        ObjectNode textToImageParams = body.putObject("textToImageParams");
-        textToImageParams.put("text",
+        body.put("prompt",
             "A beautiful food photography photo of " + recipeTitle +
             ", professional lighting, high quality, restaurant style");
-
-        ObjectNode imageConfig = body.putObject("imageGenerationConfig");
-        imageConfig.put("numberOfImages", 1);
-        imageConfig.put("width", 512);
-        imageConfig.put("height", 512);
-        imageConfig.put("cfgScale", 8.0);
+        body.put("output_format", "png");
+        body.put("aspect_ratio", "1:1");
 
         return objectMapper.writeValueAsString(body);
     }
