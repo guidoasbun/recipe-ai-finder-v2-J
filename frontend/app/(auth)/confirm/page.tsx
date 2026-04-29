@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function ConfirmPage() {
+function ConfirmForm() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [resendStatus, setResendStatus] = useState<"idle" | "sent" | "error">("idle");
@@ -115,5 +115,13 @@ export default function ConfirmPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function ConfirmPage() {
+  return (
+    <Suspense>
+      <ConfirmForm />
+    </Suspense>
   );
 }
