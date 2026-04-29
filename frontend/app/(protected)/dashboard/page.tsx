@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { MODELS, ModelId } from "@/lib/constants";
+import { MODELS, ModelId, IMAGE_MODELS, ImageModelId } from "@/lib/constants";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [ingredients, setIngredients] = useState("");
   const [model, setModel] = useState<ModelId>("CLAUDE_HAIKU");
+  const [imageModel, setImageModel] = useState<ImageModelId>("STABILITY_CORE");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -18,6 +19,7 @@ export default function DashboardPage() {
     const params = new URLSearchParams({
       ingredients: ingredients.trim(),
       model,
+      imageModel,
     });
     router.push(`/generate?${params.toString()}`);
   }
@@ -36,17 +38,31 @@ export default function DashboardPage() {
           className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
 
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-700">Model:</label>
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value as ModelId)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          >
-            {MODELS.map((m) => (
-              <option key={m.id} value={m.id}>{m.label}</option>
-            ))}
-          </select>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700">Model:</label>
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value as ModelId)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            >
+              {MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700">Image:</label>
+            <select
+              value={imageModel}
+              onChange={(e) => setImageModel(e.target.value as ImageModelId)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            >
+              {IMAGE_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <button

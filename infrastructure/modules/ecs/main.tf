@@ -49,6 +49,11 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "CORS_ALLOWED_ORIGINS",      value = "https://${var.domain_name}" }
     ]
 
+    secrets = [
+      { name = "STABILITY_API_KEY", valueFrom = var.stability_api_key_arn },
+      { name = "OPENAI_API_KEY",    valueFrom = var.openai_api_key_arn }
+    ]
+
     logConfiguration = {
       logDriver = "awslogs"
       options = {

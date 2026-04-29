@@ -18,6 +18,19 @@ resource "aws_iam_role_policy_attachment" "execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy" "execution_role_secrets" {
+  role = aws_iam_role.execution_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_iam_role" "task_role" {
   name               = "${var.project_name}-ecs-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
