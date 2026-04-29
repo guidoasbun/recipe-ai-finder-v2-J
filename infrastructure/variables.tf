@@ -27,3 +27,13 @@ variable "cognito_google_client_secret_ssm" {
   type        = string
   description = "SSM Parameter Store path for Google OAuth client secret"
 }
+
+variable "stability_api_key_arn" {
+  type        = string
+  description = "Secrets Manager ARN for the Stability AI API key"
+}
+
+variable "openai_api_key_arn" {
+  type        = string
+  description = "Secrets Manager ARN for the OpenAI API key"
+}

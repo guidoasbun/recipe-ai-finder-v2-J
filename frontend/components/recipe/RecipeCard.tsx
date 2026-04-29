@@ -8,9 +8,10 @@ interface Props {
   recipe: Recipe | GeneratedRecipe;
   saved?: boolean;
   model?: string;
+  imageModel?: string;
 }
 
-export default function RecipeCard({ recipe, saved = false, model }: Props) {
+export default function RecipeCard({ recipe, saved = false, model, imageModel }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved_, setSaved_] = useState(saved);
 
@@ -29,6 +30,7 @@ export default function RecipeCard({ recipe, saved = false, model }: Props) {
           ingredients: recipe.ingredients,
           steps: recipe.steps,
           model,
+          imageModel,
         }),
       });
       setSaved_(true);

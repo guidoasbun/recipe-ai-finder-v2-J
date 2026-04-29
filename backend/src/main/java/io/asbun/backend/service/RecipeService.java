@@ -27,7 +27,7 @@ public class RecipeService {
         String recipeId = UUID.randomUUID().toString();
         String imageUrl = null;
         try {
-            imageUrl = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle());
+            imageUrl = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle(), request.getImageModel());
         } catch (Exception e) {
             log.warn("Image generation failed for recipe {}, saving without image: {}", recipeId, e.getMessage());
         }

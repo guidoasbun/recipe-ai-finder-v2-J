@@ -77,3 +77,13 @@ variable "cognito_domain" {
 variable "cognito_client_id" {
   type = string
 }
+
+variable "stability_api_key_arn" {
+  type        = string
+  description = "Secrets Manager ARN for the Stability AI API key"
+}
+
+variable "openai_api_key_arn" {
+  type        = string
+  description = "Secrets Manager ARN for the OpenAI API key"
+}

@@ -67,5 +67,7 @@ module "ecs" {
   cognito_client_id      = module.cognito.client_id
   domain_name            = var.domain_name
   ecs_security_group_id  = module.networking.ecs_security_group_id
+  stability_api_key_arn  = var.stability_api_key_arn
+  openai_api_key_arn     = var.openai_api_key_arn
 }
 

@@ -14,6 +14,7 @@ function GenerateContent() {
 
   const ingredients = searchParams.get("ingredients") ?? "";
   const model = searchParams.get("model") ?? "CLAUDE_HAIKU";
+  const imageModel = searchParams.get("imageModel") ?? "STABILITY_CORE";
 
   useEffect(() => {
     if (!ingredients) {
@@ -76,7 +77,7 @@ function GenerateContent() {
       </div>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {recipes.map((recipe, i) => (
-          <RecipeCard key={i} recipe={recipe} model={model} />
+          <RecipeCard key={i} recipe={recipe} model={model} imageModel={imageModel} />
         ))}
       </div>
     </div>

@@ -3,55 +3,95 @@ package io.asbun.backend.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import lombok.RequiredArgsConstructor;
+import io.asbun.backend.model.enums.ImageModel;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.core.SdkBytes;
-import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
-import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
-import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.Base64;
 
 @Service
-@RequiredArgsConstructor
 public class ImageGenerationService {
 
-    private final BedrockRuntimeClient bedrockRuntimeClient;
+    private final RestTemplate restTemplate;
     private final S3Service s3Service;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final String IMAGE_MODEL_ID = "stability.stable-image-core-v1:0";
+    @Value("${stability.api-key}")
+    private String stabilityApiKey;
 
-    public String generateAndUploadImage(String recipeId, String recipeTitle) {
+    @Value("${openai.api-key}")
+    private String openaiApiKey;
+
+    private static final String STABILITY_URL =
+            "https://api.stability.ai/v2beta/stable-image/generate/core";
+    private static final String OPENAI_URL =
+            "https://api.openai.com/v1/images/generations";
+    private static final String PROMPT_PREFIX =
+            "A beautiful food photography photo of ";
+    private static final String PROMPT_SUFFIX =
+            ", professional lighting, high quality, restaurant style";
+
+    public ImageGenerationService(RestTemplate restTemplate, S3Service s3Service) {
+        this.restTemplate = restTemplate;
+        this.s3Service = s3Service;
+    }
+
+    public String generateAndUploadImage(String recipeId, String recipeTitle, ImageModel imageModel) {
         try {
-            String requestBody = buildImageRequest(recipeTitle);
-
-            InvokeModelRequest request = InvokeModelRequest.builder()
-                    .modelId(IMAGE_MODEL_ID)
-                    .body(SdkBytes.fromUtf8String(requestBody))
-                    .contentType("application/json")
-                    .accept("application/json")
-                    .build();
-
-            InvokeModelResponse response = bedrockRuntimeClient.invokeModel(request);
-            JsonNode root = objectMapper.readTree(response.body().asUtf8String());
-            String base64Image = root.path("images").get(0).asText();
-            byte[] imageBytes = Base64.getDecoder().decode(base64Image);
-
+            byte[] imageBytes = switch (imageModel) {
+                case STABILITY_CORE -> generateWithStability(recipeTitle);
+                case DALLE_3        -> generateWithDalle(recipeTitle);
+            };
             return s3Service.uploadImage(recipeId, imageBytes);
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate image for: " + recipeTitle, e);
         }
     }
 
-    private String buildImageRequest(String recipeTitle) throws Exception {
-        ObjectNode body = objectMapper.createObjectNode();
-        body.put("prompt",
-            "A beautiful food photography photo of " + recipeTitle +
-            ", professional lighting, high quality, restaurant style");
-        body.put("output_format", "png");
-        body.put("aspect_ratio", "1:1");
+    private byte[] generateWithStability(String recipeTitle) throws Exception {
+        String prompt = PROMPT_PREFIX + recipeTitle + PROMPT_SUFFIX;
 
-        return objectMapper.writeValueAsString(body);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        headers.setBearerAuth(stabilityApiKey);
+        headers.set("Accept", "application/json");
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("prompt", prompt);
+        body.add("output_format", "png");
+        body.add("aspect_ratio", "1:1");
+
+        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(body, headers);
+        ResponseEntity<String> response = restTemplate.postForEntity(STABILITY_URL, entity, String.class);
+
+        JsonNode root = objectMapper.readTree(response.getBody());
+        String base64Image = root.path("image").asText();
+        return Base64.getDecoder().decode(base64Image);
+    }
+
+    private byte[] generateWithDalle(String recipeTitle) throws Exception {
+        String prompt = PROMPT_PREFIX + recipeTitle + PROMPT_SUFFIX;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(openaiApiKey);
+
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("model", "dall-e-3");
+        requestBody.put("prompt", prompt);
+        requestBody.put("n", 1);
+        requestBody.put("size", "1024x1024");
+        requestBody.put("response_format", "b64_json");
+
+        HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(requestBody), headers);
+        ResponseEntity<String> response = restTemplate.postForEntity(OPENAI_URL, entity, String.class);
+
+        JsonNode root = objectMapper.readTree(response.getBody());
+        String base64Image = root.path("data").get(0).path("b64_json").asText();
+        return Base64.getDecoder().decode(base64Image);
     }
 }
