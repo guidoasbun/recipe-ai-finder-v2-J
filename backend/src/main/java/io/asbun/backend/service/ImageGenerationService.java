@@ -44,7 +44,7 @@ public class ImageGenerationService {
         try {
             byte[] imageBytes = switch (imageModel) {
                 case STABILITY_CORE -> generateWithStability(recipeTitle);
-                case DALLE_3        -> generateWithDalle(recipeTitle);
+                case GPT_IMAGE_1_5  -> generateWithGptImage(recipeTitle);
             };
             return s3Service.uploadImage(recipeId, imageBytes);
         } catch (Exception e) {
@@ -73,7 +73,7 @@ public class ImageGenerationService {
         return Base64.getDecoder().decode(base64Image);
     }
 
-    private byte[] generateWithDalle(String recipeTitle) throws Exception {
+    private byte[] generateWithGptImage(String recipeTitle) throws Exception {
         String prompt = PROMPT_PREFIX + recipeTitle + PROMPT_SUFFIX;
 
         HttpHeaders headers = new HttpHeaders();
@@ -81,11 +81,10 @@ public class ImageGenerationService {
         headers.setBearerAuth(openaiApiKey);
 
         ObjectNode requestBody = objectMapper.createObjectNode();
-        requestBody.put("model", "dall-e-3");
+        requestBody.put("model", "gpt-image-1.5");
         requestBody.put("prompt", prompt);
         requestBody.put("n", 1);
         requestBody.put("size", "1024x1024");
-        requestBody.put("response_format", "b64_json");
 
         HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(requestBody), headers);
         ResponseEntity<String> response = restTemplate.postForEntity(OPENAI_URL, entity, String.class);
