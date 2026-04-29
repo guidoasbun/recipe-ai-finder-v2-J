@@ -18,7 +18,7 @@ export type ModelId = (typeof MODELS)[number]["id"];
 
 export const IMAGE_MODELS = [
   { id: "STABILITY_CORE", label: "Stability AI Core" },
-  { id: "DALLE_3",        label: "DALL-E 3" },
+  { id: "GPT_IMAGE_1_5",  label: "GPT Image 1.5" },
 ] as const;
 
 export type ImageModelId = (typeof IMAGE_MODELS)[number]["id"];
