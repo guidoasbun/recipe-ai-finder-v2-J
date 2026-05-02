@@ -6,9 +6,8 @@ import { useRouter } from "next/navigation";
 export default function Header() {
   const router = useRouter();
 
-  async function handleLogout() {
-    await fetch("/api/auth/logout");
-    router.push("/login");
+  function handleLogout() {
+    window.location.href = "/api/auth/logout";
   }
 
   return (
