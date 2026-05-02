@@ -17,7 +17,6 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
 
   const id = "recipeId" in recipe ? recipe.recipeId : null;
   const imageUrl = "imageUrl" in recipe ? recipe.imageUrl : undefined;
-
   async function handleSave() {
     setSaving(true);
     try {
@@ -46,7 +45,8 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
       )}
       <div className="flex flex-1 flex-col p-4">
         <h3 className="mb-1 font-semibold text-gray-900">{recipe.title}</h3>
-        <p className="mb-4 text-sm text-gray-500 line-clamp-2">{recipe.description}</p>
+        <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.description}</p>
+        <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.ingredients}</p>
         <div className="mt-auto flex gap-2">
           {id && (
             <Link
