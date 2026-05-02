@@ -9,6 +9,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Base64;
@@ -26,10 +27,15 @@ public class ImageGenerationService {
     @Value("${openai.api-key}")
     private String openaiApiKey;
 
+    @Value("${google.api-key}")
+    private String googleApiKey;
+
     private static final String STABILITY_URL =
             "https://api.stability.ai/v2beta/stable-image/generate/core";
     private static final String OPENAI_URL =
             "https://api.openai.com/v1/images/generations";
+    private static final String GOOGLE_IMAGEN_URL =
+            "https://generativelanguage.googleapis.com/v1beta/models/%s:predict";
     private static final String PROMPT_PREFIX =
             "A beautiful food photography photo of ";
     private static final String PROMPT_SUFFIX =
@@ -43,8 +49,10 @@ public class ImageGenerationService {
     public String generateAndUploadImage(String recipeId, String recipeTitle, ImageModel imageModel) {
         try {
             byte[] imageBytes = switch (imageModel) {
-                case STABILITY_CORE -> generateWithStability(recipeTitle);
-                case GPT_IMAGE_1_5  -> generateWithGptImage(recipeTitle);
+                case STABILITY_CORE      -> generateWithStability(recipeTitle);
+                case GPT_IMAGE_1_5       -> generateWithGptImage(recipeTitle);
+                case GOOGLE_IMAGEN_4      -> generateWithGoogleImagen(recipeTitle, "imagen-4.0-generate-001");
+                case GOOGLE_IMAGEN_4_FAST -> generateWithGoogleImagen(recipeTitle, "imagen-4.0-fast-generate-001");
             };
             return s3Service.uploadImage(recipeId, imageBytes);
         } catch (Exception e) {
@@ -71,6 +79,36 @@ public class ImageGenerationService {
         JsonNode root = objectMapper.readTree(response.getBody());
         String base64Image = root.path("image").asText();
         return Base64.getDecoder().decode(base64Image);
+    }
+
+    private byte[] generateWithGoogleImagen(String recipeTitle, String modelId) throws Exception {
+        String prompt = PROMPT_PREFIX + recipeTitle + PROMPT_SUFFIX;
+        String url = String.format(GOOGLE_IMAGEN_URL, modelId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("x-goog-api-key", googleApiKey);
+
+        ObjectNode instance = objectMapper.createObjectNode();
+        instance.put("prompt", prompt);
+
+        ObjectNode parameters = objectMapper.createObjectNode();
+        parameters.put("sampleCount", 1);
+        parameters.put("aspectRatio", "1:1");
+
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.putArray("instances").add(instance);
+        requestBody.set("parameters", parameters);
+
+        HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(requestBody), headers);
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            JsonNode root = objectMapper.readTree(response.getBody());
+            String base64Image = root.path("predictions").get(0).path("bytesBase64Encoded").asText();
+            return Base64.getDecoder().decode(base64Image);
+        } catch (HttpStatusCodeException e) {
+            throw new RuntimeException("Google Imagen API error " + e.getStatusCode() + ": " + e.getResponseBodyAsString(), e);
+        }
     }
 
     private byte[] generateWithGptImage(String recipeTitle) throws Exception {
