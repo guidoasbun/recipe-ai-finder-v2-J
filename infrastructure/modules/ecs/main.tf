@@ -51,7 +51,8 @@ resource "aws_ecs_task_definition" "backend" {
 
     secrets = [
       { name = "STABILITY_API_KEY", valueFrom = var.stability_api_key_arn },
-      { name = "OPENAI_API_KEY",    valueFrom = var.openai_api_key_arn }
+      { name = "OPENAI_API_KEY",    valueFrom = var.openai_api_key_arn },
+      { name = "GOOGLE_API_KEY",    valueFrom = var.google_api_key_arn }
     ]
 
     logConfiguration = {
