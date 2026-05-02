@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Recipe, GeneratedRecipe } from "@/types/recipe";
 
 interface Props {
@@ -12,15 +13,32 @@ interface Props {
 }
 
 export default function RecipeCard({ recipe, saved = false, model, imageModel }: Props) {
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [saved_, setSaved_] = useState(saved);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const id = "recipeId" in recipe ? recipe.recipeId : null;
   const imageUrl = "imageUrl" in recipe ? recipe.imageUrl : undefined;
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const effectiveId = savedId ?? id;
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await fetch(`/api/backend/api/recipes/${effectiveId}`, { method: "DELETE" });
+      router.refresh();
+    } finally {
+      setDeleting(false);
+      setConfirming(false);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
-      await fetch("/api/backend/api/recipes", {
+      const res = await fetch("/api/backend/api/recipes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -32,6 +50,8 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
           imageModel,
         }),
       });
+      const data = await res.json();
+      setSavedId(data.recipeId);
       setSaved_(true);
     } finally {
       setSaving(false);
@@ -48,9 +68,9 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.description}</p>
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.ingredients}</p>
         <div className="mt-auto flex gap-2">
-          {id && (
+          {effectiveId && (
             <Link
-              href={`/recipes/${id}`}
+              href={`/recipes/${effectiveId}`}
               className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-center text-xs font-medium text-gray-700 hover:bg-gray-50"
             >
               View
@@ -65,10 +85,31 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
               {saving ? "Saving..." : "Save Recipe"}
             </button>
           )}
-          {saved_ && (
-            <span className="flex-1 rounded-lg bg-green-50 px-3 py-2 text-center text-xs font-medium text-green-700">
-              Saved
-            </span>
+          {saved_ && !confirming && (
+            <button
+              onClick={() => setConfirming(true)}
+              disabled={deleting}
+              className="flex-1 rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              Delete
+            </button>
+          )}
+          {saved_ && confirming && (
+            <>
+              <button
+                onClick={() => setConfirming(false)}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete?"}
+              </button>
+            </>
           )}
         </div>
       </div>

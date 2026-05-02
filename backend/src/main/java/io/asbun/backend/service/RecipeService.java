@@ -75,6 +75,10 @@ public class RecipeService {
         }
 
         recipeRepository.delete(recipeId);
+
+        if (recipe.getImageUrl() != null) {
+            s3Service.deleteImage(recipe.getImageUrl());
+        }
     }
 
     private RecipeDto toDto(Recipe recipe) {

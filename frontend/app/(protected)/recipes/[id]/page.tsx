@@ -2,6 +2,7 @@ import { getSession } from "@/lib/session";
 import { apiFetch } from "@/lib/api";
 import { Recipe } from "@/types/recipe";
 import { notFound } from "next/navigation";
+import DeleteRecipeButton from "@/components/recipe/DeleteRecipeButton";
 
 export default async function RecipeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -44,6 +45,10 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
           ))}
         </ol>
       </section>
+
+      <div className="mt-8">
+        <DeleteRecipeButton recipeId={recipe.recipeId} />
+      </div>
     </div>
   );
 }
