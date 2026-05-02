@@ -19,8 +19,10 @@ export const MODELS = [
 export type ModelId = (typeof MODELS)[number]["id"];
 
 export const IMAGE_MODELS = [
-  { id: "STABILITY_CORE", label: "Stability AI Core" },
-  { id: "GPT_IMAGE_1_5",  label: "GPT Image 1.5" },
+  { id: "STABILITY_CORE",       label: "Stability AI Core" },
+  { id: "GPT_IMAGE_1_5",        label: "GPT Image 1.5" },
+  { id: "GOOGLE_IMAGEN_4",      label: "Google Imagen 4" },
+  { id: "GOOGLE_IMAGEN_4_FAST", label: "Google Imagen 4 Fast" },
 ] as const;
 
 export type ImageModelId = (typeof IMAGE_MODELS)[number]["id"];

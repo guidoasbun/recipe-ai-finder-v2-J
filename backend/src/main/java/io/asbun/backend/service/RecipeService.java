@@ -29,7 +29,7 @@ public class RecipeService {
         try {
             imageUrl = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle(), request.getImageModel());
         } catch (Exception e) {
-            log.warn("Image generation failed for recipe {}, saving without image: {}", recipeId, e.getMessage());
+            log.warn("Image generation failed for recipe {}, saving without image: {}", recipeId, e.getMessage(), e);
         }
 
         Recipe recipe = Recipe.builder()

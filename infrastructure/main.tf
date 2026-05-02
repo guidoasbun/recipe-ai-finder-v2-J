@@ -69,5 +69,6 @@ module "ecs" {
   ecs_security_group_id  = module.networking.ecs_security_group_id
   stability_api_key_arn  = var.stability_api_key_arn
   openai_api_key_arn     = var.openai_api_key_arn
+  google_api_key_arn     = var.google_api_key_arn
 }
 

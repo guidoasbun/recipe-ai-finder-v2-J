@@ -87,3 +87,8 @@ variable "openai_api_key_arn" {
   type        = string
   description = "Secrets Manager ARN for the OpenAI API key"
 }
+
+variable "google_api_key_arn" {
+  type        = string
+  description = "Secrets Manager ARN for the Google AI Studio API key"
+}
