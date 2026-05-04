@@ -22,7 +22,7 @@ This application is live at
 1. Sign in with Google via AWS Cognito
 2. Enter the ingredients you have on hand and choose an AI model
 3. The backend calls **AWS Bedrock** to generate exactly three recipes (title, description, ingredients, steps) as structured JSON
-4. An image generation model (Stability AI or OpenAI) produces professional food photography for each recipe
+4. An image generation model (Stability AI, OpenAI, or Google Imagen) produces professional food photography for each recipe
 5. Photos are stored in S3 and served via presigned URLs; recipes are persisted in DynamoDB
 6. Browse, view, and delete your saved recipe collection
 
@@ -51,12 +51,14 @@ Recipe generation runs entirely through **AWS Bedrock Runtime**. The model is se
 
 ### Image Generation
 
-After recipes are generated, the backend produces a food photography image for each one. Two providers are supported; the user selects one per session.
+After recipes are generated, the backend produces a food photography image for each one. Three providers are supported; the user selects one per session.
 
-| Provider | Model | Notes |
-|----------|-------|-------|
-| **Stability AI Core** | `stable-image/generate/core` | Default; 1:1 aspect ratio |
-| **OpenAI** | `gpt-image-1` | 1024×1024; high quality |
+| Provider | Model ID | Notes |
+|----------|----------|-------|
+| **Stability AI Core** | `stable-image/generate/core` | 1:1 aspect ratio |
+| **OpenAI** | `gpt-image-1.5` | 1024×1024; high quality |
+| **Google Imagen 4** | `imagen-4.0-generate-001` | 1:1 aspect ratio; highest quality |
+| **Google Imagen 4 Fast** | `imagen-4.0-fast-generate-001` | 1:1 aspect ratio; lower latency |
 
 Both providers receive the same prompt template:
 ```
@@ -109,7 +111,7 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 | **S3** | Image storage with SSE-AES256 encryption, versioning off, 90-day lifecycle |
 | **Cognito** | User pool with Google as a federated identity provider; JWT-based sessions |
 | **ECR** | Private container registries for backend and frontend images |
-| **Secrets Manager** | Stores `STABILITY_API_KEY` and `OPENAI_API_KEY`; injected into ECS task definitions at runtime — never in code or environment files |
+| **Secrets Manager** | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, and `GOOGLE_API_KEY`; injected into ECS task definitions at runtime — never in code or environment files |
 | **ACM** | TLS certificates for the load balancer |
 | **CloudWatch** | Container logs; 30-day retention |
 
@@ -174,7 +176,7 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 | Frontend library | React | 19.2.4 |
 | Styling | Tailwind CSS | 4 |
 | AI inference | AWS Bedrock | — |
-| Image generation | Stability AI + OpenAI | — |
+| Image generation | Stability AI + OpenAI + Google Imagen | — |
 | Authentication | AWS Cognito (Google OAuth2) | — |
 | Database | AWS DynamoDB | — |
 | Object storage | AWS S3 | — |
@@ -236,6 +238,7 @@ cp src/main/resources/application-local.properties.example \
 #   spring.security.oauth2.resourceserver.jwt.issuer-uri=<cognito-issuer>
 #   stability.api-key=<your-key>
 #   openai.api-key=<your-key>
+#   google.api-key=<your-key>
 #   aws.dynamodb.users-table=<table-name>
 #   aws.dynamodb.recipes-table=<table-name>
 #   aws.s3.bucket=<bucket-name>
