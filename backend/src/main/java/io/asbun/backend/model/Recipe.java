@@ -1,6 +1,7 @@
 package io.asbun.backend.model;
 
 import io.asbun.backend.model.enums.BedrockModel;
+import io.asbun.backend.model.enums.ImageModel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,6 +28,7 @@ public class Recipe {
     private List<String> ingredients;
     private List<String> steps;
     private BedrockModel model;
+    private ImageModel imageModel;
     private Instant createdAt;
 
     @DynamoDbPartitionKey

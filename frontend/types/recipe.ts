@@ -7,6 +7,8 @@ export interface Recipe {
   imageUrl?: string;
   userId: string;
   createdAt: string;
+  model?: string;
+  imageModel?: string;
 }
 
 export interface GeneratedRecipe {

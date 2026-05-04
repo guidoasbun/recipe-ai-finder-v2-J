@@ -41,6 +41,7 @@ public class RecipeService {
                 .steps(request.getSteps())
                 .imageUrl(imageUrl)
                 .model(request.getModel())
+                .imageModel(request.getImageModel())
                 .createdAt(Instant.now())
                 .build();
 
@@ -94,6 +95,7 @@ public class RecipeService {
                 .steps(recipe.getSteps())
                 .imageUrl(imageUrl)
                 .model(recipe.getModel())
+                .imageModel(recipe.getImageModel())
                 .createdAt(recipe.getCreatedAt())
                 .build();
     }

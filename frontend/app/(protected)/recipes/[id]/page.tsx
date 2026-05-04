@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api";
 import { Recipe } from "@/types/recipe";
 import { notFound } from "next/navigation";
 import DeleteRecipeButton from "@/components/recipe/DeleteRecipeButton";
+import { MODELS, IMAGE_MODELS } from "@/lib/constants";
 
 export default async function RecipeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -12,12 +13,29 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
   if (!res.ok) notFound();
   const recipe: Recipe = await res.json();
 
+  const modelLabel = MODELS.find((m) => m.id === recipe.model)?.label;
+  const imageModelLabel = IMAGE_MODELS.find((m) => m.id === recipe.imageModel)?.label;
+
   return (
     <div className="mx-auto max-w-2xl">
       {recipe.imageUrl && (
         <img src={recipe.imageUrl} alt={recipe.title} className="mb-6 w-full rounded-2xl object-cover h-64" />
       )}
       <h1 className="mb-2 text-3xl font-bold text-gray-900">{recipe.title}</h1>
+      {(modelLabel || imageModelLabel) && (
+        <div className="mb-4 flex gap-4">
+          {modelLabel && (
+            <span className="text-xl text-gray-700">
+              <span className="font-medium text-gray-900">Text:</span> {modelLabel}
+            </span>
+          )}
+          {imageModelLabel && (
+            <span className="text-xl text-gray-700">
+              <span className="font-medium text-gray-900">Image:</span> {imageModelLabel}
+            </span>
+          )}
+        </div>
+      )}
       <p className="mb-6 text-gray-500">{recipe.description}</p>
 
       <section className="mb-6">

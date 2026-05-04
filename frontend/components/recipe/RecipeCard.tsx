@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Recipe, GeneratedRecipe } from "@/types/recipe";
+import { MODELS, IMAGE_MODELS } from "@/lib/constants";
 
 interface Props {
   recipe: Recipe | GeneratedRecipe;
@@ -23,6 +24,13 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
   const imageUrl = "imageUrl" in recipe ? recipe.imageUrl : undefined;
   const [savedId, setSavedId] = useState<string | null>(null);
   const effectiveId = savedId ?? id;
+
+  const recipeModel = "model" in recipe ? recipe.model : undefined;
+  const recipeImageModel = "imageModel" in recipe ? recipe.imageModel : undefined;
+  const effectiveModel = model ?? recipeModel;
+  const effectiveImageModel = imageModel ?? recipeImageModel;
+  const modelLabel = MODELS.find((m) => m.id === effectiveModel)?.label;
+  const imageModelLabel = IMAGE_MODELS.find((m) => m.id === effectiveImageModel)?.label;
 
   async function handleDelete() {
     setDeleting(true);
@@ -57,7 +65,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
       setSaving(false);
     }
   }
-
+  
   return (
     <div className="flex flex-col rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       {imageUrl && (
@@ -67,6 +75,20 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
         <h3 className="mb-1 font-semibold text-gray-900">{recipe.title}</h3>
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.description}</p>
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.ingredients}</p>
+        {(modelLabel || imageModelLabel) && (
+          <div className="mb-4 flex flex-col gap-1">
+            {modelLabel && (
+              <span className="text-xs text-gray-400">
+                <span className="font-medium text-gray-500">Text:</span> {modelLabel}
+              </span>
+            )}
+            {imageModelLabel && (
+              <span className="text-xs text-gray-400">
+                <span className="font-medium text-gray-500">Image:</span> {imageModelLabel}
+              </span>
+            )}
+          </div>
+        )}
         <div className="mt-auto flex gap-2">
           {effectiveId && (
             <Link
