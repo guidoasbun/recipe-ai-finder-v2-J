@@ -29,6 +29,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 401 });
   }
 
+  // Admin-created accounts start with a forced password change. Resolve it
+  // automatically so the user lands directly in the app.
+  if (data.ChallengeName === "NEW_PASSWORD_REQUIRED") {
+    const challenge = await cognitoPost(
+      "AWSCognitoIdentityProviderService.RespondToAuthChallenge",
+      {
+        ClientId: COGNITO_CLIENT_ID,
+        ChallengeName: "NEW_PASSWORD_REQUIRED",
+        Session: data.Session,
+        ChallengeResponses: {
+          USERNAME: email,
+          NEW_PASSWORD: password,
+        },
+      }
+    );
+
+    if (!challenge.ok) {
+      const message = (challenge.data.message as string) ?? "Sign in failed.";
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+
+    data.AuthenticationResult = challenge.data.AuthenticationResult;
+  }
+
   const result = data.AuthenticationResult as Record<string, string>;
   await setSession(result.IdToken);
 

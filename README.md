@@ -16,6 +16,20 @@ This application is live at
 - https://recipe-ai-finder.com
 - https://www.recipe-ai-finder.com
 
+---
+
+## Try It Out
+
+A demo account is available so you can explore the app without creating your own credentials:
+
+| Field | Value |
+|-------|-------|
+| **Email** | `testuser1@mail.com` |
+| **Password** | `TestUserPassword1$` |
+
+> This account is limited to **20 AI recipe generations** to prevent abuse of the underlying Bedrock and image generation APIs. All other features (browsing, saving, and deleting recipes) are fully accessible.
+
+---
 
 ## What It Does
 

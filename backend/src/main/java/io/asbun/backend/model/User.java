@@ -20,6 +20,7 @@ public class User {
     private String email;
     private String username;
     private Instant createdAt;
+    private Integer generateCallsUsed;
 
     @DynamoDbPartitionKey
     public String getUserId() {

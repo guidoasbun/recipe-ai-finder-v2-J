@@ -33,12 +33,16 @@ function GenerateContent() {
           }),
         });
 
+        if (res.status === 429) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message ?? "Demo account has reached the generation limit.");
+        }
         if (!res.ok) throw new Error("Failed to generate recipes");
 
         const data: GeneratedRecipe[] = await res.json();
         setRecipes(data);
       } catch (err) {
-        setError("Something went wrong. Please try again.");
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       } finally {
         setLoading(false);
       }
