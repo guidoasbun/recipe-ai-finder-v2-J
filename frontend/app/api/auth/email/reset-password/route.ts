@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COGNITO_CLIENT_ID } from "@/lib/constants";
 import { cognitoPost } from "@/lib/cognito";
+import { isValidEmail, isValidCode } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
   const { email, code, password } = await request.json();
   if (!email || !code || !password) {
     return NextResponse.json({ error: "Email, code, and password are required" }, { status: 400 });
+  }
+  if (!isValidEmail(email)) {
+    return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
+  }
+  if (!isValidCode(code)) {
+    return NextResponse.json({ error: "Code must be a 6-digit number" }, { status: 400 });
   }
 
   const { ok, data } = await cognitoPost("AWSCognitoIdentityProviderService.ConfirmForgotPassword", {

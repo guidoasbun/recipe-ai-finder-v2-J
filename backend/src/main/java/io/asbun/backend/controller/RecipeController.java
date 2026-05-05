@@ -9,16 +9,19 @@ import io.asbun.backend.repository.UserRepository;
 import io.asbun.backend.service.BedrockService;
 import io.asbun.backend.service.RecipeService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/api/recipes")
 @RequiredArgsConstructor
@@ -49,14 +52,14 @@ public class RecipeController {
 
     @GetMapping("/{id}")
     public ResponseEntity<RecipeDto> getRecipe(
-            @PathVariable String id,
+            @PathVariable @Pattern(regexp = "^[a-zA-Z0-9\\-]{1,36}$") String id,
             Authentication authentication) {
         return ResponseEntity.ok(recipeService.getRecipeById(id, getUserId(authentication)));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteRecipe(
-            @PathVariable String id,
+            @PathVariable @Pattern(regexp = "^[a-zA-Z0-9\\-]{1,36}$") String id,
             Authentication authentication) {
         recipeService.deleteRecipe(id, getUserId(authentication));
         return ResponseEntity.noContent().build();
