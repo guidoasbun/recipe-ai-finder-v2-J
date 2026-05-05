@@ -35,6 +35,7 @@ export default function DashboardPage() {
           onChange={(e) => setIngredients(e.target.value)}
           placeholder="e.g. chicken, garlic, lemon, olive oil"
           rows={4}
+          maxLength={2000}
           className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
 
