@@ -22,16 +22,52 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
         <img src={recipe.imageUrl} alt={recipe.title} className="mb-6 w-full rounded-2xl object-cover h-64" />
       )}
       <h1 className="mb-2 text-3xl font-bold text-gray-900">{recipe.title}</h1>
+
       {(modelLabel || imageModelLabel) && (
-        <div className="mb-4 flex gap-4">
+        <div className="mb-3 flex gap-4">
           {modelLabel && (
             <span className="text-xl text-gray-700">
               <span className="font-medium text-gray-900">Text:</span> {modelLabel}
             </span>
           )}
+        </div>
+      )}
+
+      {(modelLabel || imageModelLabel) && (
+        <div className="mb-3 flex gap-4">
+      
           {imageModelLabel && (
             <span className="text-xl text-gray-700">
               <span className="font-medium text-gray-900">Image:</span> {imageModelLabel}
+            </span>
+          )}
+        </div>
+      )}
+
+      {(recipe.imageWidth || recipe.imageType || recipe.imageSizeBytes || recipe.imageGenerationMs) && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {recipe.imageWidth && recipe.imageHeight && (
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
+              {recipe.imageWidth} × {recipe.imageHeight} px
+            </span>
+          )}
+          {recipe.imageType && (
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
+              {recipe.imageType}
+            </span>
+          )}
+          {recipe.imageSizeBytes && (
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
+              {recipe.imageSizeBytes < 1024 * 1024
+                ? `${(recipe.imageSizeBytes / 1024).toFixed(1)} KB`
+                : `${(recipe.imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`}
+            </span>
+          )}
+          {recipe.imageGenerationMs && (
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
+              {recipe.imageGenerationMs >= 1000
+                ? `${(recipe.imageGenerationMs / 1000).toFixed(1)}s`
+                : `${recipe.imageGenerationMs}ms`}
             </span>
           )}
         </div>

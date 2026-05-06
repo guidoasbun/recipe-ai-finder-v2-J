@@ -32,6 +32,12 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
   const modelLabel = MODELS.find((m) => m.id === effectiveModel)?.label;
   const imageModelLabel = IMAGE_MODELS.find((m) => m.id === effectiveImageModel)?.label;
 
+  const imageWidth = "imageWidth" in recipe ? recipe.imageWidth : undefined;
+  const imageHeight = "imageHeight" in recipe ? recipe.imageHeight : undefined;
+  const imageType = "imageType" in recipe ? recipe.imageType : undefined;
+  const imageSizeBytes = "imageSizeBytes" in recipe ? recipe.imageSizeBytes : undefined;
+  const imageGenerationMs = "imageGenerationMs" in recipe ? recipe.imageGenerationMs : undefined;
+  
   async function handleDelete() {
     setDeleting(true);
     try {
@@ -65,7 +71,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
       setSaving(false);
     }
   }
-  
+
   return (
     <div className="flex flex-col rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       {imageUrl && (
@@ -76,7 +82,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.description}</p>
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.ingredients}</p>
         {(modelLabel || imageModelLabel) && (
-          <div className="mb-4 flex flex-col gap-1">
+          <div className="mb-2 flex flex-col gap-1">
             {modelLabel && (
               <span className="text-xs text-gray-400">
                 <span className="font-medium text-gray-500">Text:</span> {modelLabel}
@@ -85,6 +91,34 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
             {imageModelLabel && (
               <span className="text-xs text-gray-400">
                 <span className="font-medium text-gray-500">Image:</span> {imageModelLabel}
+              </span>
+            )}
+          </div>
+        )}
+        {(imageWidth || imageType || imageSizeBytes || imageGenerationMs) && (
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            {imageWidth && imageHeight && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                {imageWidth} × {imageHeight} px
+              </span>
+            )}
+            {imageType && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                {imageType}
+              </span>
+            )}
+            {imageSizeBytes && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                {imageSizeBytes < 1024 * 1024
+                  ? `${(imageSizeBytes / 1024).toFixed(1)} KB`
+                  : `${(imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`}
+              </span>
+            )}
+            {imageGenerationMs && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                {imageGenerationMs >= 1000
+                  ? `${(imageGenerationMs / 1000).toFixed(1)}s`
+                  : `${imageGenerationMs}ms`}
               </span>
             )}
           </div>

@@ -1,5 +1,6 @@
 package io.asbun.backend.service;
 
+import io.asbun.backend.dto.ImageUploadResult;
 import io.asbun.backend.dto.RecipeDto;
 import io.asbun.backend.dto.SaveRecipeRequest;
 import io.asbun.backend.exception.ResourceNotFoundException;
@@ -26,8 +27,19 @@ public class RecipeService {
     public RecipeDto saveRecipe(SaveRecipeRequest request, String userId) {
         String recipeId = UUID.randomUUID().toString();
         String imageUrl = null;
+        Integer imageWidth = null;
+        Integer imageHeight = null;
+        String imageType = null;
+        Long imageSizeBytes = null;
+        Long imageGenerationMs = null;
         try {
-            imageUrl = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle(), request.getImageModel());
+            ImageUploadResult result = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle(), request.getImageModel());
+            imageUrl         = result.s3Key();
+            imageWidth       = result.width();
+            imageHeight      = result.height();
+            imageType        = result.imageType();
+            imageSizeBytes   = result.imageSizeBytes();
+            imageGenerationMs = result.generationMs();
         } catch (Exception e) {
             log.warn("Image generation failed for recipe {}, saving without image: {}", recipeId, e.getMessage(), e);
         }
@@ -40,6 +52,11 @@ public class RecipeService {
                 .ingredients(request.getIngredients())
                 .steps(request.getSteps())
                 .imageUrl(imageUrl)
+                .imageWidth(imageWidth)
+                .imageHeight(imageHeight)
+                .imageType(imageType)
+                .imageSizeBytes(imageSizeBytes)
+                .imageGenerationMs(imageGenerationMs)
                 .model(request.getModel())
                 .imageModel(request.getImageModel())
                 .createdAt(Instant.now())
@@ -94,6 +111,11 @@ public class RecipeService {
                 .ingredients(recipe.getIngredients())
                 .steps(recipe.getSteps())
                 .imageUrl(imageUrl)
+                .imageWidth(recipe.getImageWidth())
+                .imageHeight(recipe.getImageHeight())
+                .imageType(recipe.getImageType())
+                .imageSizeBytes(recipe.getImageSizeBytes())
+                .imageGenerationMs(recipe.getImageGenerationMs())
                 .model(recipe.getModel())
                 .imageModel(recipe.getImageModel())
                 .createdAt(recipe.getCreatedAt())

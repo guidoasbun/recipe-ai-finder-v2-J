@@ -3,7 +3,10 @@ package io.asbun.backend.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.asbun.backend.dto.ImageUploadResult;
 import io.asbun.backend.model.enums.ImageModel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -12,10 +15,15 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.util.Base64;
 
 @Service
 public class ImageGenerationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class);
 
     private final RestTemplate restTemplate;
     private final S3Service s3Service;
@@ -46,15 +54,37 @@ public class ImageGenerationService {
         this.s3Service = s3Service;
     }
 
-    public String generateAndUploadImage(String recipeId, String recipeTitle, ImageModel imageModel) {
+    public ImageUploadResult generateAndUploadImage(String recipeId, String recipeTitle, ImageModel imageModel) {
         try {
+            long start = System.currentTimeMillis();
             byte[] imageBytes = switch (imageModel) {
                 case STABILITY_CORE      -> generateWithStability(recipeTitle);
                 case GPT_IMAGE_1_5       -> generateWithGptImage(recipeTitle);
                 case GOOGLE_IMAGEN_4      -> generateWithGoogleImagen(recipeTitle, "imagen-4.0-generate-001");
                 case GOOGLE_IMAGEN_4_FAST -> generateWithGoogleImagen(recipeTitle, "imagen-4.0-fast-generate-001");
             };
-            return s3Service.uploadImage(recipeId, imageBytes);
+            long generationMs = System.currentTimeMillis() - start;
+
+            int width = 0, height = 0;
+            try (ByteArrayInputStream bais = new ByteArrayInputStream(imageBytes)) {
+                BufferedImage img = ImageIO.read(bais);
+                if (img != null) {
+                    width  = img.getWidth();
+                    height = img.getHeight();
+                }
+            } catch (Exception e) {
+                log.warn("Could not read image dimensions for recipe {}", recipeId, e);
+            }
+
+            String s3Key = s3Service.uploadImage(recipeId, imageBytes);
+            return new ImageUploadResult(
+                    s3Key,
+                    width  > 0 ? width  : null,
+                    height > 0 ? height : null,
+                    "image/png",
+                    (long) imageBytes.length,
+                    generationMs
+            );
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate image for: " + recipeTitle, e);
         }
