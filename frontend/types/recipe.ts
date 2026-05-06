@@ -5,6 +5,11 @@ export interface Recipe {
   ingredients: string[];
   steps: string[];
   imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageType?: string;
+  imageSizeBytes?: number;
+  imageGenerationMs?: number;
   userId: string;
   createdAt: string;
   model?: string;

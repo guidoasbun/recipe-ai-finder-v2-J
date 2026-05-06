@@ -21,6 +21,11 @@ public class RecipeDto {
     private String title;
     private String description;
     private String imageUrl;
+    private Integer imageWidth;
+    private Integer imageHeight;
+    private String imageType;
+    private Long imageSizeBytes;
+    private Long imageGenerationMs;
     private List<String> ingredients;
     private List<String> steps;
     private BedrockModel model;
