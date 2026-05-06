@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COGNITO_DOMAIN, COGNITO_CLIENT_ID } from "@/lib/constants";
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/api/health"];
+const PUBLIC_PATHS = ["/login", "/signup", "/confirm", "/forgot-password", "/reset-password", "/api/auth", "/api/health"];
 const SESSION_COOKIE = "session";
 const REFRESH_COOKIE = "refresh_token";
 const COOKIE_OPTS = {
