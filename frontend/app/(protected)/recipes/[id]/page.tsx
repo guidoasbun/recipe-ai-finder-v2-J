@@ -24,18 +24,19 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
       <h1 className="mb-2 text-3xl font-bold text-gray-900">{recipe.title}</h1>
 
       {(modelLabel || imageModelLabel) && (
-        <div className="mb-3 flex gap-4">
+        <div className="mb-3 flex flex-col gap-1">
           {modelLabel && (
             <span className="text-xl text-gray-700">
               <span className="font-medium text-gray-900">Text:</span> {modelLabel}
             </span>
           )}
-        </div>
-      )}
-
-      {(modelLabel || imageModelLabel) && (
-        <div className="mb-3 flex gap-4">
-      
+          {recipe.textGenerationMs && (
+            <span className="w-fit rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
+              AI {recipe.textGenerationMs >= 1000
+                ? `${(recipe.textGenerationMs / 1000).toFixed(1)}s`
+                : `${recipe.textGenerationMs}ms`}
+            </span>
+          )}
           {imageModelLabel && (
             <span className="text-xl text-gray-700">
               <span className="font-medium text-gray-900">Image:</span> {imageModelLabel}
@@ -65,7 +66,7 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
           )}
           {recipe.imageGenerationMs && (
             <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
-              {recipe.imageGenerationMs >= 1000
+              AI {recipe.imageGenerationMs >= 1000
                 ? `${(recipe.imageGenerationMs / 1000).toFixed(1)}s`
                 : `${recipe.imageGenerationMs}ms`}
             </span>

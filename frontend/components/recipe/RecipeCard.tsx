@@ -37,6 +37,12 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
   const imageType = "imageType" in recipe ? recipe.imageType : undefined;
   const imageSizeBytes = "imageSizeBytes" in recipe ? recipe.imageSizeBytes : undefined;
   const imageGenerationMs = "imageGenerationMs" in recipe ? recipe.imageGenerationMs : undefined;
+  const createdAt = "createdAt" in recipe ? recipe.createdAt : undefined;
+  const textGenerationMs = "textGenerationMs" in recipe
+    ? recipe.textGenerationMs
+    : "generationMs" in recipe
+    ? recipe.generationMs
+    : undefined;
   
   async function handleDelete() {
     setDeleting(true);
@@ -62,6 +68,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
           steps: recipe.steps,
           model,
           imageModel,
+          textGenerationMs,
         }),
       });
       const data = await res.json();
@@ -81,11 +88,21 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
         <h3 className="mb-1 font-semibold text-gray-900">{recipe.title}</h3>
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.description}</p>
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.ingredients}</p>
+        {createdAt && (
+          <p className="mb-2 text-xs text-gray-400">
+            Saved {new Date(createdAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+          </p>
+        )}
         {(modelLabel || imageModelLabel) && (
           <div className="mb-2 flex flex-col gap-1">
             {modelLabel && (
               <span className="text-xs text-gray-400">
                 <span className="font-medium text-gray-500">Text:</span> {modelLabel}
+              </span>
+            )}
+            {textGenerationMs && (
+              <span className="w-fit rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
+                AI {textGenerationMs >= 1000 ? `${(textGenerationMs / 1000).toFixed(1)}s` : `${textGenerationMs}ms`}
               </span>
             )}
             {imageModelLabel && (
@@ -95,6 +112,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
             )}
           </div>
         )}
+      
         {(imageWidth || imageType || imageSizeBytes || imageGenerationMs) && (
           <div className="mb-4 flex flex-wrap gap-1.5">
             {imageWidth && imageHeight && (
@@ -116,7 +134,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
             )}
             {imageGenerationMs && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
-                {imageGenerationMs >= 1000
+                AI {imageGenerationMs >= 1000
                   ? `${(imageGenerationMs / 1000).toFixed(1)}s`
                   : `${imageGenerationMs}ms`}
               </span>

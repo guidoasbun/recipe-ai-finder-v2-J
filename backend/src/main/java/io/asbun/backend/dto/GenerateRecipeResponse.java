@@ -12,9 +12,10 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class GenerateRecipeResponse {
-    
+
     private String title;
     private String description;
     private List<String> ingredients;
     private List<String> steps;
+    private Long generationMs;
 }

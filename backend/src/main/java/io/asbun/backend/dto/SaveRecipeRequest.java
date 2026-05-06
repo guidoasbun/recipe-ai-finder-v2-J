@@ -36,4 +36,6 @@ public class SaveRecipeRequest {
 
     @NotNull
     private BedrockModel model;
+
+    private Long textGenerationMs;
 }
