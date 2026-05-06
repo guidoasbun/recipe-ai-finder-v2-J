@@ -59,6 +59,7 @@ public class RecipeService {
                 .imageGenerationMs(imageGenerationMs)
                 .model(request.getModel())
                 .imageModel(request.getImageModel())
+                .textGenerationMs(request.getTextGenerationMs())
                 .createdAt(Instant.now())
                 .build();
 
@@ -118,6 +119,7 @@ public class RecipeService {
                 .imageGenerationMs(recipe.getImageGenerationMs())
                 .model(recipe.getModel())
                 .imageModel(recipe.getImageModel())
+                .textGenerationMs(recipe.getTextGenerationMs())
                 .createdAt(recipe.getCreatedAt())
                 .build();
     }

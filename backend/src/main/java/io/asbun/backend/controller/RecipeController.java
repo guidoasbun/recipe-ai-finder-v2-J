@@ -82,8 +82,11 @@ public class RecipeController {
             }
         }
 
+        long start = System.currentTimeMillis();
         List<GenerateRecipeResponse> recipes = bedrockService.generateRecipes(
                 request.getIngredients(), request.getModel());
+        long generationMs = System.currentTimeMillis() - start;
+        recipes.forEach(r -> r.setGenerationMs(generationMs));
 
         if (testEmail.equals(email)) {
             userRepository.atomicIncrementGenerateCalls(userId);

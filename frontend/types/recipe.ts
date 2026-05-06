@@ -14,6 +14,7 @@ export interface Recipe {
   createdAt: string;
   model?: string;
   imageModel?: string;
+  textGenerationMs?: number;
 }
 
 export interface GeneratedRecipe {
@@ -21,4 +22,5 @@ export interface GeneratedRecipe {
   description: string;
   ingredients: string[];
   steps: string[];
+  generationMs?: number;
 }

@@ -34,6 +34,7 @@ public class Recipe {
     private List<String> steps;
     private BedrockModel model;
     private ImageModel imageModel;
+    private Long textGenerationMs;
     private Instant createdAt;
 
     @DynamoDbPartitionKey
