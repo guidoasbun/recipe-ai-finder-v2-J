@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.asbun.backend.dto.GenerateRecipeResponse;
 import io.asbun.backend.model.enums.BedrockModel;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
@@ -16,6 +17,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BedrockService {
@@ -34,8 +36,21 @@ public class BedrockService {
                 .accept("application/json")
                 .build();
 
-        InvokeModelResponse response = bedrockRuntimeClient.invokeModel(request);
-        return parseResponse(model, response.body().asUtf8String());
+        int maxAttempts = 3;
+        Exception lastException = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                InvokeModelResponse response = bedrockRuntimeClient.invokeModel(request);
+                return parseResponse(model, response.body().asUtf8String());
+            } catch (Exception e) {
+                lastException = e;
+                log.warn("Recipe generation attempt {}/{} failed: {}", attempt, maxAttempts, e.getMessage());
+                if (attempt < maxAttempts) {
+                    try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                }
+            }
+        }
+        throw new RuntimeException("Failed to generate recipes after " + maxAttempts + " attempts", lastException);
     }
 
     private String buildPrompt(List<String> ingredients) {
