@@ -170,6 +170,13 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
       
         {(liveImageWidth || liveImageType || liveImageSizeBytes || liveImageGenerationMs) && (
           <div className="mb-4 flex flex-wrap gap-1.5">
+            {liveImageGenerationMs && (
+              <span className="w-fit rounded-full bg-orange-50 px-2 py-0.5 text-xs text-orange-600">
+                AI {liveImageGenerationMs >= 1000
+                  ? `${(liveImageGenerationMs / 1000).toFixed(1)}s`
+                  : `${liveImageGenerationMs}ms`}
+              </span>
+            )}
             {liveImageWidth && liveImageHeight && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
                 {liveImageWidth} × {liveImageHeight} px
@@ -185,13 +192,6 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
                 {liveImageSizeBytes < 1024 * 1024
                   ? `${(liveImageSizeBytes / 1024).toFixed(1)} KB`
                   : `${(liveImageSizeBytes / (1024 * 1024)).toFixed(2)} MB`}
-              </span>
-            )}
-            {liveImageGenerationMs && (
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
-                AI {liveImageGenerationMs >= 1000
-                  ? `${(liveImageGenerationMs / 1000).toFixed(1)}s`
-                  : `${liveImageGenerationMs}ms`}
               </span>
             )}
           </div>
