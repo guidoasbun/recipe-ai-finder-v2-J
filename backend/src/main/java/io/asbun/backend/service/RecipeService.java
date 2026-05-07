@@ -1,6 +1,5 @@
 package io.asbun.backend.service;
 
-import io.asbun.backend.dto.ImageUploadResult;
 import io.asbun.backend.dto.RecipeDto;
 import io.asbun.backend.dto.SaveRecipeRequest;
 import io.asbun.backend.exception.ResourceNotFoundException;
@@ -21,28 +20,11 @@ import java.util.stream.Collectors;
 public class RecipeService {
 
     private final RecipeRepository recipeRepository;
-    private final ImageGenerationService imageGenerationService;
+    private final AsyncImageService asyncImageService;
     private final S3Service s3Service;
 
     public RecipeDto saveRecipe(SaveRecipeRequest request, String userId) {
         String recipeId = UUID.randomUUID().toString();
-        String imageUrl = null;
-        Integer imageWidth = null;
-        Integer imageHeight = null;
-        String imageType = null;
-        Long imageSizeBytes = null;
-        Long imageGenerationMs = null;
-        try {
-            ImageUploadResult result = imageGenerationService.generateAndUploadImage(recipeId, request.getTitle(), request.getImageModel());
-            imageUrl         = result.s3Key();
-            imageWidth       = result.width();
-            imageHeight      = result.height();
-            imageType        = result.imageType();
-            imageSizeBytes   = result.imageSizeBytes();
-            imageGenerationMs = result.generationMs();
-        } catch (Exception e) {
-            log.warn("Image generation failed for recipe {}, saving without image: {}", recipeId, e.getMessage(), e);
-        }
 
         Recipe recipe = Recipe.builder()
                 .recipeId(recipeId)
@@ -51,12 +33,6 @@ public class RecipeService {
                 .description(request.getDescription())
                 .ingredients(request.getIngredients())
                 .steps(request.getSteps())
-                .imageUrl(imageUrl)
-                .imageWidth(imageWidth)
-                .imageHeight(imageHeight)
-                .imageType(imageType)
-                .imageSizeBytes(imageSizeBytes)
-                .imageGenerationMs(imageGenerationMs)
                 .model(request.getModel())
                 .imageModel(request.getImageModel())
                 .textGenerationMs(request.getTextGenerationMs())
@@ -64,6 +40,7 @@ public class RecipeService {
                 .build();
 
         recipeRepository.save(recipe);
+        asyncImageService.generateAndUpdateRecipe(recipeId, request.getTitle(), request.getImageModel());
         return toDto(recipe);
     }
 

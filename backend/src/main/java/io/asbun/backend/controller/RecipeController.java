@@ -7,6 +7,7 @@ import io.asbun.backend.dto.SaveRecipeRequest;
 import io.asbun.backend.exception.RateLimitExceededException;
 import io.asbun.backend.repository.UserRepository;
 import io.asbun.backend.service.BedrockService;
+import io.asbun.backend.service.ImageSseService;
 import io.asbun.backend.service.RecipeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
@@ -20,6 +21,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Validated
 @RestController
@@ -30,6 +32,7 @@ public class RecipeController {
     private final RecipeService recipeService;
     private final BedrockService bedrockService;
     private final UserRepository userRepository;
+    private final ImageSseService imageSseService;
 
     @Value("${testuser.email}")
     private String testEmail;
@@ -55,6 +58,14 @@ public class RecipeController {
             @PathVariable @Pattern(regexp = "^[a-zA-Z0-9\\-]{1,36}$") String id,
             Authentication authentication) {
         return ResponseEntity.ok(recipeService.getRecipeById(id, getUserId(authentication)));
+    }
+
+    @GetMapping("/{id}/image-stream")
+    public SseEmitter streamImage(
+            @PathVariable @Pattern(regexp = "^[a-zA-Z0-9\\-]{1,36}$") String id,
+            Authentication authentication) {
+        recipeService.getRecipeById(id, getUserId(authentication));
+        return imageSseService.subscribe(id);
     }
 
     @DeleteMapping("/{id}")
