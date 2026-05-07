@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Recipe, GeneratedRecipe } from "@/types/recipe";
@@ -15,18 +15,21 @@ interface Props {
 
 export default function RecipeCard({ recipe, saved = false, model, imageModel }: Props) {
   const router = useRouter();
+  const id = "recipeId" in recipe ? recipe.recipeId : null;
+  const initialImageUrl = "imageUrl" in recipe ? recipe.imageUrl : undefined;
+  const recipeImageModel = "imageModel" in recipe ? recipe.imageModel : undefined;
+  const needsImage = id != null && !initialImageUrl && !!(imageModel ?? recipeImageModel);
+
   const [saving, setSaving] = useState(false);
   const [saved_, setSaved_] = useState(saved);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  const id = "recipeId" in recipe ? recipe.recipeId : null;
-  const imageUrl = "imageUrl" in recipe ? recipe.imageUrl : undefined;
-  const [savedId, setSavedId] = useState<string | null>(null);
+  const [loadingImage, setLoadingImage] = useState(needsImage);
+  const [liveImageUrl, setLiveImageUrl] = useState<string | undefined>(initialImageUrl);
+  const [savedId, setSavedId] = useState<string | null>(needsImage ? id : null);
   const effectiveId = savedId ?? id;
 
   const recipeModel = "model" in recipe ? recipe.model : undefined;
-  const recipeImageModel = "imageModel" in recipe ? recipe.imageModel : undefined;
   const effectiveModel = model ?? recipeModel;
   const effectiveImageModel = imageModel ?? recipeImageModel;
   const modelLabel = MODELS.find((m) => m.id === effectiveModel)?.label;
@@ -37,6 +40,12 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
   const imageType = "imageType" in recipe ? recipe.imageType : undefined;
   const imageSizeBytes = "imageSizeBytes" in recipe ? recipe.imageSizeBytes : undefined;
   const imageGenerationMs = "imageGenerationMs" in recipe ? recipe.imageGenerationMs : undefined;
+
+  const [liveImageWidth, setLiveImageWidth] = useState(imageWidth);
+  const [liveImageHeight, setLiveImageHeight] = useState(imageHeight);
+  const [liveImageType, setLiveImageType] = useState(imageType);
+  const [liveImageSizeBytes, setLiveImageSizeBytes] = useState(imageSizeBytes);
+  const [liveImageGenerationMs, setLiveImageGenerationMs] = useState(imageGenerationMs);
   const createdAt = "createdAt" in recipe ? recipe.createdAt : undefined;
   const textGenerationMs = "textGenerationMs" in recipe
     ? recipe.textGenerationMs
@@ -54,6 +63,47 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
       setConfirming(false);
     }
   }
+
+  useEffect(() => {
+    if (!loadingImage || !savedId) return;
+
+    const eventSource = new EventSource(`/api/backend/api/recipes/${savedId}/image-stream`);
+
+    const timeoutId = setTimeout(() => {
+      eventSource.close();
+      setLoadingImage(false);
+    }, 90000);
+
+    eventSource.addEventListener('image-ready', async () => {
+      clearTimeout(timeoutId);
+      eventSource.close();
+      try {
+        const r = await fetch(`/api/backend/api/recipes/${savedId}`);
+        if (r.ok) {
+          const data: Recipe = await r.json();
+          if (data.imageUrl) setLiveImageUrl(data.imageUrl);
+          setLiveImageWidth(data.imageWidth);
+          setLiveImageHeight(data.imageHeight);
+          setLiveImageType(data.imageType);
+          setLiveImageSizeBytes(data.imageSizeBytes);
+          setLiveImageGenerationMs(data.imageGenerationMs);
+        }
+      } finally {
+        setLoadingImage(false);
+      }
+    });
+
+    eventSource.onerror = () => {
+      clearTimeout(timeoutId);
+      eventSource.close();
+      setLoadingImage(false);
+    };
+
+    return () => {
+      clearTimeout(timeoutId);
+      eventSource.close();
+    };
+  }, [loadingImage, savedId]);
 
   async function handleSave() {
     setSaving(true);
@@ -74,6 +124,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
       const data = await res.json();
       setSavedId(data.recipeId);
       setSaved_(true);
+      setLoadingImage(true);
     } finally {
       setSaving(false);
     }
@@ -81,9 +132,13 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
 
   return (
     <div className="flex flex-col rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-      {imageUrl && (
-        <img src={imageUrl} alt={recipe.title} className="h-40 w-full object-cover" />
-      )}
+      {liveImageUrl ? (
+        <img src={liveImageUrl} alt={recipe.title} className="h-40 w-full object-cover" />
+      ) : loadingImage ? (
+        <div className="h-40 w-full bg-gray-100 animate-pulse flex items-center justify-center">
+          <span className="text-xs text-gray-400">Generating image…</span>
+        </div>
+      ) : null}
       <div className="flex flex-1 flex-col p-4">
         <h3 className="mb-1 font-semibold text-gray-900">{recipe.title}</h3>
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.description}</p>
@@ -113,30 +168,30 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
           </div>
         )}
       
-        {(imageWidth || imageType || imageSizeBytes || imageGenerationMs) && (
+        {(liveImageWidth || liveImageType || liveImageSizeBytes || liveImageGenerationMs) && (
           <div className="mb-4 flex flex-wrap gap-1.5">
-            {imageWidth && imageHeight && (
+            {liveImageWidth && liveImageHeight && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
-                {imageWidth} × {imageHeight} px
+                {liveImageWidth} × {liveImageHeight} px
               </span>
             )}
-            {imageType && (
+            {liveImageType && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
-                {imageType}
+                {liveImageType}
               </span>
             )}
-            {imageSizeBytes && (
+            {liveImageSizeBytes && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
-                {imageSizeBytes < 1024 * 1024
-                  ? `${(imageSizeBytes / 1024).toFixed(1)} KB`
-                  : `${(imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`}
+                {liveImageSizeBytes < 1024 * 1024
+                  ? `${(liveImageSizeBytes / 1024).toFixed(1)} KB`
+                  : `${(liveImageSizeBytes / (1024 * 1024)).toFixed(2)} MB`}
               </span>
             )}
-            {imageGenerationMs && (
+            {liveImageGenerationMs && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
-                AI {imageGenerationMs >= 1000
-                  ? `${(imageGenerationMs / 1000).toFixed(1)}s`
-                  : `${imageGenerationMs}ms`}
+                AI {liveImageGenerationMs >= 1000
+                  ? `${(liveImageGenerationMs / 1000).toFixed(1)}s`
+                  : `${liveImageGenerationMs}ms`}
               </span>
             )}
           </div>

@@ -82,9 +82,10 @@ A beautiful food photography photo of {RECIPE_TITLE}, professional lighting, hig
 **Image lifecycle:**
 1. Base64 PNG returned by the provider
 2. Decoded and uploaded to S3 (`recipe-ai-{env}-recipe-images`)
-3. Presigned URL (1-hour TTL) returned to the client alongside the recipe
+3. Presigned URL (1-hour TTL) generated on read and served once the image is available
 4. S3 lifecycle policy auto-deletes images after 90 days
-5. Image generation failures are non-blocking — recipes save successfully even if image generation fails
+5. Image generation runs asynchronously in a background thread — recipes are saved immediately with `imageUrl: null`, which is populated once generation completes. Generation is retried up to 3 times with exponential backoff (2 s, 4 s) before giving up; if all attempts fail, the recipe remains accessible without an image.
+6. The frontend opens a **Server-Sent Events** connection to `GET /api/recipes/{id}/image-stream` immediately after saving. The backend holds the connection open via `SseEmitter` and fires an `image-ready` event as soon as the image URL is written to DynamoDB, at which point the frontend fetches the updated recipe and renders the image — no polling required.
 
 **Key file:** [backend/src/main/java/io/asbun/backend/service/ImageGenerationService.java](backend/src/main/java/io/asbun/backend/service/ImageGenerationService.java)
 
@@ -102,11 +103,14 @@ POST /api/recipes/generate
       └─ BedrockService.generateRecipes()
           └─ BedrockRuntimeClient.invokeModel(selectedModel, ingredientPrompt)
               └─ Parse JSON → List<GenerateRecipeResponse>
-      └─ ImageGenerationService.generateImage(recipeTitle) [async, non-blocking]
-          └─ Stability AI / OpenAI → base64 PNG
-          └─ S3Service.uploadImage() → S3 object
-          └─ S3Presigner.presignGetObject() → 1-hour URL
-      └─ Return recipes + image URLs to frontend
+      └─ RecipeRepository.save(recipe)              ← immediate, imageUrl=null
+      └─ Return recipe to frontend (imageUrl=null)
+      └─ AsyncImageService [background thread]
+          └─ ImageGenerationService.generateAndUploadImage() [retries up to 3×, 2s/4s backoff]
+              └─ Stability AI / OpenAI / Google Imagen → base64 PNG
+              └─ S3Service.uploadImage() → S3 object
+          └─ RecipeRepository.save(recipe)          ← updates imageUrl
+          └─ ImageSseService.notifyImageReady()     ← fires SSE event to waiting frontend
 ```
 
 ---
@@ -210,7 +214,7 @@ recipe-ai-finder-v2/
 │   └── src/main/java/io/asbun/backend/
 │       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig
 │       ├── controller/               # RecipeController, ImageController, AuthController
-│       ├── service/                  # BedrockService, ImageGenerationService, S3Service
+│       ├── service/                  # BedrockService, ImageGenerationService, S3Service, AsyncImageService, ImageSseService
 │       ├── repository/               # RecipeRepository, UserRepository (DynamoDB)
 │       └── model/                    # Recipe, User, DTOs, enums (BedrockModel, ImageModel)
 ├── frontend/                         # Next.js 16 app
@@ -289,5 +293,6 @@ npm run dev
 | `POST` | `/api/recipes` | Save a recipe to DynamoDB |
 | `GET` | `/api/recipes` | List current user's recipes |
 | `GET` | `/api/recipes/{id}` | Get single recipe |
+| `GET` | `/api/recipes/{id}/image-stream` | SSE stream — fires `image-ready` event when image generation completes |
 | `DELETE` | `/api/recipes/{id}` | Delete recipe |
 | `POST` | `/api/images/upload` | Upload image to S3 |
