@@ -23,6 +23,9 @@ export default function Header() {
           <Link href="/recipes" className="text-sm text-gray-600 hover:text-gray-900">
             Saved Recipes
           </Link>
+          <Link href="/model-stats" className="text-sm text-gray-600 hover:text-gray-900">
+            Model Stats
+          </Link>
           <button
             onClick={handleLogout}
             className="text-sm text-red-500 hover:text-red-700"
