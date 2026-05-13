@@ -39,6 +39,7 @@ A demo account is available so you can explore the app without creating your own
 4. An image generation model (Stability AI, OpenAI, or Google Imagen) produces professional food photography for each recipe
 5. Photos are stored in S3 and served via presigned URLs; recipes are persisted in DynamoDB
 6. Browse, view, and delete your saved recipe collection
+7. Visit the **Model Stats** page to see aggregated performance charts across all users — average image and text generation times per model, sample counts, and a 30-day trend line
 
 ---
 
@@ -91,6 +92,48 @@ A beautiful food photography photo of {RECIPE_TITLE}, professional lighting, hig
 
 ---
 
+## Model Stats
+
+The `/model-stats` page surfaces aggregated performance data across all users, visualized with three [Recharts](https://recharts.org) charts:
+
+| Chart | What it shows |
+|-------|---------------|
+| **Image Generation Time by Model** | Average `imageGenerationMs` per image model (bar chart, 4 bars) |
+| **Text Generation Time by Model** | Average `textGenerationMs` per Bedrock model (bar chart, 5 bars) |
+| **Image Generation Trend** | Daily average image generation time over the last 30 days (line chart) |
+
+Each bar tooltip also shows the sample count (number of recipes) used to compute the average.
+
+### Data pipeline
+
+Stats are computed by scanning the entire `Recipes` DynamoDB table, grouping by model, and averaging the recorded `imageGenerationMs` / `textGenerationMs` fields that are stored on every recipe at save time. Results are cached in DynamoDB under a sentinel item (`recipeId = STATS#MODEL_AVERAGES`) with a 1-hour TTL, so at most one full scan runs per hour regardless of page traffic.
+
+### SSE-based delivery
+
+The page uses **Server-Sent Events** rather than a blocking fetch, so it never shows an error on a cache miss (e.g. first deployment, expired cache):
+
+```
+Browser → GET /api/backend/api/stats/stream (EventSource)
+    │
+    └─ Next.js middleware injects Authorization: Bearer <token> from session cookie
+        └─ StatsController.streamStats()
+            ├─ cache FRESH  → StatsSseService.sendToEmitter()  ← stats arrive in ~5 ms
+            └─ cache STALE  → StatsService.computeAndNotifyAsync() [@Async]
+                                 └─ DynamoDB full scan → compute averages
+                                 └─ StatsSseService.broadcastStats() ← pushes to all waiting clients
+```
+
+The frontend renders three pulsing skeleton cards while waiting and swaps them for the live charts the moment the `stats-ready` SSE event arrives — no polling, no page reload required.
+
+**Key files:**
+- [backend/.../service/StatsService.java](backend/src/main/java/io/asbun/backend/service/StatsService.java)
+- [backend/.../service/StatsSseService.java](backend/src/main/java/io/asbun/backend/service/StatsSseService.java)
+- [backend/.../repository/StatsRepository.java](backend/src/main/java/io/asbun/backend/repository/StatsRepository.java)
+- [frontend/app/(protected)/model-stats/ModelStatsLoader.tsx](frontend/app/(protected)/model-stats/ModelStatsLoader.tsx)
+- [frontend/app/(protected)/model-stats/ModelStatsChart.tsx](frontend/app/(protected)/model-stats/ModelStatsChart.tsx)
+
+---
+
 ## Architecture
 
 ![Infrastructure Image](images/Deployment-Archetecture.png)
@@ -111,6 +154,17 @@ POST /api/recipes/generate
               └─ S3Service.uploadImage() → S3 object
           └─ RecipeRepository.save(recipe)          ← updates imageUrl
           └─ ImageSseService.notifyImageReady()     ← fires SSE event to waiting frontend
+
+GET /api/stats/stream  (SSE)
+  └─ StatsController.streamStats()
+      ├─ cache FRESH (< 1 hr old)
+      │   └─ StatsSseService.sendToEmitter()        ← immediate stats-ready event (~5 ms)
+      └─ cache STALE / missing
+          └─ StatsService.computeAndNotifyAsync()   ← @Async background thread
+              └─ StatsRepository.scanAllRecipes()   ← full DynamoDB scan
+              └─ compute per-model averages + 30-day daily buckets
+              └─ StatsRepository.saveStats()        ← writes STATS#MODEL_AVERAGES sentinel item
+              └─ StatsSseService.broadcastStats()   ← fires stats-ready to all waiting clients
 ```
 
 ---
@@ -193,6 +247,7 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 | Frontend framework | Next.js | 16.2.1 |
 | Frontend library | React | 19.2.4 |
 | Styling | Tailwind CSS | 4 |
+| Charts | Recharts | 3 |
 | AI inference | AWS Bedrock | — |
 | Image generation | Stability AI + OpenAI + Google Imagen | — |
 | Authentication | AWS Cognito (Google OAuth2) | — |
@@ -212,17 +267,18 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 recipe-ai-finder-v2/
 ├── backend/                          # Spring Boot 4 service
 │   └── src/main/java/io/asbun/backend/
-│       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig
-│       ├── controller/               # RecipeController, ImageController, AuthController
-│       ├── service/                  # BedrockService, ImageGenerationService, S3Service, AsyncImageService, ImageSseService
-│       ├── repository/               # RecipeRepository, UserRepository (DynamoDB)
+│       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig, AsyncConfig
+│       ├── controller/               # RecipeController, ImageController, AuthController, StatsController
+│       ├── service/                  # BedrockService, ImageGenerationService, S3Service, AsyncImageService, ImageSseService, StatsService, StatsSseService
+│       ├── repository/               # RecipeRepository, UserRepository, StatsRepository (DynamoDB)
 │       └── model/                    # Recipe, User, DTOs, enums (BedrockModel, ImageModel)
 ├── frontend/                         # Next.js 16 app
 │   └── app/
 │       ├── (auth)/login/             # Google OAuth login page
 │       ├── (protected)/dashboard/    # Ingredient input + model selection
 │       ├── (protected)/generate/     # Generated recipe display
-│       └── (protected)/recipes/      # Saved recipe gallery + detail view
+│       ├── (protected)/recipes/      # Saved recipe gallery + detail view
+│       └── (protected)/model-stats/  # Model performance charts (SSE-loaded)
 ├── infrastructure/                   # Terraform IaC
 │   └── modules/                      # networking, alb, ecs, iam, dynamodb, cognito, s3, ecr
 ├── docker/
@@ -296,3 +352,5 @@ npm run dev
 | `GET` | `/api/recipes/{id}/image-stream` | SSE stream — fires `image-ready` event when image generation completes |
 | `DELETE` | `/api/recipes/{id}` | Delete recipe |
 | `POST` | `/api/images/upload` | Upload image to S3 |
+| `GET` | `/api/stats/models` | Return cached model performance stats (JSON) |
+| `GET` | `/api/stats/stream` | SSE stream — fires `stats-ready` event with full stats JSON; triggers async computation on cache miss |
