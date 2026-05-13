@@ -9,6 +9,7 @@ import io.asbun.backend.model.enums.ImageModel;
 import io.asbun.backend.repository.StatsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -19,6 +20,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -30,11 +32,23 @@ public class StatsService {
     private static final long TTL_MS = 60 * 60 * 1000L; // 1 hour
 
     private final StatsRepository statsRepository;
+    private final StatsSseService statsSseService;
 
-    public ModelStatsDto getStats() {
+    public Optional<ModelStatsDto> getCachedStatsIfFresh() {
         return statsRepository.loadStats()
                 .filter(s -> s.getComputedAt() != null &&
-                        Instant.now().toEpochMilli() - Instant.parse(s.getComputedAt()).toEpochMilli() < TTL_MS)
+                        Instant.now().toEpochMilli() - Instant.parse(s.getComputedAt()).toEpochMilli() < TTL_MS);
+    }
+
+    @Async
+    public void computeAndNotifyAsync() {
+        log.info("Computing stats async...");
+        ModelStatsDto stats = computeAndStore();
+        statsSseService.broadcastStats(stats);
+    }
+
+    public ModelStatsDto getStats() {
+        return getCachedStatsIfFresh()
                 .orElseGet(() -> {
                     log.info("Stats cache miss — computing fresh stats");
                     return computeAndStore();
