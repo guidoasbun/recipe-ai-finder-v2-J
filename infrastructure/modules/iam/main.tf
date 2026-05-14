@@ -56,6 +56,7 @@ resource "aws_iam_policy" "task_policy" {
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:Query",
+          "dynamodb:Scan",
           "dynamodb:DeleteItem",
           "dynamodb:UpdateItem"
         ]

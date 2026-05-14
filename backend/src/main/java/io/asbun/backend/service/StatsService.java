@@ -43,8 +43,13 @@ public class StatsService {
     @Async
     public void computeAndNotifyAsync() {
         log.info("Computing stats async...");
-        ModelStatsDto stats = computeAndStore();
-        statsSseService.broadcastStats(stats);
+        try {
+            ModelStatsDto stats = computeAndStore();
+            statsSseService.broadcastStats(stats);
+        } catch (Exception e) {
+            log.error("Stats computation failed", e);
+            statsSseService.completeAllWithError();
+        }
     }
 
     public ModelStatsDto getStats() {
