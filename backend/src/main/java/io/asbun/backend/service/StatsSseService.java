@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.asbun.backend.dto.ModelStatsDto;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -20,7 +21,7 @@ public class StatsSseService {
 
     public SseEmitter subscribe() {
         String id = UUID.randomUUID().toString();
-        SseEmitter emitter = new SseEmitter(60_000L);
+        SseEmitter emitter = new SseEmitter(120_000L);
         emitter.onCompletion(() -> emitters.remove(id));
         emitter.onTimeout(() -> emitters.remove(id));
         emitter.onError(e -> emitters.remove(id));
@@ -49,6 +50,29 @@ public class StatsSseService {
             try {
                 emitter.send(SseEmitter.event().name("stats-ready").data(json));
                 emitter.complete();
+            } catch (IOException e) {
+                emitters.remove(id);
+            }
+        });
+    }
+
+    public void completeAllWithError() {
+        emitters.forEach((id, emitter) -> {
+            try {
+                emitter.completeWithError(new RuntimeException("Stats computation failed"));
+            } catch (Exception e) {
+                // already closed
+            }
+            emitters.remove(id);
+        });
+    }
+
+    @Scheduled(fixedRate = 25_000)
+    public void sendHeartbeat() {
+        if (emitters.isEmpty()) return;
+        emitters.forEach((id, emitter) -> {
+            try {
+                emitter.send(SseEmitter.event().comment("heartbeat"));
             } catch (IOException e) {
                 emitters.remove(id);
             }
