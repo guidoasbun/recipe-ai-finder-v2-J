@@ -75,7 +75,7 @@ function ResetPasswordForm() {
               required
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-center text-lg tracking-widest outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-center text-lg tracking-widest outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]"
               placeholder="000000"
             />
           </div>
@@ -90,7 +90,7 @@ function ResetPasswordForm() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]"
               placeholder="••••••••"
             />
             <p className="text-xs text-gray-400">
@@ -108,19 +108,22 @@ function ResetPasswordForm() {
               required
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]"
               placeholder="••••••••"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            className="rounded-lg px-4 py-3 text-sm font-medium text-white disabled:opacity-50 transition-colors"
+            style={{ backgroundColor: "#FF7900" }}
+            onMouseEnter={(e) => { if (!loading) e.currentTarget.style.backgroundColor = "#e06a00"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#FF7900"; }}
           >
             {loading ? "Resetting…" : "Reset password"}
           </button>
           <p className="text-center text-sm text-gray-500">
-            <Link href="/login" className="font-medium text-gray-900 hover:underline">
+            <Link href="/login" className="font-medium hover:underline" style={{ color: "#003DA5" }}>
               Back to sign in
             </Link>
           </p>

@@ -66,7 +66,7 @@ export default function SignupPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-lg border text-gray-700 border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+              className="rounded-lg border text-gray-700 border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]"
               placeholder="you@example.com"
             />
           </div>
@@ -81,7 +81,7 @@ export default function SignupPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="rounded-lg border text-gray-700 border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+              className="rounded-lg border text-gray-700 border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]"
               placeholder="••••••••"
             />
             <p className="text-xs text-gray-400">
@@ -99,20 +99,23 @@ export default function SignupPage() {
               required
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="rounded-lg border text-gray-700 border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+              className="rounded-lg border text-gray-700 border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]"
               placeholder="••••••••"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            className="rounded-lg px-4 py-3 text-sm font-medium text-white disabled:opacity-50 transition-colors"
+            style={{ backgroundColor: "#FF7900" }}
+            onMouseEnter={(e) => { if (!loading) (e.currentTarget).style.backgroundColor = "#e06a00"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#FF7900"; }}
           >
             {loading ? "Creating account…" : "Create account"}
           </button>
           <p className="text-center text-sm text-gray-500">
             Already have an account?{" "}
-            <Link href="/login" className="font-medium text-gray-900 hover:underline">
+            <Link href="/login" className="font-medium hover:underline" style={{ color: "#003DA5" }}>
               Sign in
             </Link>
           </p>
