@@ -3,6 +3,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --color-brand: #003DA5;
+  --color-brand-dark: #002880;
+  --color-accent: #FF7900;
+  --color-accent-dark: #e06a00;
 }
 
 @theme inline {
@@ -10,6 +14,10 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-brand: #003DA5;
+  --color-brand-dark: #002880;
+  --color-accent: #FF7900;
+  --color-accent-dark: #e06a00;
 }
 
 @media (prefers-color-scheme: dark) {

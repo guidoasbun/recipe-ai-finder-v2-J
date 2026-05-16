@@ -36,7 +36,7 @@ export default function DashboardPage() {
           placeholder="e.g. chicken, garlic, lemon, olive oil"
           rows={4}
           maxLength={2000}
-          className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm shadow-sm focus:border-[#003DA5] focus:outline-none focus:ring-1 focus:ring-[#003DA5]"
         />
 
         <div>
@@ -53,7 +53,7 @@ export default function DashboardPage() {
             <select
               value={model}
               onChange={(e) => setModel(e.target.value as ModelId)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#003DA5] focus:outline-none"
             >
               {MODELS.map((m) => (
                 <option key={m.id} value={m.id}>{m.label}</option>
@@ -65,7 +65,7 @@ export default function DashboardPage() {
             <select
               value={imageModel}
               onChange={(e) => setImageModel(e.target.value as ImageModelId)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#003DA5] focus:outline-none"
             >
               {IMAGE_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>{m.label}</option>
@@ -77,7 +77,10 @@ export default function DashboardPage() {
         <button
           type="submit"
           disabled={loading || !ingredients.trim()}
-          className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="w-full rounded-lg px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
+          style={{ backgroundColor: "#FF7900" }}
+          onMouseEnter={(e) => { const btn = e.currentTarget; if (!btn.disabled) btn.style.backgroundColor = "#e06a00"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#FF7900"; }}
         >
           {loading ? "Loading..." : "Generate Recipes"}
         </button>
