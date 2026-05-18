@@ -38,7 +38,7 @@ export function LoginForm({ googleLoginUrl }: { googleLoginUrl: string }) {
   }
 
   return (
-    <main className="flex min-h-screen">
+    <main className="flex flex-1">
       {/* Left branding panel */}
       <div
         className="hidden md:flex md:w-1/2 flex-col justify-between p-12 text-white"
@@ -91,7 +91,7 @@ export function LoginForm({ googleLoginUrl }: { googleLoginUrl: string }) {
           </li>
         </ul>
 
-        <p className="text-xs text-blue-300">Created by Guido Asbun</p>
+        <p className="text-xs text-blue-300">Built by by Guido Asbun - guido@asbun.io</p>
       </div>
 
       {/* Right auth panel */}
