@@ -5,7 +5,11 @@ import { notFound } from "next/navigation";
 import DeleteRecipeButton from "@/components/recipe/DeleteRecipeButton";
 import { MODELS, IMAGE_MODELS } from "@/lib/constants";
 
-export default async function RecipeDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RecipeDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const token = await getSession();
   const res = await apiFetch(`/api/recipes/${id}`, {}, token ?? undefined);
@@ -14,12 +18,18 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
   const recipe: Recipe = await res.json();
 
   const modelLabel = MODELS.find((m) => m.id === recipe.model)?.label;
-  const imageModelLabel = IMAGE_MODELS.find((m) => m.id === recipe.imageModel)?.label;
+  const imageModelLabel = IMAGE_MODELS.find(
+    (m) => m.id === recipe.imageModel,
+  )?.label;
 
   return (
     <div className="mx-auto max-w-2xl">
       {recipe.imageUrl && (
-        <img src={recipe.imageUrl} alt={recipe.title} className="mb-6 w-full rounded-2xl object-cover h-64" />
+        <img
+          src={recipe.imageUrl}
+          alt={recipe.title}
+          className="mb-6 w-full rounded-2xl object-cover h-64"
+        />
       )}
       <h1 className="mb-2 text-3xl font-bold text-gray-900">{recipe.title}</h1>
 
@@ -27,26 +37,40 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
         <div className="mb-3 flex flex-col gap-1">
           {modelLabel && (
             <span className="text-xl text-gray-700">
-              <span className="font-medium text-gray-900">Text:</span> {modelLabel}
+              <span className="font-medium text-gray-900">Text:</span>{" "}
+              {modelLabel}
             </span>
           )}
           {recipe.textGenerationMs && (
             <span className="w-fit rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
-              AI {recipe.textGenerationMs >= 1000
+              AI{" "}
+              {recipe.textGenerationMs >= 1000
                 ? `${(recipe.textGenerationMs / 1000).toFixed(1)}s`
                 : `${recipe.textGenerationMs}ms`}
             </span>
           )}
           {imageModelLabel && (
             <span className="text-xl text-gray-700">
-              <span className="font-medium text-gray-900">Image:</span> {imageModelLabel}
+              <span className="font-medium text-gray-900">Image:</span>{" "}
+              {imageModelLabel}
             </span>
           )}
         </div>
       )}
 
-      {(recipe.imageWidth || recipe.imageType || recipe.imageSizeBytes || recipe.imageGenerationMs) && (
+      {(recipe.imageWidth ||
+        recipe.imageType ||
+        recipe.imageSizeBytes ||
+        recipe.imageGenerationMs) && (
         <div className="mb-4 flex flex-wrap gap-2">
+          {recipe.imageGenerationMs && (
+            <span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs text-orange-600">
+              AI{" "}
+              {recipe.imageGenerationMs >= 1000
+                ? `${(recipe.imageGenerationMs / 1000).toFixed(1)}s`
+                : `${recipe.imageGenerationMs}ms`}
+            </span>
+          )}
           {recipe.imageWidth && recipe.imageHeight && (
             <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
               {recipe.imageWidth} × {recipe.imageHeight} px
@@ -64,22 +88,20 @@ export default async function RecipeDetailPage({ params }: { params: Promise<{ i
                 : `${(recipe.imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`}
             </span>
           )}
-          {recipe.imageGenerationMs && (
-            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
-              AI {recipe.imageGenerationMs >= 1000
-                ? `${(recipe.imageGenerationMs / 1000).toFixed(1)}s`
-                : `${recipe.imageGenerationMs}ms`}
-            </span>
-          )}
         </div>
       )}
       <p className="mb-6 text-gray-500">{recipe.description}</p>
 
       <section className="mb-6">
-        <h2 className="mb-3 text-lg font-semibold text-gray-800">Ingredients</h2>
+        <h2 className="mb-3 text-lg font-semibold text-gray-800">
+          Ingredients
+        </h2>
         <ul className="space-y-1">
           {recipe.ingredients.map((ing, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+            <li
+              key={i}
+              className="flex items-start gap-2 text-sm text-gray-700"
+            >
               <span className="mt-1 h-1.5 w-1.5 rounded-full bg-blue-500 flex-shrink-0" />
               {ing}
             </li>

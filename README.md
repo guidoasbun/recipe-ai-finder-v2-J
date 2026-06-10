@@ -22,9 +22,9 @@ This application is live at
 
 A demo account is available so you can explore the app without creating your own credentials:
 
-| Field | Value |
-|-------|-------|
-| **Email** | `testuser1@mail.com` |
+| Field        | Value                |
+| ------------ | -------------------- |
+| **Email**    | `testuser1@mail.com` |
 | **Password** | `TestUserPassword1$` |
 
 > This account is limited to **20 AI recipe generations** to prevent abuse of the underlying Bedrock and image generation APIs. All other features (browsing, saving, and deleting recipes) are fully accessible.
@@ -49,15 +49,16 @@ A demo account is available so you can explore the app without creating your own
 
 Recipe generation runs entirely through **AWS Bedrock Runtime**. The model is selected per-request from the frontend, allowing users to trade off speed vs. quality.
 
-| Model | Bedrock ID | Characteristics |
-|-------|-----------|-----------------|
-| Claude Haiku 4.5 | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Fastest, lowest cost |
-| Claude Sonnet 4.6 | `us.anthropic.claude-sonnet-4-6` | Best reasoning, highest quality |
-| Amazon Nova Micro | `amazon.nova-micro-v1:0` | Ultra-fast AWS-native |
-| Amazon Nova Lite | `amazon.nova-lite-v1:0` | Fast AWS-native with vision |
-| Meta Llama 3.1 8B | `us.meta.llama3-1-8b-instruct-v1:0` | Open-source alternative |
+| Model             | Bedrock ID                                    | Characteristics                 |
+| ----------------- | --------------------------------------------- | ------------------------------- |
+| Claude Haiku 4.5  | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Fastest, lowest cost            |
+| Claude Sonnet 4.6 | `us.anthropic.claude-sonnet-4-6`              | Best reasoning, highest quality |
+| Amazon Nova Micro | `amazon.nova-micro-v1:0`                      | Ultra-fast AWS-native           |
+| Amazon Nova Lite  | `amazon.nova-lite-v1:0`                       | Fast AWS-native with vision     |
+| Meta Llama 3.1 8B | `us.meta.llama3-1-8b-instruct-v1:0`           | Open-source alternative         |
 
 **How it works:**
+
 - Each model family gets a tailored prompt format: Anthropic models use the Messages API format; Nova/Titan models use the generic messages format; Llama 3.1 uses its special `<|begin_of_text|>` token syntax.
 - The system prompt instructs the model to return a JSON array of exactly three recipe objects. A fallback parser strips any prose the model prepends or appends before JSON deserialization.
 - AWS SDK v2 `BedrockRuntimeClient` with a 90-second read timeout handles long-running inference calls.
@@ -68,19 +69,21 @@ Recipe generation runs entirely through **AWS Bedrock Runtime**. The model is se
 
 After recipes are generated, the backend produces a food photography image for each one. Three providers are supported; the user selects one per session.
 
-| Provider | Model ID | Notes |
-|----------|----------|-------|
-| **Stability AI Core** | `stable-image/generate/core` | 1:1 aspect ratio |
-| **OpenAI** | `gpt-image-1.5` | 1024×1024; high quality |
-| **Google Imagen 4** | `imagen-4.0-generate-001` | 1:1 aspect ratio; highest quality |
-| **Google Imagen 4 Fast** | `imagen-4.0-fast-generate-001` | 1:1 aspect ratio; lower latency |
+| Provider                 | Model ID                       | Notes                             |
+| ------------------------ | ------------------------------ | --------------------------------- |
+| **Stability AI Core**    | `stable-image/generate/core`   | 1:1 aspect ratio                  |
+| **OpenAI**               | `gpt-image-1.5`                | 1024×1024; high quality           |
+| **Google Imagen 4**      | `imagen-4.0-generate-001`      | 1:1 aspect ratio; highest quality |
+| **Google Imagen 4 Fast** | `imagen-4.0-fast-generate-001` | 1:1 aspect ratio; lower latency   |
 
 Both providers receive the same prompt template:
+
 ```
 A beautiful food photography photo of {RECIPE_TITLE}, professional lighting, high quality, restaurant style
 ```
 
 **Image lifecycle:**
+
 1. Base64 PNG returned by the provider
 2. Decoded and uploaded to S3 (`recipe-ai-{env}-recipe-images`)
 3. Presigned URL (1-hour TTL) generated on read and served once the image is available
@@ -96,11 +99,11 @@ A beautiful food photography photo of {RECIPE_TITLE}, professional lighting, hig
 
 The `/model-stats` page surfaces aggregated performance data across all users, visualized with three [Recharts](https://recharts.org) charts:
 
-| Chart | What it shows |
-|-------|---------------|
-| **Image Generation Time by Model** | Average `imageGenerationMs` per image model (bar chart, 4 bars) |
-| **Text Generation Time by Model** | Average `textGenerationMs` per Bedrock model (bar chart, 5 bars) |
-| **Image Generation Trend** | Daily average image generation time over the last 30 days (line chart) |
+| Chart                              | What it shows                                                          |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| **Image Generation Time by Model** | Average `imageGenerationMs` per image model (bar chart, 4 bars)        |
+| **Text Generation Time by Model**  | Average `textGenerationMs` per Bedrock model (bar chart, 5 bars)       |
+| **Image Generation Trend**         | Daily average image generation time over the last 30 days (line chart) |
 
 Each bar tooltip also shows the sample count (number of recipes) used to compute the average.
 
@@ -126,11 +129,12 @@ Browser → GET /api/backend/api/stats/stream (EventSource)
 The frontend renders three pulsing skeleton cards while waiting and swaps them for the live charts the moment the `stats-ready` SSE event arrives — no polling, no page reload required.
 
 **Key files:**
+
 - [backend/.../service/StatsService.java](backend/src/main/java/io/asbun/backend/service/StatsService.java)
 - [backend/.../service/StatsSseService.java](backend/src/main/java/io/asbun/backend/service/StatsSseService.java)
 - [backend/.../repository/StatsRepository.java](backend/src/main/java/io/asbun/backend/repository/StatsRepository.java)
-- [frontend/app/(protected)/model-stats/ModelStatsLoader.tsx](frontend/app/(protected)/model-stats/ModelStatsLoader.tsx)
-- [frontend/app/(protected)/model-stats/ModelStatsChart.tsx](frontend/app/(protected)/model-stats/ModelStatsChart.tsx)
+- [frontend/app/(protected)/model-stats/ModelStatsLoader.tsx](<frontend/app/(protected)/model-stats/ModelStatsLoader.tsx>)
+- [frontend/app/(protected)/model-stats/ModelStatsChart.tsx](<frontend/app/(protected)/model-stats/ModelStatsChart.tsx>)
 
 ---
 
@@ -175,17 +179,17 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 
 ### AWS Services
 
-| Service | Role |
-|---------|------|
-| **ECS Fargate** | Runs backend and frontend containers (ARM64, no EC2 to manage) |
-| **Application Load Balancer** | HTTPS termination, HTTP→HTTPS redirect, path-based routing |
-| **DynamoDB** | Serverless NoSQL; `PAY_PER_REQUEST` billing; GSI on `userId` for per-user recipe queries |
-| **S3** | Image storage with SSE-AES256 encryption, versioning off, 90-day lifecycle |
-| **Cognito** | User pool with Google as a federated identity provider; JWT-based sessions |
-| **ECR** | Private container registries for backend and frontend images |
-| **Secrets Manager** | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, and `GOOGLE_API_KEY`; injected into ECS task definitions at runtime — never in code or environment files |
-| **ACM** | TLS certificates for the load balancer |
-| **CloudWatch** | Container logs; 30-day retention |
+| Service                       | Role                                                                                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **ECS Fargate**               | Runs backend and frontend containers (ARM64, no EC2 to manage)                                                                                         |
+| **Application Load Balancer** | HTTPS termination, HTTP→HTTPS redirect, path-based routing                                                                                             |
+| **DynamoDB**                  | Serverless NoSQL; `PAY_PER_REQUEST` billing; GSI on `userId` for per-user recipe queries                                                               |
+| **S3**                        | Image storage with SSE-AES256 encryption, versioning off, 90-day lifecycle                                                                             |
+| **Cognito**                   | User pool with Google as a federated identity provider; JWT-based sessions                                                                             |
+| **ECR**                       | Private container registries for backend and frontend images                                                                                           |
+| **Secrets Manager**           | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, and `GOOGLE_API_KEY`; injected into ECS task definitions at runtime — never in code or environment files |
+| **ACM**                       | TLS certificates for the load balancer                                                                                                                 |
+| **CloudWatch**                | Container logs; 30-day retention                                                                                                                       |
 
 ### Terraform Module Structure
 
@@ -240,24 +244,24 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 
 ## Tech Stack
 
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| Backend language | Java (Amazon Corretto) | 21 |
-| Backend framework | Spring Boot | 4.0.5 |
-| Frontend framework | Next.js | 16.2.1 |
-| Frontend library | React | 19.2.4 |
-| Styling | Tailwind CSS | 4 |
-| Charts | Recharts | 3 |
-| AI inference | AWS Bedrock | — |
-| Image generation | Stability AI + OpenAI + Google Imagen | — |
-| Authentication | AWS Cognito (Google OAuth2) | — |
-| Database | AWS DynamoDB | — |
-| Object storage | AWS S3 | — |
-| Container runtime | AWS ECS Fargate (ARM64) | — |
-| Load balancer | AWS ALB | — |
-| IaC | Terraform | 1.7+ |
-| CI/CD | GitHub Actions (OIDC) | — |
-| AWS SDK | AWS SDK for Java v2 | 2.28.29 |
+| Layer              | Technology                            | Version |
+| ------------------ | ------------------------------------- | ------- |
+| Backend language   | Java (Amazon Corretto)                | 21      |
+| Backend framework  | Spring Boot                           | 4.0.5   |
+| Frontend framework | Next.js                               | 16.2.1  |
+| Frontend library   | React                                 | 19.2.4  |
+| Styling            | Tailwind CSS                          | 4       |
+| Charts             | Recharts                              | 3       |
+| AI inference       | AWS Bedrock                           | —       |
+| Image generation   | Stability AI + OpenAI + Google Imagen | —       |
+| Authentication     | AWS Cognito (Google OAuth2)           | —       |
+| Database           | AWS DynamoDB                          | —       |
+| Object storage     | AWS S3                                | —       |
+| Container runtime  | AWS ECS Fargate (ARM64)               | —       |
+| Load balancer      | AWS ALB                               | —       |
+| IaC                | Terraform                             | 1.7+    |
+| CI/CD              | GitHub Actions (OIDC)                 | —       |
+| AWS SDK            | AWS SDK for Java v2                   | 2.28.29 |
 
 ---
 
@@ -305,19 +309,20 @@ recipe-ai-finder-v2/
 cd backend
 
 # Copy and fill in local config
-cp src/main/resources/application-local.properties.example \
-   src/main/resources/application-local.properties
 
-# Required variables in application-local.properties:
-#   spring.security.oauth2.resourceserver.jwt.issuer-uri=<cognito-issuer>
-#   stability.api-key=<your-key>
-#   openai.api-key=<your-key>
-#   google.api-key=<your-key>
-#   aws.dynamodb.users-table=<table-name>
-#   aws.dynamodb.recipes-table=<table-name>
-#   aws.s3.bucket=<bucket-name>
+cd src/main/resources/application-local.properties
 
-mvn spring-boot:run -Plocal
+Required variables in application-local.properties:
+
+# COGNITO_ISSUER_URI=
+# dynamodb.users-table=
+# dynamodb.recipes-table=
+# S3_BUCKET=
+# STABILITY_API_KEY=
+# OPENAI_API_KEY=
+# GOOGLE_API_KEY=
+
+# ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 # Runs on http://localhost:8080
 ```
 
@@ -326,13 +331,11 @@ mvn spring-boot:run -Plocal
 ```bash
 cd frontend
 
-cp .env.local.example .env.local
+cd .env.local.example .env.local
 
 # Required variables:
-#   NEXT_PUBLIC_COGNITO_DOMAIN=<your-cognito-domain>
-#   NEXT_PUBLIC_COGNITO_CLIENT_ID=<app-client-id>
-#   NEXT_PUBLIC_REDIRECT_URI=http://localhost:3000/api/auth/callback
-#   BACKEND_URL=http://localhost:8080
+# COGNITO_DOMAIN=
+# COGNITO_CLIENT_ID=
 
 npm install
 npm run dev
@@ -341,16 +344,16 @@ npm run dev
 
 ### API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/health` | Health check (used by ALB) |
-| `POST` | `/api/auth/user` | Upsert user from JWT claims |
-| `POST` | `/api/recipes/generate` | Generate 3 recipes via Bedrock |
-| `POST` | `/api/recipes` | Save a recipe to DynamoDB |
-| `GET` | `/api/recipes` | List current user's recipes |
-| `GET` | `/api/recipes/{id}` | Get single recipe |
-| `GET` | `/api/recipes/{id}/image-stream` | SSE stream — fires `image-ready` event when image generation completes |
-| `DELETE` | `/api/recipes/{id}` | Delete recipe |
-| `POST` | `/api/images/upload` | Upload image to S3 |
-| `GET` | `/api/stats/models` | Return cached model performance stats (JSON) |
-| `GET` | `/api/stats/stream` | SSE stream — fires `stats-ready` event with full stats JSON; triggers async computation on cache miss |
+| Method   | Path                             | Description                                                                                           |
+| -------- | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/health`                    | Health check (used by ALB)                                                                            |
+| `POST`   | `/api/auth/user`                 | Upsert user from JWT claims                                                                           |
+| `POST`   | `/api/recipes/generate`          | Generate 3 recipes via Bedrock                                                                        |
+| `POST`   | `/api/recipes`                   | Save a recipe to DynamoDB                                                                             |
+| `GET`    | `/api/recipes`                   | List current user's recipes                                                                           |
+| `GET`    | `/api/recipes/{id}`              | Get single recipe                                                                                     |
+| `GET`    | `/api/recipes/{id}/image-stream` | SSE stream — fires `image-ready` event when image generation completes                                |
+| `DELETE` | `/api/recipes/{id}`              | Delete recipe                                                                                         |
+| `POST`   | `/api/images/upload`             | Upload image to S3                                                                                    |
+| `GET`    | `/api/stats/models`              | Return cached model performance stats (JSON)                                                          |
+| `GET`    | `/api/stats/stream`              | SSE stream — fires `stats-ready` event with full stats JSON; triggers async computation on cache miss |
