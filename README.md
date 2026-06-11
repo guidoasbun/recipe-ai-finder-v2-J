@@ -322,7 +322,7 @@ Required variables in application-local.properties:
 # OPENAI_API_KEY=
 # GOOGLE_API_KEY=
 
-# ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 # Runs on http://localhost:8080
 ```
 
