@@ -31,14 +31,14 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Annotate all DTOs with `@JsonIgnoreProperties(ignoreUnknown = true)`
     - _Requirements: 2.1, 4.1, 5.4, 6.1, 13.4_
 
-- [ ] 2. Implement repositories
-  - [ ] 2.1 Create ConsentRepository
+- [x] 2. Implement repositories
+  - [x] 2.1 Create ConsentRepository
     - Create `ConsentRepository` using DynamoDB Enhanced Client
     - Implement `save(Consent)`, `findByUserIdAndType(userId, consentType)`, `findAllByUserId(userId)`, `delete(userId, consentType)`
     - Wire DynamoDB table name from `application.properties`
     - _Requirements: 6.1, 6.2, 6.8, 15.2_
 
-  - [ ] 2.2 Create AuditRepository
+  - [x] 2.2 Create AuditRepository
     - Create `AuditRepository` using DynamoDB Enhanced Client
     - Implement `save(AuditEvent)`, `findByUserId(userId)` using the GSI sorted by timestamp descending
     - Wire DynamoDB table name from `application.properties`
@@ -54,7 +54,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - CloudWatch log failure must NOT block DynamoDB write
     - _Requirements: 8.1, 8.2, 8.5, 8.6_
 
-  - [ ]* 3.2 Write property test for AuditService (Property 12: Audit dual-write completeness)
+  - [ ] 3.2 Write property test for AuditService (Property 12: Audit dual-write completeness)
     - **Property 12: Audit record dual-write completeness**
     - **Validates: Requirements 8.1, 8.2, 8.5**
     - Use jqwik to generate random audit events with varying details maps
@@ -69,7 +69,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Log `CONSENT_GRANTED` / `CONSENT_REVOKED` audit events via AuditService
     - _Requirements: 6.1, 6.2, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-  - [ ]* 3.4 Write property tests for ConsentService (Properties 9, 10, 11)
+  - [ ] 3.4 Write property tests for ConsentService (Properties 9, 10, 11)
     - **Property 9: Consent grant round-trip and idempotence**
     - **Property 10: Consent gates recipe generation**
     - **Property 11: Invalid consent type rejection**
@@ -87,7 +87,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Scheduled job: log `SCHEDULED_DELETION_RUN` summary audit event
     - _Requirements: 1.1, 1.4, 1.5, 1.6, 1.7, 2.1–2.9, 3.1–3.5_
 
-  - [ ]* 3.6 Write property tests for AccountDeletionService (Properties 1, 3, 4, 5)
+  - [ ] 3.6 Write property tests for AccountDeletionService (Properties 1, 3, 4, 5)
     - **Property 1: Soft deletion state transition correctness**
     - **Property 3: Hard deletion completeness**
     - **Property 4: Partial deletion failure handling**
@@ -104,7 +104,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Log `DATA_EXPORT_REQUESTED` and `DATA_EXPORT_COMPLETED` audit events
     - _Requirements: 4.1–4.5, 5.1–5.8_
 
-  - [ ]* 3.8 Write property tests for DataExportService (Properties 6, 7, 8)
+  - [ ] 3.8 Write property tests for DataExportService (Properties 6, 7, 8)
     - **Property 6: Data export completeness (JSON)**
     - **Property 7: ZIP export content completeness**
     - **Property 8: Duplicate export prevention**
@@ -125,7 +125,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Register filter in the Spring Security filter chain
     - _Requirements: 9.1–9.6_
 
-  - [ ]* 5.2 Write property tests for RateLimitFilter (Properties 13, 14)
+  - [ ] 5.2 Write property tests for RateLimitFilter (Properties 13, 14)
     - **Property 13: Rate limiter per-user isolation**
     - **Property 14: Rate limiter threshold enforcement and response format**
     - **Validates: Requirements 9.1, 9.2, 9.3, 9.4, 9.5**
@@ -138,7 +138,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Add max request body size limit (1 MB) via `server.tomcat.max-http-form-post-size` and a filter
     - _Requirements: 14.1–14.5_
 
-  - [ ]* 5.4 Write property tests for security headers and CORS (Properties 16, 17)
+  - [ ] 5.4 Write property tests for security headers and CORS (Properties 16, 17)
     - **Property 16: Security headers presence**
     - **Property 17: CORS rejection for non-allowed origins**
     - **Validates: Requirements 14.3, 14.5**
@@ -151,7 +151,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Add `@Validated` annotation to all controllers
     - _Requirements: 13.1–13.5_
 
-  - [ ]* 5.6 Write property test for input validation (Property 15)
+  - [ ] 5.6 Write property test for input validation (Property 15)
     - **Property 15: Input validation rejects invalid payloads**
     - **Validates: Requirements 13.1, 13.2, 13.3, 13.5**
     - Use jqwik to generate invalid payloads and verify proper rejection
@@ -178,7 +178,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Wire RateLimitFilter before authentication in the filter chain
     - _Requirements: 9.6, 10.1, 11.1_
 
-  - [ ]* 6.4 Write property test for pending deletion blocking writes (Property 2)
+  - [ ] 6.4 Write property test for pending deletion blocking writes (Property 2)
     - **Property 2: Pending deletion blocks write operations**
     - **Validates: Requirements 1.2, 1.3**
     - Use jqwik to verify PENDING_DELETION users get 403 on recipe generation but can still read
