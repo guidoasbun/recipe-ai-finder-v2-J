@@ -24,6 +24,25 @@
         "chatSessionId": "sess_0e32fd88-4670-44cb-8866-52b43173801c",
         "timestamp": 1787170717583
       }
+    ],
+    "1.3 Create request/response DTOs for compliance endpoints": [
+      {
+        "executionId": "47c2299b-8765-4a68-a654-b7cd82e27982",
+        "chatSessionId": "sess_5660ae16-8bb0-4247-bfe7-b1f052ec108c",
+        "timestamp": 1787171183381
+      },
+      {
+        "executionId": "47c2299b-8765-4a68-a654-b7cd82e27982",
+        "chatSessionId": "sess_5660ae16-8bb0-4247-bfe7-b1f052ec108c",
+        "timestamp": 1787171368594
+      }
+    ],
+    "1. Add new dependencies and create enums and models": [
+      {
+        "executionId": "47c2299b-8765-4a68-a654-b7cd82e27982",
+        "chatSessionId": "sess_5660ae16-8bb0-4247-bfe7-b1f052ec108c",
+        "timestamp": 1787171368630
+      }
     ]
   }
 }

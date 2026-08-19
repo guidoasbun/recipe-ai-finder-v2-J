@@ -6,7 +6,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
 
 ## Tasks
 
-- [ ] 1. Add new dependencies and create enums and models
+- [x] 1. Add new dependencies and create enums and models
   - [x] 1.1 Add compliance dependencies to pom.xml and create enums
     - Add `bucket4j-core` dependency to `pom.xml` for rate limiting
     - Add `cognitoidentityprovider` AWS SDK dependency to `pom.xml`
@@ -23,7 +23,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Create `AuditEvent` model with DynamoDB annotations (partition key: auditId, GSI: userId+timestamp)
     - _Requirements: 1.1, 6.1, 8.1, 15.1, 15.2_
 
-  - [ ] 1.3 Create request/response DTOs for compliance endpoints
+  - [x] 1.3 Create request/response DTOs for compliance endpoints
     - Create `DeleteAccountRequest` DTO with `type` field (soft/immediate) and validation constraints
     - Create `GrantConsentRequest` DTO with `consentType`, `version`, validation constraints
     - Create `DataExportJson` response class for JSON export structure
