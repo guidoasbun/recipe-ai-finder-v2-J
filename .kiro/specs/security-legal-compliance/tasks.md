@@ -17,7 +17,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Create `RateLimitCategory` enum: `GENERAL`, `DELETION`, `EXPORT`
     - _Requirements: 1.1, 2.7, 6.3, 6.7, 8.3, 9.1, 9.2, 9.5_
 
-  - [ ] 1.2 Extend the User model and create Consent and AuditEvent models
+  - [x] 1.2 Extend the User model and create Consent and AuditEvent models
     - Add `accountStatus`, `deletionRequestedAt`, `scheduledDeletionDate` fields to `User.java`
     - Create `Consent` model with DynamoDB annotations (partition key: userId, sort key: consentType)
     - Create `AuditEvent` model with DynamoDB annotations (partition key: auditId, GSI: userId+timestamp)

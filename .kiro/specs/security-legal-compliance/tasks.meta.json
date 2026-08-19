@@ -12,6 +12,18 @@
         "chatSessionId": "sess_9d481422-f515-4cb1-a404-1813c8f95a29",
         "timestamp": 1787088375252
       }
+    ],
+    "1.2 Extend the User model and create Consent and AuditEvent models": [
+      {
+        "executionId": "d2fff00f-acdf-45c1-8e83-a7b2cadb9fa5",
+        "chatSessionId": "sess_0e32fd88-4670-44cb-8866-52b43173801c",
+        "timestamp": 1787165983880
+      },
+      {
+        "executionId": "d2fff00f-acdf-45c1-8e83-a7b2cadb9fa5",
+        "chatSessionId": "sess_0e32fd88-4670-44cb-8866-52b43173801c",
+        "timestamp": 1787170717583
+      }
     ]
   }
 }

@@ -1,12 +1,12 @@
 package io.asbun.backend.model;
 
-import io.asbun.backend.model.enums.AccountStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortKey;
 
 import java.time.Instant;
 
@@ -15,20 +15,24 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @DynamoDbBean
-public class User {
+public class Consent {
 
     private String userId;
-    private String email;
-    private String username;
-    private Instant createdAt;
-    private Integer generateCallsUsed;
-    private AccountStatus accountStatus;
-    private Instant deletionRequestedAt;
-    private Instant scheduledDeletionDate;
+    private String consentType;
+    private Boolean granted;
+    private Instant grantedAt;
+    private Instant revokedAt;
+    private String version;
+    private String ipAddress;
 
     @DynamoDbPartitionKey
     public String getUserId() {
         return userId;
+    }
+
+    @DynamoDbSortKey
+    public String getConsentType() {
+        return consentType;
     }
 
 }
