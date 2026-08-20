@@ -539,6 +539,138 @@ Token bucket configuration:
 
 **Validates: Requirements 14.5**
 
+## Infrastructure (Terraform)
+
+The compliance feature requires new AWS resources provisioned via the existing Terraform module structure under `infrastructure/`.
+
+### Module Changes
+
+#### `modules/dynamodb/main.tf` — New Tables
+
+```hcl
+resource "aws_dynamodb_table" "consent" {
+  name         = "${var.project_name}-${var.environment}-consent"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+  range_key    = "consentType"
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  attribute {
+    name = "consentType"
+    type = "S"
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-consent"
+  }
+}
+
+resource "aws_dynamodb_table" "audit_log" {
+  name         = "${var.project_name}-${var.environment}-audit-log"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "auditId"
+
+  attribute {
+    name = "auditId"
+    type = "S"
+  }
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "userId-timestamp-index"
+    hash_key        = "userId"
+    range_key       = "timestamp"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-audit-log"
+  }
+}
+```
+
+New outputs:
+- `consent_table_name`, `consent_table_arn`
+- `audit_log_table_name`, `audit_log_table_arn`
+
+#### `modules/iam/main.tf` — New Permissions
+
+Add to the ECS task policy:
+
+```hcl
+# Cognito admin operations for account deletion
+{
+  Effect   = "Allow"
+  Action   = [
+    "cognito-idp:AdminDeleteUser",
+    "cognito-idp:AdminDisableUser"
+  ]
+  Resource = var.cognito_user_pool_arn
+}
+```
+
+The existing DynamoDB permissions use `Resource = "*"`, which already covers the new tables. If tightened to specific ARNs in the future, the Consent and AuditLog table ARNs must be included.
+
+#### `modules/ecs/main.tf` — New Environment Variables
+
+Add to the backend container environment:
+
+```hcl
+{ name = "DYNAMODB_CONSENT_TABLE",  value = var.dynamodb_consent_table },
+{ name = "DYNAMODB_AUDIT_TABLE",    value = var.dynamodb_audit_table },
+{ name = "COGNITO_USER_POOL_ID",    value = var.cognito_user_pool_id },
+```
+
+New variables required: `dynamodb_consent_table`, `dynamodb_audit_table`, `cognito_user_pool_id`.
+
+#### `main.tf` (root) — Wiring
+
+Pass new outputs from `dynamodb` and `cognito` modules into the `ecs` module:
+
+```hcl
+module "ecs" {
+  # ... existing params ...
+  dynamodb_consent_table = module.dynamodb.consent_table_name
+  dynamodb_audit_table   = module.dynamodb.audit_log_table_name
+  cognito_user_pool_id   = module.cognito.user_pool_id
+}
+```
+
+The `cognito` module must export `user_pool_id` (the raw pool ID, not the full ARN or issuer URI). If not already exported, add an output.
+
+### Deployment Order
+
+1. Run `terraform apply` to create the new DynamoDB tables, update IAM policy, and register new ECS environment variables
+2. Deploy the updated backend container (the ECS service will pick up the new task definition with the additional environment variables)
+3. The backend reads table names from environment variables at startup — no code change needed beyond what's already in `application.properties`
+
+### Design Decision
+
+| Decision | Rationale |
+|---|---|
+| On-demand billing for new tables | Low, unpredictable traffic for compliance operations; avoids overprovisioning. Matches existing tables. |
+| DynamoDB wildcard in existing IAM policy | Existing task policy uses `Resource = "*"` for DynamoDB — new tables are automatically covered. Cognito needs an explicit new statement. |
+| TTL on AuditLog only | Consent records are retained indefinitely (legal obligation to demonstrate consent). Audit records expire after 90 days per privacy-by-design principle. |
+| Environment variables for table names | Matches existing pattern (`DYNAMODB_USERS_TABLE`, `DYNAMODB_RECIPES_TABLE`). No hardcoded table names in application code. |
+
 ## Error Handling
 
 ### Account Deletion Errors

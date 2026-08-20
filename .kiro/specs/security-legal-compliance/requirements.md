@@ -226,10 +226,15 @@ This document defines the requirements for a comprehensive security and legal co
 
 #### Acceptance Criteria
 
-1. THE Infrastructure SHALL provision an AuditLog_Table with partition key `auditId` (String), a GSI on `userId` with sort key `timestamp` (String, ISO-8601) projecting all attributes, a TTL attribute set to expire records after 90 days by default, and on-demand billing mode
+1. THE Infrastructure SHALL provision an AuditLog_Table with partition key `auditId` (String), a GSI on `userId` with sort key `timestamp` (String, ISO-8601) projecting all attributes, a TTL attribute named `ttl` set to expire records after 90 days by default, and on-demand billing mode
 2. THE Infrastructure SHALL provision a Consent_Table with partition key `userId` (String), sort key `consentType` (String), and on-demand billing mode
 3. THE Infrastructure SHALL grant the ECS task role IAM permissions for `cognito-idp:AdminDeleteUser` and `cognito-idp:AdminDisableUser` scoped to the specific Cognito_User_Pool resource ARN
 4. THE Infrastructure SHALL grant the ECS task role IAM permissions for `dynamodb:PutItem`, `dynamodb:GetItem`, `dynamodb:Query`, and `dynamodb:DeleteItem` on the AuditLog_Table and Consent_Table, scoped to those table ARNs and their indexes
+5. THE Infrastructure SHALL pass the AuditLog_Table name as the `DYNAMODB_AUDIT_TABLE` environment variable to the ECS backend task definition
+6. THE Infrastructure SHALL pass the Consent_Table name as the `DYNAMODB_CONSENT_TABLE` environment variable to the ECS backend task definition
+7. THE Infrastructure SHALL pass the Cognito User Pool ID as the `COGNITO_USER_POOL_ID` environment variable to the ECS backend task definition
+8. THE Infrastructure SHALL implement all resource provisioning via the existing Terraform module structure (`modules/dynamodb`, `modules/iam`, `modules/ecs`) with outputs wired through the root `main.tf`
+9. THE Infrastructure SHALL tag all new DynamoDB tables with `Name` and environment tags consistent with existing table resources
 
 ### Requirement 16: Integration Testing — Compliance Flow
 
