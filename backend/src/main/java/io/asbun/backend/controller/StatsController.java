@@ -5,6 +5,7 @@ import io.asbun.backend.service.StatsSseService;
 import io.asbun.backend.service.StatsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -12,6 +13,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Optional;
 
+@Validated
 @RestController
 @RequestMapping("/api/stats")
 @RequiredArgsConstructor

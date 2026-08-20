@@ -144,8 +144,8 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Confirm no destructive changes to existing resources
     - _Requirements: 15.1–15.9_
 
-- [ ] 5. Implement filters and security hardening
-  - [ ] 5.1 Implement RateLimitFilter with per-user token bucket
+- [x] 5. Implement filters and security hardening
+  - [x] 5.1 Implement RateLimitFilter with per-user token bucket
     - Create `RateLimitFilter` extending `OncePerRequestFilter`
     - Implement per-user token buckets using Bucket4j: GENERAL (60/min), DELETION (5/hr), EXPORT (1/hr)
     - Implement per-IP bucket for unauthenticated requests (20/min)
@@ -155,33 +155,33 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Register filter in the Spring Security filter chain
     - _Requirements: 9.1–9.6_
 
-  - [ ] 5.2 Write property tests for RateLimitFilter (Properties 13, 14)
+  - [x] 5.2 Write property tests for RateLimitFilter (Properties 13, 14)
     - **Property 13: Rate limiter per-user isolation**
     - **Property 14: Rate limiter threshold enforcement and response format**
     - **Validates: Requirements 9.1, 9.2, 9.3, 9.4, 9.5**
     - Use jqwik to verify isolation between users/categories and threshold enforcement
 
-  - [ ] 5.3 Add security headers and tighten CORS configuration
+  - [x] 5.3 Add security headers and tighten CORS configuration
     - Add security headers to SecurityConfig: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Strict-Transport-Security` (max-age 31536000, includeSubDomains), `Content-Security-Policy` (default-src 'self', frame-ancestors 'none')
     - Tighten CORS `allowedHeaders` to explicit allowlist: `Authorization`, `Content-Type`, `Accept`, `Origin`, `X-Requested-With`, `Cache-Control`
     - Add production-profile validation that rejects wildcard origins
     - Add max request body size limit (1 MB) via `server.tomcat.max-http-form-post-size` and a filter
     - _Requirements: 14.1–14.5_
 
-  - [ ] 5.4 Write property tests for security headers and CORS (Properties 16, 17)
+  - [x] 5.4 Write property tests for security headers and CORS (Properties 16, 17)
     - **Property 16: Security headers presence**
     - **Property 17: CORS rejection for non-allowed origins**
     - **Validates: Requirements 14.3, 14.5**
     - Use jqwik to verify headers present on all responses and CORS rejection for invalid origins
 
-  - [ ] 5.5 Add input validation to all request DTOs and controllers
+  - [x] 5.5 Add input validation to all request DTOs and controllers
     - Add Bean Validation constraints (`@Size`, `@Pattern`, `@NotNull`, `@NotBlank`) to all existing and new DTOs
     - Ensure `GlobalExceptionHandler` returns structured error response with field name and constraint violated
     - Handle malformed JSON (return 400), oversized payloads (return 413)
     - Add `@Validated` annotation to all controllers
     - _Requirements: 13.1–13.5_
 
-  - [ ] 5.6 Write property test for input validation (Property 15)
+  - [x] 5.6 Write property test for input validation (Property 15)
     - **Property 15: Input validation rejects invalid payloads**
     - **Validates: Requirements 13.1, 13.2, 13.3, 13.5**
     - Use jqwik to generate invalid payloads and verify proper rejection

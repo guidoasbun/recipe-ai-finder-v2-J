@@ -15,6 +15,18 @@
     "3.6 Write property tests for AccountDeletionService (Properties 1, 3, 4, 5)": {
       "status": "passed",
       "lastRunTimestamp": 1787178591243
+    },
+    "5.2 Write property tests for RateLimitFilter (Properties 13, 14)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787200663309
+    },
+    "5.4 Write property tests for security headers and CORS (Properties 16, 17)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787202970396
+    },
+    "5.6 Write property test for input validation (Property 15)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787204699215
     }
   },
   "executionHistory": {
@@ -200,6 +212,16 @@
         "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
         "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
         "timestamp": 1787173945352
+      },
+      {
+        "executionId": "44e1a6e2-1f1a-4a86-b3e4-8a7e9bb29f0c",
+        "chatSessionId": "sess_d3a092f5-676f-4c33-9fc7-a30c692a0cff",
+        "timestamp": 1787198757794
+      },
+      {
+        "executionId": "44e1a6e2-1f1a-4a86-b3e4-8a7e9bb29f0c",
+        "chatSessionId": "sess_d3a092f5-676f-4c33-9fc7-a30c692a0cff",
+        "timestamp": 1787199971149
       }
     ],
     "5.2 Write property tests for RateLimitFilter (Properties 13, 14)": [
@@ -207,6 +229,16 @@
         "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
         "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
         "timestamp": 1787173945377
+      },
+      {
+        "executionId": "1e3f76f6-7d06-404e-a01a-0455c1389ec5",
+        "chatSessionId": "sess_a4076ddf-5c5b-47e3-9b16-8fb2eb2bfa24",
+        "timestamp": 1787200028235
+      },
+      {
+        "executionId": "1e3f76f6-7d06-404e-a01a-0455c1389ec5",
+        "chatSessionId": "sess_a4076ddf-5c5b-47e3-9b16-8fb2eb2bfa24",
+        "timestamp": 1787200683936
       }
     ],
     "5.3 Add security headers and tighten CORS configuration": [
@@ -214,6 +246,16 @@
         "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
         "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
         "timestamp": 1787173945401
+      },
+      {
+        "executionId": "94a3f1b4-ee80-4077-9307-5847615ead73",
+        "chatSessionId": "sess_35c3e1cc-5f1d-4473-bf24-a79808938e70",
+        "timestamp": 1787200703066
+      },
+      {
+        "executionId": "94a3f1b4-ee80-4077-9307-5847615ead73",
+        "chatSessionId": "sess_35c3e1cc-5f1d-4473-bf24-a79808938e70",
+        "timestamp": 1787202377131
       }
     ],
     "5.4 Write property tests for security headers and CORS (Properties 16, 17)": [
@@ -221,6 +263,16 @@
         "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
         "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
         "timestamp": 1787173945425
+      },
+      {
+        "executionId": "8057a150-98fe-4a93-a1a7-92274214fc7c",
+        "chatSessionId": "sess_fbb35434-c477-478e-b1a5-b1ffd011d58e",
+        "timestamp": 1787202453241
+      },
+      {
+        "executionId": "8057a150-98fe-4a93-a1a7-92274214fc7c",
+        "chatSessionId": "sess_fbb35434-c477-478e-b1a5-b1ffd011d58e",
+        "timestamp": 1787203141781
       }
     ],
     "5.5 Add input validation to all request DTOs and controllers": [
@@ -228,6 +280,16 @@
         "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
         "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
         "timestamp": 1787173945449
+      },
+      {
+        "executionId": "e3253d74-6408-455b-8979-201ea7eef159",
+        "chatSessionId": "sess_aeedeefb-0e9c-49e0-84ab-c61e1a53e766",
+        "timestamp": 1787203163885
+      },
+      {
+        "executionId": "e3253d74-6408-455b-8979-201ea7eef159",
+        "chatSessionId": "sess_aeedeefb-0e9c-49e0-84ab-c61e1a53e766",
+        "timestamp": 1787203639353
       }
     ],
     "5.6 Write property test for input validation (Property 15)": [
@@ -235,6 +297,16 @@
         "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
         "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
         "timestamp": 1787173945478
+      },
+      {
+        "executionId": "34f86c93-8fab-4f90-a49c-0b2378e0f3bb",
+        "chatSessionId": "sess_e5352fac-3863-4217-9875-c991ac55b1ef",
+        "timestamp": 1787203676319
+      },
+      {
+        "executionId": "34f86c93-8fab-4f90-a49c-0b2378e0f3bb",
+        "chatSessionId": "sess_e5352fac-3863-4217-9875-c991ac55b1ef",
+        "timestamp": 1787204717146
       }
     ],
     "6.1 Create AccountController": [
@@ -340,6 +412,13 @@
         "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
         "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
         "timestamp": 1787173945877
+      }
+    ],
+    "5. Implement filters and security hardening": [
+      {
+        "executionId": "34f86c93-8fab-4f90-a49c-0b2378e0f3bb",
+        "chatSessionId": "sess_e5352fac-3863-4217-9875-c991ac55b1ef",
+        "timestamp": 1787204717172
       }
     ]
   }
