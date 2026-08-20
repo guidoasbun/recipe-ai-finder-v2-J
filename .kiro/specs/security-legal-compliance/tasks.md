@@ -111,35 +111,35 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - **Validates: Requirements 4.1, 4.2, 4.5, 5.2, 5.7, 5.8**
     - Use jqwik to generate users with 0-20 recipes and verify export content matches
 
-- [ ] 4. Checkpoint - Ensure all service tests pass
+- [x] 4. Checkpoint - Ensure all service tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4.5. Implement Terraform infrastructure changes
-  - [ ] 4.5.1 Add Consent and AuditLog DynamoDB tables to `modules/dynamodb`
+- [x] 4.5. Implement Terraform infrastructure changes
+  - [x] 4.5.1 Add Consent and AuditLog DynamoDB tables to `modules/dynamodb`
     - Add `aws_dynamodb_table.consent` resource with partition key `userId` (S), sort key `consentType` (S), on-demand billing, and environment tags
     - Add `aws_dynamodb_table.audit_log` resource with partition key `auditId` (S), GSI `userId-timestamp-index` (hash: `userId`, range: `timestamp`, ALL projection), TTL on `ttl` attribute, on-demand billing, and environment tags
     - Add outputs: `consent_table_name`, `consent_table_arn`, `audit_log_table_name`, `audit_log_table_arn`
     - _Requirements: 15.1, 15.2, 15.9_
 
-  - [ ] 4.5.2 Add Cognito admin permissions to ECS task role in `modules/iam`
+  - [x] 4.5.2 Add Cognito admin permissions to ECS task role in `modules/iam`
     - Add IAM policy statement granting `cognito-idp:AdminDeleteUser` and `cognito-idp:AdminDisableUser` scoped to the Cognito User Pool ARN
     - Add `cognito_user_pool_arn` variable to the IAM module
     - Pass `cognito_user_pool_arn` from the `cognito` module output through root `main.tf`
     - _Requirements: 15.3_
 
-  - [ ] 4.5.3 Wire new environment variables into ECS backend task definition
+  - [x] 4.5.3 Wire new environment variables into ECS backend task definition
     - Add `dynamodb_consent_table`, `dynamodb_audit_table`, `cognito_user_pool_id` variables to `modules/ecs`
     - Add `DYNAMODB_CONSENT_TABLE`, `DYNAMODB_AUDIT_TABLE`, `COGNITO_USER_POOL_ID` environment entries to the backend container definition
     - _Requirements: 15.5, 15.6, 15.7_
 
-  - [ ] 4.5.4 Update root `main.tf` to wire module outputs
+  - [x] 4.5.4 Update root `main.tf` to wire module outputs
     - Pass `dynamodb_consent_table` and `dynamodb_audit_table` from `module.dynamodb` to `module.ecs`
     - Pass `cognito_user_pool_id` from `module.cognito` to `module.ecs`
     - Pass `cognito_user_pool_arn` from `module.cognito` to `module.iam`
     - Ensure `modules/cognito` exports `user_pool_id` and `user_pool_arn` (add outputs if missing)
     - _Requirements: 15.8_
 
-  - [ ] 4.5.5 Validate Terraform plan
+  - [x] 4.5.5 Validate Terraform plan
     - Run `terraform plan` and verify only expected resources are created/modified (2 new DynamoDB tables, IAM policy update, ECS task definition update)
     - Confirm no destructive changes to existing resources
     - _Requirements: 15.1–15.9_
