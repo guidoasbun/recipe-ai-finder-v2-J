@@ -44,8 +44,8 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Wire DynamoDB table name from `application.properties`
     - _Requirements: 8.1, 8.4, 15.1_
 
-- [ ] 3. Implement core services
-  - [ ] 3.1 Implement AuditService with dual-write and retry logic
+- [x] 3. Implement core services
+  - [x] 3.1 Implement AuditService with dual-write and retry logic
     - Create `AuditService` with `logEvent(userId, eventType, details, ipAddress, userAgent)` method
     - Implement DynamoDB write with 3 retries and exponential backoff (100ms, 200ms, 400ms base)
     - Emit structured JSON log to a dedicated SLF4J logger for CloudWatch
@@ -54,14 +54,14 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - CloudWatch log failure must NOT block DynamoDB write
     - _Requirements: 8.1, 8.2, 8.5, 8.6_
 
-  - [ ] 3.2 Write property test for AuditService (Property 12: Audit dual-write completeness)
+  - [x] 3.2 Write property test for AuditService (Property 12: Audit dual-write completeness)
     - **Property 12: Audit record dual-write completeness**
     - **Validates: Requirements 8.1, 8.2, 8.5**
     - Use jqwik to generate random audit events with varying details maps
     - Verify both DynamoDB write and CloudWatch structured log occur for each event
     - Verify exception is thrown when DynamoDB write fails after 3 retries
 
-  - [ ] 3.3 Implement ConsentService
+  - [x] 3.3 Implement ConsentService
     - Create `ConsentService` with methods: `grantConsent`, `revokeConsent`, `getConsents`, `hasActiveConsent`, `hasAllRequiredConsents`
     - Grant: upsert consent record (granted=true, new timestamp, version, IP)
     - Revoke: set granted=false, record revocation timestamp, preserve original grant fields
@@ -69,14 +69,14 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Log `CONSENT_GRANTED` / `CONSENT_REVOKED` audit events via AuditService
     - _Requirements: 6.1, 6.2, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-  - [ ] 3.4 Write property tests for ConsentService (Properties 9, 10, 11)
+  - [x] 3.4 Write property tests for ConsentService (Properties 9, 10, 11)
     - **Property 9: Consent grant round-trip and idempotence**
     - **Property 10: Consent gates recipe generation**
     - **Property 11: Invalid consent type rejection**
     - **Validates: Requirements 6.1, 6.2, 6.4, 6.5, 6.7, 6.8**
     - Use jqwik to test: grant/revoke sequences preserve state correctly, duplicate grants don't create duplicates, invalid types rejected
 
-  - [ ] 3.5 Implement AccountDeletionService
+  - [x] 3.5 Implement AccountDeletionService
     - Create `AccountDeletionService` with methods: `requestSoftDeletion`, `cancelDeletion`, `executeHardDeletion`, `processPendingDeletions`
     - Soft deletion: set status to PENDING_DELETION, scheduledDeletionDate = now + 30 days, log audit
     - Cancel: revert to ACTIVE if scheduledDeletionDate is in the future, log ACCOUNT_REACTIVATED
@@ -87,7 +87,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Scheduled job: log `SCHEDULED_DELETION_RUN` summary audit event
     - _Requirements: 1.1, 1.4, 1.5, 1.6, 1.7, 2.1–2.9, 3.1–3.5_
 
-  - [ ] 3.6 Write property tests for AccountDeletionService (Properties 1, 3, 4, 5)
+  - [x] 3.6 Write property tests for AccountDeletionService (Properties 1, 3, 4, 5)
     - **Property 1: Soft deletion state transition correctness**
     - **Property 3: Hard deletion completeness**
     - **Property 4: Partial deletion failure handling**
@@ -95,7 +95,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - **Validates: Requirements 1.1, 1.4, 1.5, 1.7, 2.1–2.9, 3.2, 3.3, 3.4**
     - Use jqwik with mocked AWS clients to verify all state transitions and data purge completeness
 
-  - [ ] 3.7 Implement DataExportService
+  - [x] 3.7 Implement DataExportService
     - Create `DataExportService` with methods: `exportJson`, `startZipExport`, `getExportStatus`
     - JSON export: synchronous, gather user profile + all recipes, return within 30 seconds
     - ZIP export: use `@Async`, include data.json + images from S3, upload ZIP to temp S3 location, return presigned URL valid 60 minutes
@@ -104,7 +104,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Log `DATA_EXPORT_REQUESTED` and `DATA_EXPORT_COMPLETED` audit events
     - _Requirements: 4.1–4.5, 5.1–5.8_
 
-  - [ ] 3.8 Write property tests for DataExportService (Properties 6, 7, 8)
+  - [x] 3.8 Write property tests for DataExportService (Properties 6, 7, 8)
     - **Property 6: Data export completeness (JSON)**
     - **Property 7: ZIP export content completeness**
     - **Property 8: Duplicate export prevention**

@@ -1,18 +1,23 @@
 package io.asbun.backend.repository;
 
 import io.asbun.backend.model.User;
+import io.asbun.backend.model.enums.AccountStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
+import software.amazon.awssdk.enhanced.dynamodb.model.ScanEnhancedRequest;
+import software.amazon.awssdk.enhanced.dynamodb.Expression;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Repository
 public class UserRepository {
@@ -51,5 +56,24 @@ public class UserRepository {
                 .updateExpression("ADD generateCallsUsed :inc")
                 .expressionAttributeValues(Map.of(":inc", AttributeValue.builder().n("1").build()))
                 .build());
+    }
+
+    public List<User> findPendingDeletions() {
+        Expression filterExpression = Expression.builder()
+                .expression("accountStatus = :pending OR accountStatus = :failed")
+                .expressionValues(Map.of(
+                        ":pending", AttributeValue.builder().s(AccountStatus.PENDING_DELETION.name()).build(),
+                        ":failed", AttributeValue.builder().s(AccountStatus.DELETION_FAILED.name()).build()
+                ))
+                .build();
+
+        ScanEnhancedRequest scanRequest = ScanEnhancedRequest.builder()
+                .filterExpression(filterExpression)
+                .build();
+
+        return table.scan(scanRequest)
+                .stream()
+                .flatMap(page -> page.items().stream())
+                .collect(Collectors.toList());
     }
 }

@@ -19,6 +19,7 @@ public class DataExportJson {
     private Instant exportedAt;
     private UserExportData user;
     private List<RecipeExportData> recipes;
+    private List<String> missingImages;
 
     @Data
     @Builder
