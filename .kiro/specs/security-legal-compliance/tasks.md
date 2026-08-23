@@ -186,29 +186,29 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - **Validates: Requirements 13.1, 13.2, 13.3, 13.5**
     - Use jqwik to generate invalid payloads and verify proper rejection
 
-- [ ] 6. Implement controllers
-  - [ ] 6.1 Create AccountController
+- [x] 6. Implement controllers
+  - [x] 6.1 Create AccountController
     - Create `AccountController` at `/api/account`
     - Endpoints: `POST /delete` (soft or immediate), `POST /cancel-deletion`, `GET /export?format=json`, `POST /export?format=zip`, `GET /export/status`, `GET /profile`
     - Add consent check to `RecipeController.generateRecipes` (verify AI_DATA_PROCESSING consent)
     - Add PENDING_DELETION check to `RecipeController.generateRecipes` (return 403)
     - _Requirements: 1.2, 1.3, 2.1, 4.1, 5.1, 5.4, 6.4, 6.5, 12.1_
 
-  - [ ] 6.2 Create ConsentController
+  - [x] 6.2 Create ConsentController
     - Create `ConsentController` at `/api/consent`
     - Endpoints: `POST /` (grant), `DELETE /{type}` (revoke), `GET /` (list all user consents)
     - Validate consent type in path variable
     - Extract IP address from request for consent records
     - _Requirements: 6.1, 6.2, 6.3, 6.7_
 
-  - [ ] 6.3 Update SecurityConfig for new endpoints
+  - [x] 6.3 Update SecurityConfig for new endpoints
     - Add `/api/consent`, `/api/account/**` to authenticated routes
     - Add `/privacy`, `/terms` to public routes (if backend serves static content)
     - Ensure the new controllers are accessible through the security filter chain
     - Wire RateLimitFilter before authentication in the filter chain
     - _Requirements: 9.6, 10.1, 11.1_
 
-  - [ ] 6.4 Write property test for pending deletion blocking writes (Property 2)
+  - [x] 6.4 Write property test for pending deletion blocking writes (Property 2)
     - **Property 2: Pending deletion blocks write operations**
     - **Validates: Requirements 1.2, 1.3**
     - Use jqwik to verify PENDING_DELETION users get 403 on recipe generation but can still read

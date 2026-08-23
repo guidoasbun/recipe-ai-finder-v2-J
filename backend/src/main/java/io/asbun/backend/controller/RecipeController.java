@@ -5,8 +5,11 @@ import io.asbun.backend.dto.GenerateRecipeResponse;
 import io.asbun.backend.dto.RecipeDto;
 import io.asbun.backend.dto.SaveRecipeRequest;
 import io.asbun.backend.exception.RateLimitExceededException;
+import io.asbun.backend.model.enums.AccountStatus;
+import io.asbun.backend.model.enums.ConsentType;
 import io.asbun.backend.repository.UserRepository;
 import io.asbun.backend.service.BedrockService;
+import io.asbun.backend.service.ConsentService;
 import io.asbun.backend.service.ImageSseService;
 import io.asbun.backend.service.RecipeService;
 import jakarta.validation.Valid;
@@ -21,6 +24,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Validated
@@ -33,6 +37,7 @@ public class RecipeController {
     private final BedrockService bedrockService;
     private final UserRepository userRepository;
     private final ImageSseService imageSseService;
+    private final ConsentService consentService;
 
     @Value("${testuser.email}")
     private String testEmail;
@@ -77,11 +82,30 @@ public class RecipeController {
     }
 
     @PostMapping("/generate")
-    public ResponseEntity<List<GenerateRecipeResponse>> generateRecipes(
+    public ResponseEntity<?> generateRecipes(
             @Valid @RequestBody GenerateRecipeRequest request,
             Authentication authentication) {
         String userId = getUserId(authentication);
         String email = getEmail(authentication);
+
+        // Check if account is pending deletion
+        var userOpt = userRepository.findById(userId);
+        if (userOpt.isPresent() && userOpt.get().getAccountStatus() == AccountStatus.PENDING_DELETION) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of(
+                            "status", 403,
+                            "message", "Account is pending deletion",
+                            "timestamp", java.time.Instant.now().toString()));
+        }
+
+        // Check AI_DATA_PROCESSING consent
+        if (!consentService.hasActiveConsent(userId, ConsentType.AI_DATA_PROCESSING)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of(
+                            "status", 403,
+                            "message", "AI data processing consent is required",
+                            "timestamp", java.time.Instant.now().toString()));
+        }
 
         if (testEmail.equals(email)) {
             int used = userRepository.findById(userId)
