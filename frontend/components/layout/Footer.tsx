@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Mail } from "lucide-react";
 
 function GitHubIcon({ className }: { className?: string }) {
@@ -40,6 +41,18 @@ export default function Footer() {
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
         <p className="text-sm text-gray-400">Built by Guido Asbun</p>
         <nav className="flex items-center gap-5">
+          <Link
+            href="/privacy"
+            className="text-sm text-gray-500 transition-colors hover:text-[#003DA5]"
+          >
+            Privacy Policy
+          </Link>
+          <Link
+            href="/terms"
+            className="text-sm text-gray-500 transition-colors hover:text-[#003DA5]"
+          >
+            Terms of Service
+          </Link>
           {LINKS.map(({ href, icon: Icon, label }) => (
             <a
               key={label}

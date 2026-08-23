@@ -213,30 +213,30 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - **Validates: Requirements 1.2, 1.3**
     - Use jqwik to verify PENDING_DELETION users get 403 on recipe generation but can still read
 
-- [ ] 7. Checkpoint - Ensure all backend tests pass
+- [x] 7. Checkpoint - Ensure all backend tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. Implement frontend - consent and legal pages
-  - [ ] 8.1 Create API client functions for compliance endpoints
+- [x] 8. Implement frontend - consent and legal pages
+  - [x] 8.1 Create API client functions for compliance endpoints
     - Add API functions for: consent grant/revoke/list, account delete/cancel, export JSON/ZIP/status, profile fetch
     - Follow existing patterns in the `lib/` directory
     - _Requirements: 4.1, 5.1, 6.1, 6.2, 12.3, 12.4_
 
-  - [ ] 8.2 Create Privacy Policy page at `/privacy`
+  - [x] 8.2 Create Privacy Policy page at `/privacy`
     - Create `/app/(auth)/privacy/page.tsx` (or a public route group)
     - Include all required disclosures: data collected, purposes, third-party processors, retention periods, user rights, DPO placeholder
     - Display last-updated date (ISO 8601) and version identifier
     - Make publicly accessible without authentication
     - _Requirements: 10.1–10.7_
 
-  - [ ] 8.3 Create Terms of Service page at `/terms`
+  - [x] 8.3 Create Terms of Service page at `/terms`
     - Create `/app/(auth)/terms/page.tsx` (or a public route group)
     - Include: acceptable use, responsibilities, IP rights, liability, termination, jurisdiction placeholder
     - Display last-updated date (ISO 8601) and semantic version
     - Make publicly accessible without authentication
     - _Requirements: 11.1–11.5_
 
-  - [ ] 8.4 Add footer links to Privacy Policy and Terms of Service
+  - [x] 8.4 Add footer links to Privacy Policy and Terms of Service
     - Add links to `/privacy` and `/terms` in the footer of both public and protected layouts
     - Ensure links are labeled "Privacy Policy" and "Terms of Service"
     - _Requirements: 10.8, 11.4_
