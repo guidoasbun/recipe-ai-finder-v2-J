@@ -270,8 +270,8 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
 - [x] 10. Checkpoint - Ensure frontend and backend are wired together
   - Ensure all tests pass, ask the user if questions arise.
 
-- [~] 11. Integration tests
-  - [ ] 11.1 Write integration tests for full compliance lifecycle
+- [x] 11. Integration tests
+  - [x] 11.1 Write integration tests for full compliance lifecycle
     - Test full account lifecycle: create → consent → use → soft delete → cancel → hard delete → verify clean
     - Test consent flow blocks recipe generation
     - Test rate limiting returns 429 with Retry-After header
@@ -282,7 +282,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Use Spring Boot test with mocked AWS clients
     - _Requirements: 16.1–16.7_
 
-- [ ] 12. Final checkpoint - Ensure all tests pass
+- [x] 12. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
