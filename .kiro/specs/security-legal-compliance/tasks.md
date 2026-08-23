@@ -267,10 +267,10 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Provide cancel button that calls cancel-deletion endpoint
     - _Requirements: 12.7_
 
-- [ ] 10. Checkpoint - Ensure frontend and backend are wired together
+- [x] 10. Checkpoint - Ensure frontend and backend are wired together
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Integration tests
+- [~] 11. Integration tests
   - [ ] 11.1 Write integration tests for full compliance lifecycle
     - Test full account lifecycle: create → consent → use → soft delete → cancel → hard delete → verify clean
     - Test consent flow blocks recipe generation
