@@ -91,6 +91,8 @@ public class AccountController {
                 .email(user.getEmail())
                 .username(user.getUsername())
                 .createdAt(user.getCreatedAt())
+                .accountStatus(user.getAccountStatus() != null ? user.getAccountStatus().name() : null)
+                .scheduledDeletionDate(user.getScheduledDeletionDate())
                 .build();
 
         return ResponseEntity.ok(profile);

@@ -17,4 +17,6 @@ public class UserDto {
     private String email;
     private String username;
     private Instant createdAt;
+    private String accountStatus;
+    private Instant scheduledDeletionDate;
 }

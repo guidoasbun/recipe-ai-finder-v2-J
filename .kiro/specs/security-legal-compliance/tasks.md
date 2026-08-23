@@ -241,8 +241,8 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Ensure links are labeled "Privacy Policy" and "Terms of Service"
     - _Requirements: 10.8, 11.4_
 
-- [ ] 9. Implement frontend - consent modal and account settings
-  - [ ] 9.1 Create ConsentModal component
+- [x] 9. Implement frontend - consent modal and account settings
+  - [x] 9.1 Create ConsentModal component
     - Create blocking overlay modal in the protected layout
     - Three checkboxes: ToS, Privacy Policy, AI Data Processing
     - Links to `/privacy` and `/terms` pages
@@ -253,7 +253,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Check consent status on protected layout mount; show modal if any required consent missing
     - _Requirements: 7.1–7.7_
 
-  - [ ] 9.2 Create Account Settings page at `/app/(protected)/account/page.tsx`
+  - [x] 9.2 Create Account Settings page at `/app/(protected)/account/page.tsx`
     - Profile section: display email, username, createdAt
     - Consent management: show granted/revoked status for each type; allow revocation of AI_DATA_PROCESSING with warning
     - Data export section: JSON download button, ZIP export with status indicator
@@ -261,7 +261,7 @@ This plan implements a comprehensive GDPR/CCPA/LGPD compliance package for the R
     - Add navigation link in the authenticated user menu
     - _Requirements: 12.1–12.10_
 
-  - [ ] 9.3 Create PendingDeletionBanner component
+  - [x] 9.3 Create PendingDeletionBanner component
     - Persistent banner in protected layout when account status is PENDING_DELETION
     - Show scheduled permanent deletion date
     - Provide cancel button that calls cancel-deletion endpoint

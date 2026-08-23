@@ -41,6 +41,8 @@ export interface UserProfile {
   email: string;
   username: string;
   createdAt: string;
+  accountStatus: string | null;
+  scheduledDeletionDate: string | null;
 }
 
 export interface RecipeExportData {
