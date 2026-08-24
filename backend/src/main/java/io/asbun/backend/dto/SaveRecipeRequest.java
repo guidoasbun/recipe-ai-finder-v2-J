@@ -1,5 +1,6 @@
 package io.asbun.backend.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.asbun.backend.model.enums.BedrockModel;
 import io.asbun.backend.model.enums.ImageModel;
 import jakarta.validation.constraints.NotBlank;
@@ -11,6 +12,7 @@ import org.hibernate.validator.constraints.URL;
 import java.util.List;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class SaveRecipeRequest {
 
     @URL

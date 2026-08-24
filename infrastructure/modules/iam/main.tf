@@ -78,6 +78,14 @@ resource "aws_iam_policy" "task_policy" {
           "ssm:GetParameter"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:AdminDeleteUser",
+          "cognito-idp:AdminDisableUser"
+        ]
+        Resource = var.cognito_user_pool_arn
       }
     ]
   })

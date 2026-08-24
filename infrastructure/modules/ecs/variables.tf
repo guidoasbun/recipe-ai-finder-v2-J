@@ -92,3 +92,18 @@ variable "google_api_key_arn" {
   type        = string
   description = "Secrets Manager ARN for the Google AI Studio API key"
 }
+
+variable "dynamodb_consent_table" {
+  type        = string
+  description = "DynamoDB table name for consent records"
+}
+
+variable "dynamodb_audit_table" {
+  type        = string
+  description = "DynamoDB table name for audit log records"
+}
+
+variable "cognito_user_pool_id" {
+  type        = string
+  description = "Cognito User Pool ID for admin operations"
+}

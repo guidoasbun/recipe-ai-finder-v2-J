@@ -1,0 +1,672 @@
+{
+  "pbtResults": {
+    "3.2 Write property test for AuditService (Property 12: Audit dual-write completeness)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787178099443
+    },
+    "3.4 Write property tests for ConsentService (Properties 9, 10, 11)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787178095318
+    },
+    "3.8 Write property tests for DataExportService (Properties 6, 7, 8)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787178533171
+    },
+    "3.6 Write property tests for AccountDeletionService (Properties 1, 3, 4, 5)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787178591243
+    },
+    "5.2 Write property tests for RateLimitFilter (Properties 13, 14)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787200663309
+    },
+    "5.4 Write property tests for security headers and CORS (Properties 16, 17)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787202970396
+    },
+    "5.6 Write property test for input validation (Property 15)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787204699215
+    },
+    "6.4 Write property test for pending deletion blocking writes (Property 2)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787458368974
+    }
+  },
+  "executionHistory": {
+    "1.1 Add compliance dependencies to pom.xml and create enums": [
+      {
+        "executionId": "b8b4f875-4648-4efd-8895-b2169c43a2b9",
+        "chatSessionId": "sess_9d481422-f515-4cb1-a404-1813c8f95a29",
+        "timestamp": 1787088170905
+      },
+      {
+        "executionId": "b8b4f875-4648-4efd-8895-b2169c43a2b9",
+        "chatSessionId": "sess_9d481422-f515-4cb1-a404-1813c8f95a29",
+        "timestamp": 1787088375252
+      }
+    ],
+    "1.2 Extend the User model and create Consent and AuditEvent models": [
+      {
+        "executionId": "d2fff00f-acdf-45c1-8e83-a7b2cadb9fa5",
+        "chatSessionId": "sess_0e32fd88-4670-44cb-8866-52b43173801c",
+        "timestamp": 1787165983880
+      },
+      {
+        "executionId": "d2fff00f-acdf-45c1-8e83-a7b2cadb9fa5",
+        "chatSessionId": "sess_0e32fd88-4670-44cb-8866-52b43173801c",
+        "timestamp": 1787170717583
+      }
+    ],
+    "1.3 Create request/response DTOs for compliance endpoints": [
+      {
+        "executionId": "47c2299b-8765-4a68-a654-b7cd82e27982",
+        "chatSessionId": "sess_5660ae16-8bb0-4247-bfe7-b1f052ec108c",
+        "timestamp": 1787171183381
+      },
+      {
+        "executionId": "47c2299b-8765-4a68-a654-b7cd82e27982",
+        "chatSessionId": "sess_5660ae16-8bb0-4247-bfe7-b1f052ec108c",
+        "timestamp": 1787171368594
+      }
+    ],
+    "1. Add new dependencies and create enums and models": [
+      {
+        "executionId": "47c2299b-8765-4a68-a654-b7cd82e27982",
+        "chatSessionId": "sess_5660ae16-8bb0-4247-bfe7-b1f052ec108c",
+        "timestamp": 1787171368630
+      }
+    ],
+    "2.1 Create ConsentRepository": [
+      {
+        "executionId": "2010c774-2fda-4e25-abd0-a6d25f6d0f34",
+        "chatSessionId": "sess_75a872ff-d3b6-4ecc-a71d-b1193cc93c9e",
+        "timestamp": 1787172462068
+      },
+      {
+        "executionId": "2010c774-2fda-4e25-abd0-a6d25f6d0f34",
+        "chatSessionId": "sess_75a872ff-d3b6-4ecc-a71d-b1193cc93c9e",
+        "timestamp": 1787173066569
+      }
+    ],
+    "2.2 Create AuditRepository": [
+      {
+        "executionId": "8673cf8b-792f-4d84-8248-c1d83c78cd5a",
+        "chatSessionId": "sess_87500482-42bd-4e4f-846e-72336a2c3966",
+        "timestamp": 1787173323928
+      },
+      {
+        "executionId": "8673cf8b-792f-4d84-8248-c1d83c78cd5a",
+        "chatSessionId": "sess_87500482-42bd-4e4f-846e-72336a2c3966",
+        "timestamp": 1787173533111
+      }
+    ],
+    "2. Implement repositories": [
+      {
+        "executionId": "8673cf8b-792f-4d84-8248-c1d83c78cd5a",
+        "chatSessionId": "sess_87500482-42bd-4e4f-846e-72336a2c3966",
+        "timestamp": 1787173533147
+      }
+    ],
+    "3.1 Implement AuditService with dual-write and retry logic": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945077
+      },
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173949822
+      },
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787176574823
+      }
+    ],
+    "3.2 Write property test for AuditService (Property 12: Audit dual-write completeness)": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945111
+      },
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787176580158
+      }
+    ],
+    "3.3 Implement ConsentService": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945144
+      },
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173950640
+      },
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787176575598
+      }
+    ],
+    "3.4 Write property tests for ConsentService (Properties 9, 10, 11)": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945187
+      },
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787176581007
+      }
+    ],
+    "3.5 Implement AccountDeletionService": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945213
+      },
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787176581735
+      }
+    ],
+    "3.6 Write property tests for AccountDeletionService (Properties 1, 3, 4, 5)": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945244
+      }
+    ],
+    "3.7 Implement DataExportService": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945269
+      },
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787176582561
+      }
+    ],
+    "3.8 Write property tests for DataExportService (Properties 6, 7, 8)": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945301
+      }
+    ],
+    "4. Checkpoint - Ensure all service tests pass": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945328
+      }
+    ],
+    "5.1 Implement RateLimitFilter with per-user token bucket": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945352
+      },
+      {
+        "executionId": "44e1a6e2-1f1a-4a86-b3e4-8a7e9bb29f0c",
+        "chatSessionId": "sess_d3a092f5-676f-4c33-9fc7-a30c692a0cff",
+        "timestamp": 1787198757794
+      },
+      {
+        "executionId": "44e1a6e2-1f1a-4a86-b3e4-8a7e9bb29f0c",
+        "chatSessionId": "sess_d3a092f5-676f-4c33-9fc7-a30c692a0cff",
+        "timestamp": 1787199971149
+      }
+    ],
+    "5.2 Write property tests for RateLimitFilter (Properties 13, 14)": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945377
+      },
+      {
+        "executionId": "1e3f76f6-7d06-404e-a01a-0455c1389ec5",
+        "chatSessionId": "sess_a4076ddf-5c5b-47e3-9b16-8fb2eb2bfa24",
+        "timestamp": 1787200028235
+      },
+      {
+        "executionId": "1e3f76f6-7d06-404e-a01a-0455c1389ec5",
+        "chatSessionId": "sess_a4076ddf-5c5b-47e3-9b16-8fb2eb2bfa24",
+        "timestamp": 1787200683936
+      }
+    ],
+    "5.3 Add security headers and tighten CORS configuration": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945401
+      },
+      {
+        "executionId": "94a3f1b4-ee80-4077-9307-5847615ead73",
+        "chatSessionId": "sess_35c3e1cc-5f1d-4473-bf24-a79808938e70",
+        "timestamp": 1787200703066
+      },
+      {
+        "executionId": "94a3f1b4-ee80-4077-9307-5847615ead73",
+        "chatSessionId": "sess_35c3e1cc-5f1d-4473-bf24-a79808938e70",
+        "timestamp": 1787202377131
+      }
+    ],
+    "5.4 Write property tests for security headers and CORS (Properties 16, 17)": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945425
+      },
+      {
+        "executionId": "8057a150-98fe-4a93-a1a7-92274214fc7c",
+        "chatSessionId": "sess_fbb35434-c477-478e-b1a5-b1ffd011d58e",
+        "timestamp": 1787202453241
+      },
+      {
+        "executionId": "8057a150-98fe-4a93-a1a7-92274214fc7c",
+        "chatSessionId": "sess_fbb35434-c477-478e-b1a5-b1ffd011d58e",
+        "timestamp": 1787203141781
+      }
+    ],
+    "5.5 Add input validation to all request DTOs and controllers": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945449
+      },
+      {
+        "executionId": "e3253d74-6408-455b-8979-201ea7eef159",
+        "chatSessionId": "sess_aeedeefb-0e9c-49e0-84ab-c61e1a53e766",
+        "timestamp": 1787203163885
+      },
+      {
+        "executionId": "e3253d74-6408-455b-8979-201ea7eef159",
+        "chatSessionId": "sess_aeedeefb-0e9c-49e0-84ab-c61e1a53e766",
+        "timestamp": 1787203639353
+      }
+    ],
+    "5.6 Write property test for input validation (Property 15)": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945478
+      },
+      {
+        "executionId": "34f86c93-8fab-4f90-a49c-0b2378e0f3bb",
+        "chatSessionId": "sess_e5352fac-3863-4217-9875-c991ac55b1ef",
+        "timestamp": 1787203676319
+      },
+      {
+        "executionId": "34f86c93-8fab-4f90-a49c-0b2378e0f3bb",
+        "chatSessionId": "sess_e5352fac-3863-4217-9875-c991ac55b1ef",
+        "timestamp": 1787204717146
+      }
+    ],
+    "6.1 Create AccountController": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945510
+      },
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787443426504
+      },
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787447712854
+      }
+    ],
+    "6.2 Create ConsentController": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945535
+      },
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787443427171
+      },
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787447713511
+      }
+    ],
+    "6.3 Update SecurityConfig for new endpoints": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945561
+      },
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787443427923
+      },
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787447714400
+      }
+    ],
+    "6.4 Write property test for pending deletion blocking writes (Property 2)": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945586
+      },
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787447718291
+      },
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787458382697
+      }
+    ],
+    "7. Checkpoint - Ensure all backend tests pass": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945611
+      }
+    ],
+    "8.1 Create API client functions for compliance endpoints": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945636
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181200
+      },
+      {
+        "executionId": "688a5e4b-6bbb-4d5f-9532-6572e6a72d3c",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527248067
+      },
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527336228
+      },
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527435593
+      }
+    ],
+    "8.2 Create Privacy Policy page at `/privacy`": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945661
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181236
+      },
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527439341
+      },
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527613670
+      }
+    ],
+    "8.3 Create Terms of Service page at `/terms`": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945687
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181277
+      },
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527440059
+      },
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527614442
+      }
+    ],
+    "8.4 Add footer links to Privacy Policy and Terms of Service": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945711
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181312
+      },
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527617892
+      },
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527712025
+      }
+    ],
+    "9.1 Create ConsentModal component": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945738
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181343
+      },
+      {
+        "executionId": "11d68548-fa28-4366-bcbb-4930dca8542a",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527750359
+      },
+      {
+        "executionId": "391fbbf0-0a1d-4a81-81e5-e2160a81b686",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527803892
+      },
+      {
+        "executionId": "391fbbf0-0a1d-4a81-81e5-e2160a81b686",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787528217144
+      }
+    ],
+    "9.2 Create Account Settings page at `/app/(protected)/account/page.tsx`": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945769
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181369
+      },
+      {
+        "executionId": "11d68548-fa28-4366-bcbb-4930dca8542a",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527750397
+      },
+      {
+        "executionId": "391fbbf0-0a1d-4a81-81e5-e2160a81b686",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527804912
+      },
+      {
+        "executionId": "391fbbf0-0a1d-4a81-81e5-e2160a81b686",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787528217971
+      }
+    ],
+    "9.3 Create PendingDeletionBanner component": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945794
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181394
+      },
+      {
+        "executionId": "11d68548-fa28-4366-bcbb-4930dca8542a",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527750424
+      },
+      {
+        "executionId": "391fbbf0-0a1d-4a81-81e5-e2160a81b686",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527805942
+      },
+      {
+        "executionId": "391fbbf0-0a1d-4a81-81e5-e2160a81b686",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787528218821
+      }
+    ],
+    "10. Checkpoint - Ensure frontend and backend are wired together": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945817
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181426
+      },
+      {
+        "executionId": "11d68548-fa28-4366-bcbb-4930dca8542a",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527750455
+      },
+      {
+        "executionId": "7e18c4b2-f18a-4155-bd5c-0bdb453e7e5f",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787528276866
+      },
+      {
+        "executionId": "7e18c4b2-f18a-4155-bd5c-0bdb453e7e5f",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787528394738
+      }
+    ],
+    "11.1 Write integration tests for full compliance lifecycle": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945852
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181458
+      },
+      {
+        "executionId": "11d68548-fa28-4366-bcbb-4930dca8542a",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527750479
+      },
+      {
+        "executionId": "dfe2ee57-f4a5-47d8-b1bf-c00e0d9a8c26",
+        "chatSessionId": "sess_f7bb6264-7c95-447d-b626-18d5a41f9aac",
+        "timestamp": 1787528423564
+      },
+      {
+        "executionId": "dfe2ee57-f4a5-47d8-b1bf-c00e0d9a8c26",
+        "chatSessionId": "sess_f7bb6264-7c95-447d-b626-18d5a41f9aac",
+        "timestamp": 1787528882783
+      }
+    ],
+    "12. Final checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "9aab8f43-dc73-4234-856f-e3dc1c40f1d5",
+        "chatSessionId": "sess_ad0cd5e7-9bc0-4d3e-afd4-bba1e1003b62",
+        "timestamp": 1787173945877
+      },
+      {
+        "executionId": "ce41b7fb-aabf-4ca9-81b9-47ce82628d15",
+        "chatSessionId": "sess_961e60b3-3efe-4812-9813-6d5cb17e2f80",
+        "timestamp": 1787527181485
+      },
+      {
+        "executionId": "11d68548-fa28-4366-bcbb-4930dca8542a",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787527750506
+      }
+    ],
+    "5. Implement filters and security hardening": [
+      {
+        "executionId": "34f86c93-8fab-4f90-a49c-0b2378e0f3bb",
+        "chatSessionId": "sess_e5352fac-3863-4217-9875-c991ac55b1ef",
+        "timestamp": 1787204717172
+      }
+    ],
+    "6. Implement controllers": [
+      {
+        "executionId": "6d8eee12-573f-4b07-897d-007391cdf040",
+        "chatSessionId": "sess_1107b4ec-d46f-4f27-976e-8fd6033a4555",
+        "timestamp": 1787458382724
+      }
+    ],
+    "8. Implement frontend - consent and legal pages": [
+      {
+        "executionId": "bb90cb5c-e8f0-440b-8eb9-f826e2572879",
+        "chatSessionId": "sess_b9429edd-fb21-42bb-a80a-117275f34454",
+        "timestamp": 1787527712061
+      }
+    ],
+    "9. Implement frontend - consent modal and account settings": [
+      {
+        "executionId": "391fbbf0-0a1d-4a81-81e5-e2160a81b686",
+        "chatSessionId": "sess_053bb40b-cdd8-4492-9dc2-9a64cf2180b3",
+        "timestamp": 1787528218860
+      }
+    ],
+    "11. Integration tests": [
+      {
+        "executionId": "dfe2ee57-f4a5-47d8-b1bf-c00e0d9a8c26",
+        "chatSessionId": "sess_f7bb6264-7c95-447d-b626-18d5a41f9aac",
+        "timestamp": 1787528882830
+      }
+    ]
+  }
+}

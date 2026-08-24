@@ -1,5 +1,6 @@
 package io.asbun.backend.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.asbun.backend.model.enums.BedrockModel;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -9,6 +10,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class GenerateRecipeRequest {
 
     @NotNull

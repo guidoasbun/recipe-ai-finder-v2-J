@@ -10,8 +10,9 @@ module "ecr" {
 }
 
 module "iam" {
-  source       = "./modules/iam"
-  project_name = var.project_name
+  source                = "./modules/iam"
+  project_name          = var.project_name
+  cognito_user_pool_arn = module.cognito.user_pool_arn
 }
 
 module "dynamodb" {
@@ -61,10 +62,13 @@ module "ecs" {
   frontend_tg_arn        = module.alb.frontend_tg_arn
   dynamodb_users_table   = module.dynamodb.users_table_name
   dynamodb_recipes_table = module.dynamodb.recipes_table_name
+  dynamodb_consent_table = module.dynamodb.consent_table_name
+  dynamodb_audit_table   = module.dynamodb.audit_log_table_name
   s3_bucket              = module.s3.bucket_name
   cognito_issuer_uri     = module.cognito.issuer_uri
   cognito_domain         = module.cognito.cognito_domain
   cognito_client_id      = module.cognito.client_id
+  cognito_user_pool_id   = module.cognito.user_pool_id
   domain_name            = var.domain_name
   ecs_security_group_id  = module.networking.ecs_security_group_id
   stability_api_key_arn  = var.stability_api_key_arn

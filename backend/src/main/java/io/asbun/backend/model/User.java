@@ -1,5 +1,6 @@
 package io.asbun.backend.model;
 
+import io.asbun.backend.model.enums.AccountStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,10 +22,14 @@ public class User {
     private String username;
     private Instant createdAt;
     private Integer generateCallsUsed;
+    @Builder.Default
+    private AccountStatus accountStatus = AccountStatus.ACTIVE;
+    private Instant deletionRequestedAt;
+    private Instant scheduledDeletionDate;
 
     @DynamoDbPartitionKey
     public String getUserId() {
         return userId;
     }
-    
+
 }

@@ -13,3 +13,7 @@ output "cognito_domain" {
 output "issuer_uri" {
   value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.main.id}"
 }
+
+output "user_pool_arn" {
+  value = aws_cognito_user_pool.main.arn
+}
