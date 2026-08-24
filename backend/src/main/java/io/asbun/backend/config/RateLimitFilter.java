@@ -124,7 +124,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/account/delete") || path.startsWith("/api/account/cancel-deletion")) {
             return RateLimitCategory.DELETION;
         }
-        if (path.startsWith("/api/account/export")) {
+        if (path.startsWith("/api/account/export") && !path.startsWith("/api/account/export/status")) {
             return RateLimitCategory.EXPORT;
         }
         return RateLimitCategory.GENERAL;

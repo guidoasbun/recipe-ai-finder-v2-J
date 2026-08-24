@@ -435,7 +435,7 @@ export default function AccountSettingsPage() {
               value={hardDeleteConfirmation}
               onChange={(e) => setHardDeleteConfirmation(e.target.value)}
               placeholder="Type DELETE here"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+              className="w-full text-gray-900 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
               autoFocus
             />
             <div className="mt-4 flex justify-end gap-3">

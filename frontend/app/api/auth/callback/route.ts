@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setSession } from "@/lib/session";
 import { cookies } from "next/headers";
-import { COGNITO_DOMAIN, COGNITO_CLIENT_ID, COGNITO_REDIRECT_URI } from "@/lib/constants";
+import { COGNITO_DOMAIN, COGNITO_CLIENT_ID, COGNITO_REDIRECT_URI, BACKEND_URL } from "@/lib/constants";
 
 const APP_ORIGIN = new URL(COGNITO_REDIRECT_URI).origin;
 
@@ -28,6 +28,19 @@ export async function GET(request: NextRequest) {
 
   const { id_token, refresh_token } = await tokenRes.json();
   await setSession(id_token);
+
+  // Sync user to backend DynamoDB (upsert)
+  try {
+    await fetch(`${BACKEND_URL}/api/auth/user`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${id_token}`,
+        "Content-Type": "application/json",
+      },
+    });
+  } catch {
+    // Non-fatal: user sync failed but login can proceed
+  }
 
   if (refresh_token) {
     const cookieStore = await cookies();

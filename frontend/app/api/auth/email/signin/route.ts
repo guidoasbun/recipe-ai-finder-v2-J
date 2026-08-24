@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { setSession } from "@/lib/session";
-import { COGNITO_CLIENT_ID } from "@/lib/constants";
+import { COGNITO_CLIENT_ID, BACKEND_URL } from "@/lib/constants";
 import { cognitoPost } from "@/lib/cognito";
 import { isValidEmail } from "@/lib/validation";
 
@@ -59,6 +59,19 @@ export async function POST(request: NextRequest) {
 
   const result = data.AuthenticationResult as Record<string, string>;
   await setSession(result.IdToken);
+
+  // Sync user to backend DynamoDB (upsert)
+  try {
+    await fetch(`${BACKEND_URL}/api/auth/user`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${result.IdToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  } catch {
+    // Non-fatal: user sync failed but login can proceed
+  }
 
   if (result.RefreshToken) {
     const cookieStore = await cookies();
