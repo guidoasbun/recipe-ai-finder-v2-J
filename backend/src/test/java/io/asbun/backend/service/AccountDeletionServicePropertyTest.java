@@ -4,6 +4,7 @@ import io.asbun.backend.model.Recipe;
 import io.asbun.backend.model.User;
 import io.asbun.backend.model.enums.AccountStatus;
 import io.asbun.backend.model.enums.AuditEventType;
+import io.asbun.backend.repository.ConsentRepository;
 import io.asbun.backend.repository.RecipeRepository;
 import io.asbun.backend.repository.UserRepository;
 import net.jqwik.api.*;
@@ -120,11 +121,12 @@ class AccountDeletionServicePropertyTest {
 
     private AccountDeletionService createService(UserRepository userRepository,
                                                   RecipeRepository recipeRepository,
+                                                  ConsentRepository consentRepository,
                                                   S3Service s3Service,
                                                   AuditService auditService,
                                                   CognitoIdentityProviderClient cognitoClient) {
         AccountDeletionService service = new AccountDeletionService(
-                userRepository, recipeRepository, s3Service, auditService, cognitoClient);
+                userRepository, recipeRepository, consentRepository, s3Service, auditService, cognitoClient);
         ReflectionTestUtils.setField(service, "userPoolId", USER_POOL_ID);
         return service;
     }
@@ -155,7 +157,7 @@ class AccountDeletionServicePropertyTest {
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
         AccountDeletionService service = createService(
-                userRepository, recipeRepository, s3Service, auditService, cognitoClient);
+                userRepository, recipeRepository, mock(ConsentRepository.class), s3Service, auditService, cognitoClient);
 
         Instant beforeCall = Instant.now();
 
@@ -235,7 +237,7 @@ class AccountDeletionServicePropertyTest {
                 .thenReturn(AdminDeleteUserResponse.builder().build());
 
         AccountDeletionService service = createService(
-                userRepository, recipeRepository, s3Service, auditService, cognitoClient);
+                userRepository, recipeRepository, mock(ConsentRepository.class), s3Service, auditService, cognitoClient);
 
         // Act
         service.executeHardDeletion(userId);
@@ -326,7 +328,7 @@ class AccountDeletionServicePropertyTest {
                 .when(s3Service).deleteImage(any());
 
         AccountDeletionService service = createService(
-                userRepository, recipeRepository, s3Service, auditService, cognitoClient);
+                userRepository, recipeRepository, mock(ConsentRepository.class), s3Service, auditService, cognitoClient);
 
         // Act & Assert - RuntimeException is thrown
         assertThatThrownBy(() -> service.executeHardDeletion(userId))
@@ -383,7 +385,7 @@ class AccountDeletionServicePropertyTest {
                 .when(recipeRepository).delete(any());
 
         AccountDeletionService service = createService(
-                userRepository, recipeRepository, s3Service, auditService, cognitoClient);
+                userRepository, recipeRepository, mock(ConsentRepository.class), s3Service, auditService, cognitoClient);
 
         // Act & Assert - RuntimeException is thrown
         assertThatThrownBy(() -> service.executeHardDeletion(userId))
@@ -433,7 +435,7 @@ class AccountDeletionServicePropertyTest {
                 .thenReturn(AdminDeleteUserResponse.builder().build());
 
         AccountDeletionService service = createService(
-                userRepository, recipeRepository, s3Service, auditService, cognitoClient);
+                userRepository, recipeRepository, mock(ConsentRepository.class), s3Service, auditService, cognitoClient);
 
         // Identify which users should be processed
         List<User> overdueUsers = allUsers.stream()

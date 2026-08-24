@@ -90,7 +90,7 @@ class AuditServicePropertyTest {
         AuditRepository mockRepository = mock(AuditRepository.class);
         when(mockRepository.save(any(AuditEvent.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        AuditService auditService = new AuditService(mockRepository);
+        AuditService auditService = new AuditService(mockRepository, new com.fasterxml.jackson.databind.ObjectMapper());
 
         Instant beforeCall = Instant.now();
 
@@ -151,12 +151,12 @@ class AuditServicePropertyTest {
         RuntimeException simulatedFailure = new RuntimeException("DynamoDB write failed after retries");
         when(mockRepository.save(any(AuditEvent.class))).thenThrow(simulatedFailure);
 
-        AuditService auditService = new AuditService(mockRepository);
+        AuditService auditService = new AuditService(mockRepository, new com.fasterxml.jackson.databind.ObjectMapper());
 
         // Act & Assert - exception propagates
         assertThatThrownBy(() -> auditService.logEvent(userId, eventType, details, ipAddress, userAgent))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("DynamoDB write failed after retries");
+                .hasMessageContaining("Failed to persist audit event after 3 attempts");
 
         // Verify save was attempted
         verify(mockRepository, times(1)).save(any(AuditEvent.class));

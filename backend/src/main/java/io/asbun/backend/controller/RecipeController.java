@@ -88,9 +88,11 @@ public class RecipeController {
         String userId = getUserId(authentication);
         String email = getEmail(authentication);
 
-        // Check if account is pending deletion
+        // Check if account is pending deletion or failed deletion
         var userOpt = userRepository.findById(userId);
-        if (userOpt.isPresent() && userOpt.get().getAccountStatus() == AccountStatus.PENDING_DELETION) {
+        if (userOpt.isPresent()
+                && (userOpt.get().getAccountStatus() == AccountStatus.PENDING_DELETION
+                    || userOpt.get().getAccountStatus() == AccountStatus.DELETION_FAILED)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of(
                             "status", 403,

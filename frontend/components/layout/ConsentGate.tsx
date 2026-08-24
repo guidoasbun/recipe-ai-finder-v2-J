@@ -63,10 +63,9 @@ export default function ConsentGate({ children }: { children: React.ReactNode })
     );
   }
 
-  return (
-    <>
-      {needsConsent && <ConsentModal onConsentsGranted={handleConsentsGranted} />}
-      {children}
-    </>
-  );
+  if (needsConsent) {
+    return <ConsentModal onConsentsGranted={handleConsentsGranted} />;
+  }
+
+  return <>{children}</>;
 }

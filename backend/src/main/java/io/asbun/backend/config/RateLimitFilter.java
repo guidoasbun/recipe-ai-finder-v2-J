@@ -187,14 +187,34 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     /**
      * Extract the client IP address from the request.
-     * Checks X-Forwarded-For header first (for proxied requests), then falls back to remote address.
+     * <p>
+     * Uses the rightmost IP from X-Forwarded-For, which is the address observed by the
+     * last trusted proxy (e.g. the ALB). This prevents clients from spoofing arbitrary IPs
+     * by prepending values to the header. Falls back to the remote address when the header
+     * is absent.
+     * <p>
+     * The returned value is truncated to 45 characters (max length of an IPv6 address)
+     * to prevent unbounded key growth in ipBuckets.
      */
     private String getClientIp(HttpServletRequest request) {
         String xForwardedFor = request.getHeader("X-Forwarded-For");
         if (xForwardedFor != null && !xForwardedFor.isBlank()) {
-            // Take the first IP in the chain (original client)
-            return xForwardedFor.split(",")[0].trim();
+            // Take the rightmost (last) IP — the one appended by the trusted proxy (ALB)
+            String[] ips = xForwardedFor.split(",");
+            String clientIp = ips[ips.length - 1].trim();
+            return sanitizeIp(clientIp);
         }
-        return request.getRemoteAddr();
+        return sanitizeIp(request.getRemoteAddr());
+    }
+
+    /**
+     * Truncates the IP string to prevent unbounded map key sizes from malformed headers.
+     */
+    private String sanitizeIp(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return "unknown";
+        }
+        // Max valid IP length is 45 chars (IPv6 mapped IPv4: "::ffff:255.255.255.255" or full IPv6)
+        return ip.length() > 45 ? ip.substring(0, 45) : ip;
     }
 }

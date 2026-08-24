@@ -118,8 +118,11 @@ class DataExportServicePropertyTest {
                                             S3Presigner s3Presigner,
                                             AuditService auditService,
                                             ObjectMapper objectMapper) {
-        DataExportService service = new DataExportService(
+        DataExportAsyncWorker asyncWorker = new DataExportAsyncWorker(
                 userRepository, recipeRepository, s3Client, s3Presigner, auditService, objectMapper);
+        ReflectionTestUtils.setField(asyncWorker, "bucket", "test-bucket");
+        DataExportService service = new DataExportService(
+                userRepository, recipeRepository, auditService, objectMapper, asyncWorker);
         ReflectionTestUtils.setField(service, "bucket", "test-bucket");
         return service;
     }

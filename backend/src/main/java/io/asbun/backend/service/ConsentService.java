@@ -30,6 +30,7 @@ public class ConsentService {
             consent.setGrantedAt(Instant.now());
             consent.setVersion(version);
             consent.setIpAddress(ipAddress);
+            consent.setRevokedAt(null);
         } else {
             consent = Consent.builder()
                     .userId(userId)

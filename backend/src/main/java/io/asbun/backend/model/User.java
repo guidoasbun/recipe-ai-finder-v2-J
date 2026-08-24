@@ -22,7 +22,8 @@ public class User {
     private String username;
     private Instant createdAt;
     private Integer generateCallsUsed;
-    private AccountStatus accountStatus;
+    @Builder.Default
+    private AccountStatus accountStatus = AccountStatus.ACTIVE;
     private Instant deletionRequestedAt;
     private Instant scheduledDeletionDate;
 
