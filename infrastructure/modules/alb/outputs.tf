@@ -13,3 +13,8 @@ output "frontend_tg_arn" {
 output "alb_security_group_id" {
   value = tolist(aws_lb.main.security_groups)[0]
 }
+
+output "alb_arn" {
+  value       = aws_lb.main.arn
+  description = "ARN of the Application Load Balancer"
+}
