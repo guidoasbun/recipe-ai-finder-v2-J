@@ -208,7 +208,8 @@ infrastructure/
     ├── dynamodb/            # Users table + Recipes table with GSI
     ├── cognito/             # User pool, Google IdP, app client, hosted UI
     ├── s3/                  # Image bucket, encryption, lifecycle
-    └── ecr/                 # Backend and frontend repositories
+    ├── ecr/                 # Backend and frontend repositories
+    └── waf/                 # AWS WAF Web ACL, IP sets, rate limits, logging, monitoring
 ```
 
 **Remote state:** Terraform state is stored in S3 (`recipe-ai-terraform-state`) with DynamoDB (`recipe-ai-terraform-locks`) for concurrency-safe locking.
@@ -219,6 +220,36 @@ infrastructure/
 - **No static credentials:** GitHub Actions authenticates to AWS via OIDC — no long-lived access keys anywhere.
 - **Secrets at runtime:** API keys are pulled from Secrets Manager by the ECS execution role and injected as environment variables; they never touch application code or version control.
 - **JWT validation:** Spring Security validates Cognito-issued JWTs on every protected endpoint using the Cognito JWKS endpoint.
+
+---
+
+### AWS WAF (Web Application Firewall)
+
+A regional WAF Web ACL is attached to the ALB, inspecting every inbound HTTP request before it reaches the application. The WAF module lives at [`infrastructure/modules/waf/`](infrastructure/modules/waf/) and deploys as part of the main Terraform root.
+
+**Protection layers (evaluated in priority order):**
+
+| Priority | Rule | What it does |
+|----------|------|-------------|
+| 0 | IP Allow-List | Bypass all rules for trusted IPs (IPv4 + IPv6) |
+| 1 | IP Block-List | Immediately reject known-bad IPs |
+| 2 | Health Endpoint Bypass | `GET /api/health` always passes through |
+| 3 | Geo Restriction | Block entire countries (disabled by default) |
+| 4 | Bot Control (AWS Managed) | Identifies and blocks unverified bots, scrapers, and automated tools |
+| 5 | Auth Rate Limit | 100 req/5 min per IP on `POST /api/auth/*` — brute-force protection |
+| 6 | Recipe Gen Rate Limit | 100 req/5 min per IP on `POST /api/recipes/generate` — cost abuse prevention |
+| 7 | Image Upload Rate Limit | 100 req/5 min per IP on `POST /api/images/upload` — storage abuse prevention |
+| 8 | Global Rate Limit | 1000 req/5 min per IP across all endpoints |
+| 9 | IP Reputation (AWS Managed) | Auto-blocks IPs from known botnets, scanners, and malicious hosts |
+| 10 | Common Rule Set (AWS Managed) | Blocks SQLi, XSS, path traversal, and OWASP Top 10 attacks |
+| 11 | Known Bad Inputs (AWS Managed) | Blocks Log4j, Spring4Shell, and other known exploit payloads |
+
+**Key design decisions:**
+- Rate-based rules use `FORWARDED_IP` (X-Forwarded-For header) so clients behind proxies are correctly identified
+- Managed rule groups auto-update — no version pinning — so new threat signatures apply immediately
+- All blocked requests are logged to S3 (`aws-waf-logs-recipe-ai-{env}`) with 90-day retention
+- CloudWatch alarm fires when blocked requests spike above threshold
+- IP allow/block lists and geo-restrictions are configurable via `tfvars` without code changes
 
 ---
 
@@ -259,6 +290,7 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 | Object storage     | AWS S3                                | —       |
 | Container runtime  | AWS ECS Fargate (ARM64)               | —       |
 | Load balancer      | AWS ALB                               | —       |
+| Web firewall       | AWS WAF v2                            | —       |
 | IaC                | Terraform                             | 1.7+    |
 | CI/CD              | GitHub Actions (OIDC)                 | —       |
 | AWS SDK            | AWS SDK for Java v2                   | 2.28.29 |
