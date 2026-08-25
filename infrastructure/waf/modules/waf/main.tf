@@ -1,11 +1,33 @@
 # WAF Web ACL and ALB Association
 #
-# This file contains:
-# - aws_wafv2_web_acl resource with default ALLOW action and visibility config
-# - aws_wafv2_web_acl_association linking the Web ACL to the ALB
-# - Custom response bodies for rate-limit and block responses
+# Rule evaluation order (by priority):
+#   0  - IP Allow-List
+#   1  - IP Block-List
+#   2  - Allow health endpoint (GET /api/health)
+#   3  - Geographic restriction (conditional)
+#   4  - AWS Managed Rules - Bot Control (blocks unverified bots for all endpoints)
+#   5  - Auth endpoint rate limit
+#   6  - Recipe generation rate limit
+#   7  - Image upload rate limit
+#   8  - Global rate limit
+#   9  - AWS Managed Rules - IP Reputation List
+#   10 - AWS Managed Rules - Common Rule Set
+#   11 - AWS Managed Rules - Known Bad Inputs
 #
-# Rules are added in subsequent tasks (3.x, 4.x, 5.x)
+# Total: 11 rules (12 with geo-block enabled). This slightly exceeds the
+# 10-rule soft target from Requirement 10.1, but removing rules would reduce
+# security coverage. Bot Control at COMMON level satisfies the cost constraint.
+#
+# Note on body size enforcement:
+#   WAF inspects only the first 8 KB of request body for ALB-associated ACLs.
+#   Body size limits >8 KB cannot be reliably enforced at the WAF layer.
+#   Enforce request body size limits at the application/reverse-proxy layer instead.
+#
+# Note on rate limit IP aggregation:
+#   Rate-based rules use FORWARDED_IP with X-Forwarded-For header to correctly
+#   identify individual clients behind proxies/load balancers. Fallback behavior
+#   is MATCH (block) when header is missing, providing protection even for direct
+#   connections.
 
 resource "aws_wafv2_web_acl" "main" {
   name        = "${var.project_name}-${var.environment}-web-acl"
@@ -18,7 +40,7 @@ resource "aws_wafv2_web_acl" "main" {
 
   custom_response_body {
     key          = "rate-limited"
-    content      = "{\"status\":403,\"message\":\"Request blocked by WAF rate limit. Try again later.\"}"
+    content      = "{\"status\":429,\"message\":\"Request blocked by WAF rate limit. Try again later.\"}"
     content_type = "APPLICATION_JSON"
   }
 
@@ -88,7 +110,8 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # Priority 2: Allow health endpoint - excludes GET /api/health from rate/managed rules
+  # --- Priority 2: Allow health endpoint ---
+  # Excludes GET /api/health from all subsequent rules (rate limits, managed rules)
   rule {
     name     = "${var.project_name}-${var.environment}-allow-health"
     priority = 2
@@ -172,88 +195,26 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # --- Priority 4: Request Body Size Limit ---
-  # Blocks body > 1MB for general endpoints, > 10MB for image uploads
+  # --- Priority 4: AWS Managed Rules - Bot Control ---
+  # Blocks unverified bots across all endpoints. Must run before any rules
+  # that depend on bot labels (future label_match_statement rules).
+  # Common protection level; unverified bots blocked, verified bots allowed.
   rule {
-    name     = "${var.project_name}-${var.environment}-body-size-limit"
+    name     = "${var.project_name}-${var.environment}-bot-control"
     priority = 4
 
-    action {
-      block {
-        custom_response {
-          response_code = 403
-        }
-      }
+    override_action {
+      none {}
     }
 
     statement {
-      or_statement {
-        statement {
-          and_statement {
-            statement {
-              size_constraint_statement {
-                field_to_match {
-                  body {
-                    oversize_handling = "MATCH"
-                  }
-                }
-                comparison_operator = "GT"
-                size                = 1048576
-                text_transformation {
-                  priority = 0
-                  type     = "NONE"
-                }
-              }
-            }
-            statement {
-              not_statement {
-                statement {
-                  byte_match_statement {
-                    search_string         = "/api/images/upload"
-                    positional_constraint = "STARTS_WITH"
-                    field_to_match {
-                      uri_path {}
-                    }
-                    text_transformation {
-                      priority = 0
-                      type     = "NONE"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        statement {
-          and_statement {
-            statement {
-              size_constraint_statement {
-                field_to_match {
-                  body {
-                    oversize_handling = "MATCH"
-                  }
-                }
-                comparison_operator = "GT"
-                size                = 10485760
-                text_transformation {
-                  priority = 0
-                  type     = "NONE"
-                }
-              }
-            }
-            statement {
-              byte_match_statement {
-                search_string         = "/api/images/upload"
-                positional_constraint = "STARTS_WITH"
-                field_to_match {
-                  uri_path {}
-                }
-                text_transformation {
-                  priority = 0
-                  type     = "NONE"
-                }
-              }
-            }
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesBotControlRuleSet"
+        vendor_name = "AWS"
+
+        managed_rule_group_configs {
+          aws_managed_rules_bot_control_rule_set {
+            inspection_level = "COMMON"
           }
         }
       }
@@ -261,12 +222,13 @@ resource "aws_wafv2_web_acl" "main" {
 
     visibility_config {
       cloudwatch_metrics_enabled = true
-      metric_name                = "${var.project_name}-${var.environment}-body-size-limit"
+      metric_name                = "${var.project_name}-${var.environment}-bot-control"
       sampled_requests_enabled   = true
     }
   }
 
   # --- Priority 5: Authentication Endpoint Rate Limit ---
+  # Uses FORWARDED_IP to correctly rate-limit individual clients behind proxies.
   rule {
     name     = "${var.project_name}-${var.environment}-auth-rate-limit"
     priority = 5
@@ -274,7 +236,7 @@ resource "aws_wafv2_web_acl" "main" {
     action {
       block {
         custom_response {
-          response_code            = 403
+          response_code            = 429
           custom_response_body_key = "rate-limited"
         }
       }
@@ -283,7 +245,12 @@ resource "aws_wafv2_web_acl" "main" {
     statement {
       rate_based_statement {
         limit              = var.rate_limit_auth
-        aggregate_key_type = "IP"
+        aggregate_key_type = "FORWARDED_IP"
+
+        forwarded_ip_config {
+          header_name       = "X-Forwarded-For"
+          fallback_behavior = "MATCH"
+        }
 
         scope_down_statement {
           and_statement {
@@ -329,61 +296,16 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # --- Priority 6: Auth Bot Block ---
-  # Blocks requests to /api/auth/* carrying the unverified bot label
-  # from the Bot Control managed rule group.
+  # --- Priority 6: Recipe Generation Rate Limit ---
+  # Uses FORWARDED_IP to correctly rate-limit individual clients behind proxies.
   rule {
-    name     = "${var.project_name}-${var.environment}-auth-bot-block"
+    name     = "${var.project_name}-${var.environment}-recipe-gen-rate-limit"
     priority = 6
 
     action {
       block {
         custom_response {
-          response_code = 403
-        }
-      }
-    }
-
-    statement {
-      and_statement {
-        statement {
-          byte_match_statement {
-            search_string         = "/api/auth/"
-            positional_constraint = "STARTS_WITH"
-            field_to_match {
-              uri_path {}
-            }
-            text_transformation {
-              priority = 0
-              type     = "NONE"
-            }
-          }
-        }
-        statement {
-          label_match_statement {
-            scope = "LABEL"
-            key   = "awswaf:managed:aws:bot-control:bot:unverified"
-          }
-        }
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "${var.project_name}-${var.environment}-auth-bot-block"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # --- Priority 7: Recipe Generation Rate Limit ---
-  rule {
-    name     = "${var.project_name}-${var.environment}-recipe-gen-rate-limit"
-    priority = 7
-
-    action {
-      block {
-        custom_response {
-          response_code            = 403
+          response_code            = 429
           custom_response_body_key = "rate-limited"
         }
       }
@@ -392,14 +314,19 @@ resource "aws_wafv2_web_acl" "main" {
     statement {
       rate_based_statement {
         limit              = var.rate_limit_recipe_gen
-        aggregate_key_type = "IP"
+        aggregate_key_type = "FORWARDED_IP"
+
+        forwarded_ip_config {
+          header_name       = "X-Forwarded-For"
+          fallback_behavior = "MATCH"
+        }
 
         scope_down_statement {
           and_statement {
             statement {
               byte_match_statement {
                 search_string         = "/api/recipes/generate"
-                positional_constraint = "EXACTLY"
+                positional_constraint = "STARTS_WITH"
                 field_to_match {
                   uri_path {}
                 }
@@ -434,15 +361,16 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # --- Priority 8: Image Upload Rate Limit ---
+  # --- Priority 7: Image Upload Rate Limit ---
+  # Uses FORWARDED_IP to correctly rate-limit individual clients behind proxies.
   rule {
     name     = "${var.project_name}-${var.environment}-image-upload-rate-limit"
-    priority = 8
+    priority = 7
 
     action {
       block {
         custom_response {
-          response_code            = 403
+          response_code            = 429
           custom_response_body_key = "rate-limited"
         }
       }
@@ -451,7 +379,12 @@ resource "aws_wafv2_web_acl" "main" {
     statement {
       rate_based_statement {
         limit              = var.rate_limit_image_upload
-        aggregate_key_type = "IP"
+        aggregate_key_type = "FORWARDED_IP"
+
+        forwarded_ip_config {
+          header_name       = "X-Forwarded-For"
+          fallback_behavior = "MATCH"
+        }
 
         scope_down_statement {
           and_statement {
@@ -493,18 +426,19 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # --- Priority 9: Global Rate Limit ---
+  # --- Priority 8: Global Rate Limit ---
   # Applies to ALL requests regardless of endpoint.
+  # Uses FORWARDED_IP so proxied traffic is correctly attributed to individual clients.
   # Per Requirement 4.3, the global counter includes requests that also match
   # endpoint-specific rate rules since WAF evaluates all rate rules independently.
   rule {
     name     = "${var.project_name}-${var.environment}-global-rate-limit"
-    priority = 9
+    priority = 8
 
     action {
       block {
         custom_response {
-          response_code            = 403
+          response_code            = 429
           custom_response_body_key = "rate-limited"
         }
       }
@@ -513,7 +447,12 @@ resource "aws_wafv2_web_acl" "main" {
     statement {
       rate_based_statement {
         limit              = var.rate_limit_global
-        aggregate_key_type = "IP"
+        aggregate_key_type = "FORWARDED_IP"
+
+        forwarded_ip_config {
+          header_name       = "X-Forwarded-For"
+          fallback_behavior = "MATCH"
+        }
       }
     }
 
@@ -524,10 +463,10 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # --- Priority 10: AWS Managed Rules - IP Reputation List ---
+  # --- Priority 9: AWS Managed Rules - IP Reputation List ---
   rule {
     name     = "${var.project_name}-${var.environment}-ip-reputation"
-    priority = 10
+    priority = 9
 
     override_action {
       none {}
@@ -547,14 +486,14 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # --- Priority 11: AWS Managed Rules - Common Rule Set ---
+  # --- Priority 10: AWS Managed Rules - Common Rule Set ---
   # Excluded rules handle known false positives for this application:
   # - SizeRestrictions_BODY: conflicts with larger upload endpoint
   # - CrossSiteScripting_BODY: recipe descriptions may contain trigger characters
   # - GenericRFI_BODY: URLs in recipe content may trigger RFI rules
   rule {
     name     = "${var.project_name}-${var.environment}-common-rules"
-    priority = 11
+    priority = 10
 
     override_action {
       none {}
@@ -586,10 +525,10 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
-  # --- Priority 12: AWS Managed Rules - Known Bad Inputs ---
+  # --- Priority 11: AWS Managed Rules - Known Bad Inputs ---
   rule {
     name     = "${var.project_name}-${var.environment}-known-bad-inputs"
-    priority = 12
+    priority = 11
 
     override_action {
       none {}
@@ -605,37 +544,6 @@ resource "aws_wafv2_web_acl" "main" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "${var.project_name}-${var.environment}-known-bad-inputs"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # --- Priority 13: AWS Managed Rules - Bot Control ---
-  # Common protection level; unverified bots BLOCKED, verified bots ALLOWED.
-  # No version pinning — auto-updates to latest (Req 2.5).
-  rule {
-    name     = "${var.project_name}-${var.environment}-bot-control"
-    priority = 13
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesBotControlRuleSet"
-        vendor_name = "AWS"
-
-        managed_rule_group_configs {
-          aws_managed_rules_bot_control_rule_set {
-            inspection_level = "COMMON"
-          }
-        }
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "${var.project_name}-${var.environment}-bot-control"
       sampled_requests_enabled   = true
     }
   }

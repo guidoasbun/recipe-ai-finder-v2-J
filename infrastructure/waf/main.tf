@@ -7,6 +7,10 @@ terraform {
     region         = "us-east-1"
     dynamodb_table = "recipe-ai-terraform-locks"
     encrypt        = true
+
+    # Environment isolation: the workflow passes a per-environment key via:
+    #   terraform init -reconfigure -backend-config="key=recipe-ai-waf/<env>/terraform.tfstate"
+    # This ensures dev and prod maintain separate state files.
   }
 
   required_providers {
@@ -38,7 +42,7 @@ module "waf" {
   rate_limit_image_upload = var.waf_rate_limit_image_upload
   rate_limit_auth         = var.waf_rate_limit_auth
 
-  waf_log_bucket_name              = "${var.project_name}-${var.environment}-waf-logs"
+  waf_log_bucket_name              = "aws-waf-logs-${var.project_name}-${var.environment}"
   alarm_sns_topic_arn              = var.waf_alarm_sns_topic_arn
   blocked_requests_alarm_threshold = var.waf_blocked_requests_alarm_threshold
   budget_limit_amount              = var.waf_budget_limit_amount

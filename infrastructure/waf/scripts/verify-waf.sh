@@ -20,16 +20,24 @@ PROJECT_NAME="recipe-ai"
 PASSED=0
 FAILED=0
 
+pass() {
+  PASSED=$((PASSED + 1))
+}
+
+fail() {
+  FAILED=$((FAILED + 1))
+}
+
 check() {
   local description="$1"
   shift
   echo -n "  Checking: ${description}... "
   if "$@" > /dev/null 2>&1; then
-    echo "✓ PASS"
-    ((PASSED++))
+    echo "PASS"
+    pass
   else
-    echo "✗ FAIL"
-    ((FAILED++))
+    echo "FAIL"
+    fail
   fi
 }
 
@@ -46,11 +54,11 @@ WEB_ACL_INFO=$(aws wafv2 list-web-acls --scope REGIONAL --query "WebACLs[?Name==
 WEB_ACL_ID=$(echo "$WEB_ACL_INFO" | jq -r '.[0].Id // empty')
 
 if [ -n "$WEB_ACL_ID" ]; then
-  echo "  ✓ Web ACL '${WEB_ACL_NAME}' exists (ID: ${WEB_ACL_ID})"
-  ((PASSED++))
+  echo "  PASS - Web ACL '${WEB_ACL_NAME}' exists (ID: ${WEB_ACL_ID})"
+  pass
 else
-  echo "  ✗ Web ACL '${WEB_ACL_NAME}' NOT found"
-  ((FAILED++))
+  echo "  FAIL - Web ACL '${WEB_ACL_NAME}' NOT found"
+  fail
 fi
 echo ""
 
@@ -68,15 +76,15 @@ if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
     --query 'WebACL.Name' \
     --output text 2>/dev/null || echo "")
   if [ "$ASSOCIATED_ACL" = "$WEB_ACL_NAME" ]; then
-    echo "  ✓ Web ACL associated with ALB '${ALB_NAME}'"
-    ((PASSED++))
+    echo "  PASS - Web ACL associated with ALB '${ALB_NAME}'"
+    pass
   else
-    echo "  ✗ Web ACL NOT associated with ALB (got: '${ASSOCIATED_ACL}')"
-    ((FAILED++))
+    echo "  FAIL - Web ACL NOT associated with ALB (got: '${ASSOCIATED_ACL}')"
+    fail
   fi
 else
-  echo "  ✗ ALB '${ALB_NAME}' not found"
-  ((FAILED++))
+  echo "  FAIL - ALB '${ALB_NAME}' not found"
+  fail
 fi
 echo ""
 
@@ -85,26 +93,26 @@ echo "[3/4] Health Endpoint Accessibility"
 HEALTH_URL="${APP_URL}/api/health"
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "000")
 if [ "$HTTP_STATUS" = "200" ]; then
-  echo "  ✓ Health endpoint returned HTTP 200"
-  ((PASSED++))
+  echo "  PASS - Health endpoint returned HTTP 200"
+  pass
 else
-  echo "  ✗ Health endpoint returned HTTP ${HTTP_STATUS} (expected 200)"
-  ((FAILED++))
+  echo "  FAIL - Health endpoint returned HTTP ${HTTP_STATUS} (expected 200)"
+  fail
 fi
 echo ""
 
 # 4. Verify S3 Logging Bucket
 echo "[4/4] S3 Logging Bucket"
-BUCKET_NAME="${PROJECT_NAME}-${ENV}-waf-logs"
+BUCKET_NAME="aws-waf-logs-${PROJECT_NAME}-${ENV}"
 check "Bucket '${BUCKET_NAME}' exists" aws s3api head-bucket --bucket "$BUCKET_NAME"
 
 LIFECYCLE=$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET_NAME" 2>/dev/null || echo "")
 if echo "$LIFECYCLE" | jq -e '.Rules[] | select(.Expiration.Days == 90)' > /dev/null 2>&1; then
-  echo "  ✓ Lifecycle policy with 90-day expiration configured"
-  ((PASSED++))
+  echo "  PASS - Lifecycle policy with 90-day expiration configured"
+  pass
 else
-  echo "  ✗ Lifecycle policy with 90-day expiration NOT found"
-  ((FAILED++))
+  echo "  FAIL - Lifecycle policy with 90-day expiration NOT found"
+  fail
 fi
 echo ""
 

@@ -1,7 +1,7 @@
 # WAF Monitoring and Budget Alerts
 #
-# - CloudWatch alarm for high blocked request counts
-# - AWS Budgets alert for WAF service cost
+# - CloudWatch alarm for high blocked request counts (conditional on SNS topic)
+# - AWS Budgets alert for WAF service cost (conditional on email)
 # - Per-rule metrics are enabled via visibility_config on each rule in main.tf
 
 resource "aws_cloudwatch_metric_alarm" "waf_blocked_requests" {
@@ -21,7 +21,8 @@ resource "aws_cloudwatch_metric_alarm" "waf_blocked_requests" {
     Rule   = "ALL"
   }
 
-  alarm_actions = [var.alarm_sns_topic_arn]
+  # Only attach alarm actions when a valid SNS topic ARN is provided
+  alarm_actions = var.alarm_sns_topic_arn != "" ? [var.alarm_sns_topic_arn] : []
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-waf-blocked-high"
@@ -30,7 +31,11 @@ resource "aws_cloudwatch_metric_alarm" "waf_blocked_requests" {
   }
 }
 
+# Budget is only created when a notification email is configured.
+# AWS Budgets rejects empty subscriber addresses.
 resource "aws_budgets_budget" "waf_cost" {
+  count = var.budget_notification_email != "" ? 1 : 0
+
   name         = "${var.project_name}-${var.environment}-waf-budget"
   budget_type  = "COST"
   limit_amount = var.budget_limit_amount

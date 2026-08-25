@@ -11,6 +11,12 @@ on:
         default: 'dev'
         type: choice
         options: [dev, prod]
+      deploy_target:
+        description: 'What to deploy'
+        required: true
+        default: 'all'
+        type: choice
+        options: [all, waf-only, app-only]
 
 permissions:
   id-token: write
@@ -34,19 +40,26 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
+      # ──────────────────────────────────────────────────────────────
+      # Application Build & Push (skipped for waf-only deployments)
+      # ──────────────────────────────────────────────────────────────
       - name: Login to ECR
+        if: github.event.inputs.deploy_target != 'waf-only'
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
+        if: github.event.inputs.deploy_target != 'waf-only'
         uses: docker/setup-buildx-action@v3
         with:
           platforms: linux/arm64
 
       - name: Set image tag
+        if: github.event.inputs.deploy_target != 'waf-only'
         run: echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Build and push backend
+        if: github.event.inputs.deploy_target != 'waf-only'
         uses: docker/build-push-action@v6
         with:
           context: ./backend
@@ -59,6 +72,7 @@ jobs:
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/backend:${{ env.IMAGE_TAG }}
 
       - name: Build and push frontend
+        if: github.event.inputs.deploy_target != 'waf-only'
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
@@ -73,24 +87,26 @@ jobs:
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:${{ env.IMAGE_TAG }}
 
       # ──────────────────────────────────────────────────────────────
-      # WAF Infrastructure Deployment
-      # WAF changes deploy alongside application changes via this workflow.
-      # To deploy WAF independently of application code: use workflow_dispatch
-      # with the environment input (dev/prod). The WAF steps below run before
-      # ECS deployment, so a manual dispatch deploys WAF + app together.
-      # No separate workflow is needed — infrastructure/waf/ changes are
-      # applied on every run of this pipeline.
+      # WAF Infrastructure Deployment (skipped for app-only deployments)
+      # To deploy WAF independently: use workflow_dispatch with deploy_target=waf-only.
+      # Each environment uses a separate backend state key for isolation.
       # ──────────────────────────────────────────────────────────────
       - name: Setup Terraform
+        if: github.event.inputs.deploy_target != 'app-only'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.0"
 
       - name: Terraform Init (WAF)
+        if: github.event.inputs.deploy_target != 'app-only'
         working-directory: ./infrastructure/waf
-        run: terraform init
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          terraform init -reconfigure \
+            -backend-config="key=recipe-ai-waf/${ENV}/terraform.tfstate"
 
       - name: Terraform Plan (WAF)
+        if: github.event.inputs.deploy_target != 'app-only'
         working-directory: ./infrastructure/waf
         timeout-minutes: 10
         run: |
@@ -99,26 +115,33 @@ jobs:
             -out=tfplan
 
       - name: Terraform Apply (WAF)
+        if: github.event.inputs.deploy_target != 'app-only'
         working-directory: ./infrastructure/waf
         timeout-minutes: 10
         run: terraform apply -auto-approve tfplan
 
       - name: Verify WAF Association
+        if: github.event.inputs.deploy_target != 'app-only'
         run: |
           ENV="${{ github.event.inputs.environment || 'dev' }}"
+          EXPECTED_ACL="recipe-ai-${ENV}-web-acl"
           ALB_ARN=$(aws elbv2 describe-load-balancers \
             --names "recipe-ai-${ENV}-alb" \
             --query 'LoadBalancers[0].LoadBalancerArn' --output text)
           WEB_ACL=$(aws wafv2 get-web-acl-for-resource \
             --resource-arn "$ALB_ARN" \
             --query 'WebACL.Name' --output text 2>/dev/null || true)
-          if [ -z "$WEB_ACL" ] || [ "$WEB_ACL" = "None" ]; then
-            echo "ERROR: No WAF Web ACL associated with ALB"
+          if [ "$WEB_ACL" != "$EXPECTED_ACL" ]; then
+            echo "ERROR: Expected WAF Web ACL '${EXPECTED_ACL}' but got '${WEB_ACL}'"
             exit 1
           fi
-          echo "WAF Web ACL '$WEB_ACL' associated with ALB"
+          echo "WAF Web ACL '${WEB_ACL}' correctly associated with ALB"
 
+      # ──────────────────────────────────────────────────────────────
+      # ECS Deployment (skipped for waf-only deployments)
+      # ──────────────────────────────────────────────────────────────
       - name: Deploy to ECS
+        if: github.event.inputs.deploy_target != 'waf-only'
         run: |
           ENV="${{ github.event.inputs.environment || 'dev' }}"
           aws ecs update-service \
