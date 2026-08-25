@@ -25,3 +25,8 @@ output "frontend_ecr_url" {
 output "github_actions_role_arn" {
   value = module.iam.github_actions_role_arn
 }
+
+output "alb_arn" {
+  value       = module.alb.alb_arn
+  description = "ARN of the Application Load Balancer (used by WAF remote state)"
+}

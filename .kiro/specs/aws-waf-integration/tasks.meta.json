@@ -1,0 +1,235 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create the WAF module directory and define input variables": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614675826
+      },
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614683809
+      }
+    ],
+    "1.2 Create the WAF Terraform root and wire the module": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614675919
+      }
+    ],
+    "1.3 Add environment-specific WAF parameters to tfvars files": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614675955
+      }
+    ],
+    "2.1 Create IP Set resources for allow-list and block-list": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614675986
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678758803
+      }
+    ],
+    "2.2 Create the Web ACL resource with default ALLOW action and visibility config": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676027
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678758889
+      }
+    ],
+    "3.1 Add IP allow-list rule (priority 0) and IP block-list rule (priority 1)": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676080
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678758919
+      }
+    ],
+    "3.2 Add health endpoint exclusion rule (priority 2)": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676109
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678758943
+      }
+    ],
+    "3.3 Add geographic restriction rule (priority 3)": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676141
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678758973
+      }
+    ],
+    "3.4 Add request body size limit rule (priority 4)": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676167
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759009
+      }
+    ],
+    "4.1 Add authentication endpoint rate limit (priority 5) and bot block (priority 6)": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676193
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759029
+      }
+    ],
+    "4.2 Add endpoint-specific rate limits (priority 7-8) and global rate limit (priority 9)": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676223
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759054
+      }
+    ],
+    "5.1 Add AWS Managed Rule Groups to the Web ACL": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676251
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759077
+      }
+    ],
+    "6. Checkpoint - Validate Terraform configuration": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676277
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759106
+      }
+    ],
+    "7.1 Create S3 bucket and WAF logging configuration": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676308
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759129
+      }
+    ],
+    "7.2 Create CloudWatch alarms and AWS Budgets alert": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676333
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759158
+      }
+    ],
+    "8. Checkpoint - Full plan validation": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676371
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759183
+      }
+    ],
+    "9.1 Add WAF deployment steps to the deploy workflow": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676400
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759209
+      }
+    ],
+    "9.2 Add workflow dispatch support for independent WAF deployment": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676426
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759241
+      }
+    ],
+    "10.1 Create a verification script for post-deployment checks": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676452
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759262
+      }
+    ],
+    "11. Final checkpoint - End-to-end validation": [
+      {
+        "executionId": "c3931dad-009e-45ca-966c-7e479a50deb4",
+        "chatSessionId": "sess_23b433ae-6d3b-4615-89a3-4f9ca15c91e9",
+        "timestamp": 1787614676476
+      },
+      {
+        "executionId": "e43c9297-4178-46bb-a256-1824ae0f2f8a",
+        "chatSessionId": "sess_54ef17ef-4f9c-4f9d-8b36-c436cb3920ba",
+        "timestamp": 1787678759289
+      }
+    ]
+  }
+}
