@@ -41,21 +41,21 @@ resource "aws_ecs_task_definition" "backend" {
     }]
 
     environment = [
-      { name = "AWS_REGION",               value = var.aws_region },
-      { name = "COGNITO_ISSUER_URI",        value = var.cognito_issuer_uri },
-      { name = "DYNAMODB_USERS_TABLE",      value = var.dynamodb_users_table },
-      { name = "DYNAMODB_RECIPES_TABLE",    value = var.dynamodb_recipes_table },
-      { name = "DYNAMODB_CONSENT_TABLE",    value = var.dynamodb_consent_table },
-      { name = "DYNAMODB_AUDIT_TABLE",      value = var.dynamodb_audit_table },
-      { name = "COGNITO_USER_POOL_ID",      value = var.cognito_user_pool_id },
-      { name = "S3_BUCKET",                 value = var.s3_bucket },
-      { name = "CORS_ALLOWED_ORIGINS",      value = "https://${var.domain_name}" }
+      { name = "AWS_REGION", value = var.aws_region },
+      { name = "COGNITO_ISSUER_URI", value = var.cognito_issuer_uri },
+      { name = "DYNAMODB_USERS_TABLE", value = var.dynamodb_users_table },
+      { name = "DYNAMODB_RECIPES_TABLE", value = var.dynamodb_recipes_table },
+      { name = "DYNAMODB_CONSENT_TABLE", value = var.dynamodb_consent_table },
+      { name = "DYNAMODB_AUDIT_TABLE", value = var.dynamodb_audit_table },
+      { name = "COGNITO_USER_POOL_ID", value = var.cognito_user_pool_id },
+      { name = "S3_BUCKET", value = var.s3_bucket },
+      { name = "CORS_ALLOWED_ORIGINS", value = "https://${var.domain_name}" }
     ]
 
     secrets = [
       { name = "STABILITY_API_KEY", valueFrom = var.stability_api_key_arn },
-      { name = "OPENAI_API_KEY",    valueFrom = var.openai_api_key_arn },
-      { name = "GOOGLE_API_KEY",    valueFrom = var.google_api_key_arn }
+      { name = "OPENAI_API_KEY", valueFrom = var.openai_api_key_arn },
+      { name = "GOOGLE_API_KEY", valueFrom = var.google_api_key_arn }
     ]
 
     logConfiguration = {
@@ -94,11 +94,11 @@ resource "aws_ecs_task_definition" "frontend" {
     }]
 
     environment = [
-      { name = "BACKEND_URL",               value = "https://${var.domain_name}" },
-      { name = "NEXT_PUBLIC_BACKEND_URL",   value = "https://${var.domain_name}" },
-      { name = "COGNITO_DOMAIN",        value = var.cognito_domain },
-      { name = "COGNITO_CLIENT_ID",     value = var.cognito_client_id },
-      { name = "COGNITO_REDIRECT_URI",  value = "https://${var.domain_name}/api/auth/callback" }
+      { name = "BACKEND_URL", value = "https://${var.domain_name}" },
+      { name = "NEXT_PUBLIC_BACKEND_URL", value = "https://${var.domain_name}" },
+      { name = "COGNITO_DOMAIN", value = var.cognito_domain },
+      { name = "COGNITO_CLIENT_ID", value = var.cognito_client_id },
+      { name = "COGNITO_REDIRECT_URI", value = "https://${var.domain_name}/api/auth/callback" }
     ]
 
     logConfiguration = {
