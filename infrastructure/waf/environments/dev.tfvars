@@ -5,7 +5,9 @@ environment  = "dev"
 
 # IP lists (empty by default, add IPs as needed)
 waf_allowed_ips         = []
+waf_allowed_ips_v6      = []
 waf_blocked_ips         = []
+waf_blocked_ips_v6      = []
 waf_geo_block_countries = []
 
 # Rate limits (50% of production values)

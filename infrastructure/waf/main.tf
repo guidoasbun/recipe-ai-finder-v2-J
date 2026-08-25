@@ -28,7 +28,9 @@ module "waf" {
   alb_arn      = data.terraform_remote_state.main.outputs.alb_arn
 
   allowed_ips         = var.waf_allowed_ips
+  allowed_ips_v6      = var.waf_allowed_ips_v6
   blocked_ips         = var.waf_blocked_ips
+  blocked_ips_v6      = var.waf_blocked_ips_v6
   geo_block_countries = var.waf_geo_block_countries
 
   rate_limit_global       = var.waf_rate_limit_global

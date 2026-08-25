@@ -72,6 +72,52 @@ jobs:
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:latest
             ${{ steps.ecr-login.outputs.registry }}/recipe-ai/frontend:${{ env.IMAGE_TAG }}
 
+      # ──────────────────────────────────────────────────────────────
+      # WAF Infrastructure Deployment
+      # WAF changes deploy alongside application changes via this workflow.
+      # To deploy WAF independently of application code: use workflow_dispatch
+      # with the environment input (dev/prod). The WAF steps below run before
+      # ECS deployment, so a manual dispatch deploys WAF + app together.
+      # No separate workflow is needed — infrastructure/waf/ changes are
+      # applied on every run of this pipeline.
+      # ──────────────────────────────────────────────────────────────
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Terraform Init (WAF)
+        working-directory: ./infrastructure/waf
+        run: terraform init
+
+      - name: Terraform Plan (WAF)
+        working-directory: ./infrastructure/waf
+        timeout-minutes: 10
+        run: |
+          terraform plan \
+            -var-file=environments/${{ github.event.inputs.environment || 'dev' }}.tfvars \
+            -out=tfplan
+
+      - name: Terraform Apply (WAF)
+        working-directory: ./infrastructure/waf
+        timeout-minutes: 10
+        run: terraform apply -auto-approve tfplan
+
+      - name: Verify WAF Association
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          ALB_ARN=$(aws elbv2 describe-load-balancers \
+            --names "recipe-ai-${ENV}-alb" \
+            --query 'LoadBalancers[0].LoadBalancerArn' --output text)
+          WEB_ACL=$(aws wafv2 get-web-acl-for-resource \
+            --resource-arn "$ALB_ARN" \
+            --query 'WebACL.Name' --output text 2>/dev/null || true)
+          if [ -z "$WEB_ACL" ] || [ "$WEB_ACL" = "None" ]; then
+            echo "ERROR: No WAF Web ACL associated with ALB"
+            exit 1
+          fi
+          echo "WAF Web ACL '$WEB_ACL' associated with ALB"
+
       - name: Deploy to ECS
         run: |
           ENV="${{ github.event.inputs.environment || 'dev' }}"

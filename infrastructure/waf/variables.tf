@@ -16,13 +16,25 @@ variable "environment" {
 variable "waf_allowed_ips" {
   type        = list(string)
   default     = []
-  description = "CIDR ranges for the IP allow-list"
+  description = "IPv4 CIDR ranges for the IP allow-list"
+}
+
+variable "waf_allowed_ips_v6" {
+  type        = list(string)
+  default     = []
+  description = "IPv6 CIDR ranges for the IP allow-list"
 }
 
 variable "waf_blocked_ips" {
   type        = list(string)
   default     = []
-  description = "CIDR ranges for the IP block-list"
+  description = "IPv4 CIDR ranges for the IP block-list"
+}
+
+variable "waf_blocked_ips_v6" {
+  type        = list(string)
+  default     = []
+  description = "IPv6 CIDR ranges for the IP block-list"
 }
 
 variable "waf_geo_block_countries" {
