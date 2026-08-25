@@ -76,3 +76,26 @@ module "ecs" {
   google_api_key_arn     = var.google_api_key_arn
 }
 
+module "waf" {
+  source       = "./modules/waf"
+  project_name = var.project_name
+  environment  = var.environment
+  alb_arn      = module.alb.alb_arn
+
+  allowed_ips         = var.waf_allowed_ips
+  allowed_ips_v6      = var.waf_allowed_ips_v6
+  blocked_ips         = var.waf_blocked_ips
+  blocked_ips_v6      = var.waf_blocked_ips_v6
+  geo_block_countries = var.waf_geo_block_countries
+
+  rate_limit_global       = var.waf_rate_limit_global
+  rate_limit_recipe_gen   = var.waf_rate_limit_recipe_gen
+  rate_limit_image_upload = var.waf_rate_limit_image_upload
+  rate_limit_auth         = var.waf_rate_limit_auth
+
+  waf_log_bucket_name              = "aws-waf-logs-${var.project_name}-${var.environment}"
+  alarm_sns_topic_arn              = var.waf_alarm_sns_topic_arn
+  blocked_requests_alarm_threshold = var.waf_blocked_requests_alarm_threshold
+  budget_limit_amount              = var.waf_budget_limit_amount
+  budget_notification_email        = var.waf_budget_notification_email
+}

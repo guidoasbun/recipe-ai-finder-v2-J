@@ -28,5 +28,15 @@ output "github_actions_role_arn" {
 
 output "alb_arn" {
   value       = module.alb.alb_arn
-  description = "ARN of the Application Load Balancer (used by WAF remote state)"
+  description = "ARN of the Application Load Balancer"
+}
+
+output "waf_web_acl_id" {
+  value       = module.waf.web_acl_id
+  description = "ID of the WAF Web ACL"
+}
+
+output "waf_web_acl_arn" {
+  value       = module.waf.web_acl_arn
+  description = "ARN of the WAF Web ACL"
 }

@@ -504,16 +504,25 @@ resource "aws_wafv2_web_acl" "main" {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
 
-        excluded_rule {
+        rule_action_override {
           name = "SizeRestrictions_BODY"
+          action_to_use {
+            count {}
+          }
         }
 
-        excluded_rule {
+        rule_action_override {
           name = "CrossSiteScripting_BODY"
+          action_to_use {
+            count {}
+          }
         }
 
-        excluded_rule {
+        rule_action_override {
           name = "GenericRFI_BODY"
+          action_to_use {
+            count {}
+          }
         }
       }
     }
