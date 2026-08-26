@@ -189,6 +189,37 @@ export async function getExportStatus(
   return res.json();
 }
 
+// --- Dietary Restrictions API ---
+
+export async function getDietaryRestrictions(
+  sessionToken: string
+): Promise<string[]> {
+  const res = await apiFetch(
+    "/api/account/dietary-restrictions",
+    { method: "GET" },
+    sessionToken
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch dietary restrictions: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function updateDietaryRestrictions(
+  restrictions: string[],
+  sessionToken: string
+): Promise<string[]> {
+  const res = await apiFetch(
+    "/api/account/dietary-restrictions",
+    { method: "PUT", body: JSON.stringify({ restrictions }) },
+    sessionToken
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to update dietary restrictions: ${res.status}`);
+  }
+  return res.json();
+}
+
 // --- Profile API ---
 
 export async function fetchProfile(

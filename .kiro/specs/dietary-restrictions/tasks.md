@@ -103,8 +103,8 @@ This plan implements dietary restriction management across the backend (Spring B
     - Modify `frontend/app/(protected)/account/page.tsx` to redirect to `/account/settings` using Next.js `redirect()`
     - _Requirements: 3.2, 3.4_
 
-- [ ] 7. Frontend dietary restrictions page
-  - [ ] 7.1 Create the dietary restrictions page component
+- [x] 7. Frontend dietary restrictions page
+  - [x] 7.1 Create the dietary restrictions page component
     - Create `frontend/app/(protected)/account/dietary/page.tsx` as a client component
     - Fetch current restrictions on mount via GET `/api/account/dietary-restrictions`
     - Display all 10 predefined restrictions as toggle chip elements in a flex-wrap layout
@@ -112,7 +112,7 @@ This plan implements dietary restriction management across the backend (Spring B
     - Track selected state locally
     - _Requirements: 4.1, 4.2, 4.5_
 
-  - [ ] 7.2 Implement save functionality and feedback states
+  - [x] 7.2 Implement save functionality and feedback states
     - Add "Save" button that sends PUT to `/api/account/dietary-restrictions` with selected values
     - Show success toast for at least 3 seconds on successful save
     - Show error message on save failure; retain unsaved selections
