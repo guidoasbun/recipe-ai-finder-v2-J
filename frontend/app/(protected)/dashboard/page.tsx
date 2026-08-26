@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Pencil } from "lucide-react";
 import { MODELS, ModelId, IMAGE_MODELS, ImageModelId } from "@/lib/constants";
+import { dietaryLabel } from "@/lib/dietary";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -10,6 +13,28 @@ export default function DashboardPage() {
   const [model, setModel] = useState<ModelId>("CLAUDE_HAIKU");
   const [imageModel, setImageModel] = useState<ImageModelId>("STABILITY_CORE");
   const [loading, setLoading] = useState(false);
+
+  const [restrictions, setRestrictions] = useState<string[]>([]);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const res = await fetch("/api/account/profile");
+      if (!res.ok) throw new Error("Failed to load profile");
+      const data = await res.json();
+      setRestrictions(
+        Array.isArray(data.dietaryRestrictions) ? data.dietaryRestrictions : []
+      );
+    } catch {
+      setRestrictions([]);
+    } finally {
+      setProfileLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,8 +51,37 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-2 text-3xl font-bold text-gray-900">What's in your fridge or pantry?</h1>
-      <p className="mb-8 text-gray-500">Enter your ingredients and we'll generate recipes for you.</p>
+      <h1 className="mb-2 text-3xl font-bold text-gray-900">What&apos;s in your fridge or pantry?</h1>
+      <p className="mb-8 text-gray-500">Enter your ingredients and we&apos;ll generate recipes for you.</p>
+
+      {profileLoaded && (
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Dietary restrictions:</span>
+              {restrictions.length > 0 ? (
+                restrictions.map((r) => (
+                  <span
+                    key={r}
+                    className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800"
+                  >
+                    {dietaryLabel(r)}
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm text-gray-500">No dietary restrictions</span>
+              )}
+            </div>
+            <Link
+              href="/account/dietary"
+              className="inline-flex flex-shrink-0 items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-900 transition-colors"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </Link>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4 text-gray-800">
         <textarea

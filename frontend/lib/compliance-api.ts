@@ -43,6 +43,7 @@ export interface UserProfile {
   createdAt: string;
   accountStatus: string | null;
   scheduledDeletionDate: string | null;
+  dietaryRestrictions: string[] | null;
 }
 
 export interface RecipeExportData {

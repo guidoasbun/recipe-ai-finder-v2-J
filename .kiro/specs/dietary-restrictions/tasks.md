@@ -120,8 +120,8 @@ This plan implements dietary restriction management across the backend (Spring B
     - Show error with retry option if initial GET fails
     - _Requirements: 4.3, 4.4, 4.6, 4.7_
 
-- [ ] 8. Frontend dashboard restrictions banner
-  - [ ] 8.1 Add dietary restriction badges to dashboard
+- [x] 8. Frontend dashboard restrictions banner
+  - [x] 8.1 Add dietary restriction badges to dashboard
     - Modify `frontend/app/(protected)/dashboard/page.tsx` to fetch user profile on mount via GET `/api/account/profile`
     - If `dietaryRestrictions` is non-empty, render a banner above the ingredient form with badge chips for each restriction
     - Include an "Edit" link/button navigating to `/account/dietary`
@@ -130,13 +130,13 @@ This plan implements dietary restriction management across the backend (Spring B
     - Re-fetch profile on navigation back to reflect updates
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-  - [ ] 8.2 Write unit tests for frontend components
+  - [x] 8.2 Write unit tests for frontend components
     - Test dietary restrictions page renders all 10 chips, toggles selections, shows loading/error states
     - Test account layout renders sidebar with correct active states
     - Test dashboard badges render when restrictions exist and hide when empty
     - _Requirements: 3.1, 4.1, 5.1, 5.2_
 
-- [ ] 9. Final checkpoint - Full integration verification
+- [x] 9. Final checkpoint - Full integration verification
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
