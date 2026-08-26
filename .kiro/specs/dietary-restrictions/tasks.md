@@ -59,34 +59,34 @@ This plan implements dietary restriction management across the backend (Spring B
     - Test 404 when user not found
     - _Requirements: 2.1, 2.2, 2.3, 2.5, 2.6_
 
-- [ ] 3. Checkpoint - Backend API verification
+- [x] 3. Checkpoint - Backend API verification
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Backend AI prompt integration
-  - [ ] 4.1 Modify BedrockService to accept dietary restrictions
+- [x] 4. Backend AI prompt integration
+  - [x] 4.1 Modify BedrockService to accept dietary restrictions
     - Change `generateRecipes` signature to accept `List<String> dietaryRestrictions` parameter
     - Change `buildPrompt` signature to accept `List<String> dietaryRestrictions` parameter
     - When dietaryRestrictions is non-null and non-empty, append the dietary constraint clause to the prompt using display names
     - When empty or null, do not add any dietary text
     - _Requirements: 6.1, 6.2, 6.4_
 
-  - [ ] 4.2 Modify RecipeController to pass dietary restrictions to BedrockService
+  - [x] 4.2 Modify RecipeController to pass dietary restrictions to BedrockService
     - In the `generateRecipes` endpoint, extract `dietaryRestrictions` from the User already loaded for the account status check
     - If user not found, proceed with an empty list
     - Pass restrictions to `bedrockService.generateRecipes(ingredients, dietaryRestrictions, model)`
     - _Requirements: 6.3, 6.5_
 
-  - [ ] 4.3 Write property tests for prompt construction (jqwik)
+  - [x] 4.3 Write property tests for prompt construction (jqwik)
     - **Property 5: Prompt includes all restrictions when present** — For any non-empty valid restrictions list and any non-empty ingredients list, the prompt contains the display name of every restriction
     - **Property 6: Prompt excludes dietary text when restrictions are absent** — For any empty/null restrictions list, the prompt does not contain dietary constraint clause text
     - **Validates: Requirements 6.1, 6.2**
 
-  - [ ] 4.4 Write unit tests for BedrockService prompt construction
+  - [x] 4.4 Write unit tests for BedrockService prompt construction
     - Test prompt with specific restriction combinations contains expected text
     - Test prompt with empty/null restrictions does not contain dietary clause
     - _Requirements: 6.1, 6.2_
 
-- [ ] 5. Checkpoint - Backend integration verification
+- [x] 5. Checkpoint - Backend integration verification
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 6. Frontend account page restructure

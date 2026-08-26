@@ -265,7 +265,7 @@ class ComplianceLifecycleIntegrationTest {
                         .steps(List.of("Cook rice", "Grill chicken", "Combine"))
                         .build()
         );
-        when(bedrockService.generateRecipes(anyList(), any(BedrockModel.class))).thenReturn(mockRecipes);
+        when(bedrockService.generateRecipes(anyList(), anyList(), any(BedrockModel.class))).thenReturn(mockRecipes);
 
         // Now the recipe generation should pass the consent check and succeed
         ResponseEntity<?> responseAfterConsent = recipeController.generateRecipes(request, auth);
@@ -549,7 +549,7 @@ class ComplianceLifecycleIntegrationTest {
                         .steps(List.of("Boil tomatoes", "Add basil", "Blend"))
                         .build()
         );
-        when(bedrockService.generateRecipes(anyList(), any(BedrockModel.class))).thenReturn(mockRecipes);
+        when(bedrockService.generateRecipes(anyList(), anyList(), any(BedrockModel.class))).thenReturn(mockRecipes);
 
         // Recipe generation should succeed (passes consent check)
         ResponseEntity<?> allowedResponse = recipeController.generateRecipes(request, auth);

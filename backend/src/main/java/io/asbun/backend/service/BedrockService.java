@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.asbun.backend.dto.GenerateRecipeResponse;
 import io.asbun.backend.model.enums.BedrockModel;
+import io.asbun.backend.model.enums.DietaryRestriction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -25,8 +27,10 @@ public class BedrockService {
     private final BedrockRuntimeClient bedrockRuntimeClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public List<GenerateRecipeResponse> generateRecipes(List<String> ingredients, BedrockModel model) {
-        String prompt = buildPrompt(ingredients);
+    public List<GenerateRecipeResponse> generateRecipes(List<String> ingredients,
+                                                        List<String> dietaryRestrictions,
+                                                        BedrockModel model) {
+        String prompt = buildPrompt(ingredients, dietaryRestrictions);
         String requestBody = buildRequestBody(model, prompt);
 
         InvokeModelRequest request = InvokeModelRequest.builder()
@@ -53,18 +57,50 @@ public class BedrockService {
         throw new RuntimeException("Failed to generate recipes after " + maxAttempts + " attempts", lastException);
     }
 
-    private String buildPrompt(List<String> ingredients) {
-        return String.format(
+    private String buildPrompt(List<String> ingredients, List<String> dietaryRestrictions) {
+        String basePrompt = String.format(
             "You are a professional chef. Generate exactly 3 creative recipes using some or all of these ingredients: %s. " +
             "Assume the user already has basic pantry staples at home such as salt, pepper, garlic powder, onion powder, " +
             "paprika, cumin, oregano, chili flakes, flour, sugar, butter, olive oil, vegetable oil, vinegar, and soy sauce. " +
-            "You may include these staples in the recipes without the user needing to list them. " +
+            "You may include these staples in the recipes without the user needing to list them. ",
+            String.join(", ", ingredients)
+        );
+
+        String dietaryClause = buildDietaryClause(dietaryRestrictions);
+
+        String outputInstructions =
             "Respond ONLY with a valid JSON array of 3 recipe objects. Each object must have these exact fields: " +
             "\"title\" (string), \"description\" (string, 1-2 sentences), " +
             "\"ingredients\" (array of strings with quantities), \"steps\" (array of strings). " +
-            "Do not include any text before or after the JSON array.",
-            String.join(", ", ingredients)
+            "Do not include any text before or after the JSON array.";
+
+        return basePrompt + dietaryClause + outputInstructions;
+    }
+
+    private String buildDietaryClause(List<String> dietaryRestrictions) {
+        if (dietaryRestrictions == null || dietaryRestrictions.isEmpty()) {
+            return "";
+        }
+
+        String names = dietaryRestrictions.stream()
+                .map(this::toDisplayName)
+                .collect(Collectors.joining(", "));
+
+        return String.format(
+            "IMPORTANT DIETARY CONSTRAINTS: The user has the following dietary restrictions: %s. " +
+            "You MUST NOT include any ingredients or preparation methods that violate these restrictions. " +
+            "Every recipe must fully comply with all listed dietary restrictions. ",
+            names
         );
+    }
+
+    private String toDisplayName(String restriction) {
+        try {
+            return DietaryRestriction.valueOf(restriction).getDisplayName();
+        } catch (IllegalArgumentException | NullPointerException e) {
+            // Fall back to the raw value if it is not a recognized enum constant.
+            return restriction;
+        }
     }
 
     private String buildRequestBody(BedrockModel model, String prompt) {
