@@ -3,9 +3,11 @@ package io.asbun.backend.controller;
 import io.asbun.backend.dto.DataExportJson;
 import io.asbun.backend.dto.DeleteAccountRequest;
 import io.asbun.backend.dto.ExportStatusResponse;
+import io.asbun.backend.dto.UpdateDietaryRestrictionsRequest;
 import io.asbun.backend.dto.UserDto;
 import io.asbun.backend.exception.ResourceNotFoundException;
 import io.asbun.backend.model.User;
+import io.asbun.backend.model.enums.DietaryRestriction;
 import io.asbun.backend.repository.UserRepository;
 import io.asbun.backend.service.AccountDeletionService;
 import io.asbun.backend.service.DataExportService;
@@ -19,6 +21,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Validated
 @RestController
@@ -93,9 +100,59 @@ public class AccountController {
                 .createdAt(user.getCreatedAt())
                 .accountStatus(user.getAccountStatus() != null ? user.getAccountStatus().name() : null)
                 .scheduledDeletionDate(user.getScheduledDeletionDate())
+                .dietaryRestrictions(user.getDietaryRestrictions())
                 .build();
 
         return ResponseEntity.ok(profile);
+    }
+
+    @GetMapping("/dietary-restrictions")
+    public ResponseEntity<List<String>> getDietaryRestrictions(Authentication authentication) {
+        String userId = getUserId(authentication);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+
+        List<String> restrictions = user.getDietaryRestrictions() != null
+                ? user.getDietaryRestrictions()
+                : new ArrayList<>();
+        return ResponseEntity.ok(restrictions);
+    }
+
+    @PutMapping("/dietary-restrictions")
+    public ResponseEntity<List<String>> updateDietaryRestrictions(
+            @Valid @RequestBody UpdateDietaryRestrictionsRequest request,
+            Authentication authentication) {
+        String userId = getUserId(authentication);
+
+        List<String> requested = request.getRestrictions();
+
+        List<String> invalid = requested.stream()
+                .filter(value -> !isValidRestriction(value))
+                .distinct()
+                .collect(Collectors.toList());
+        if (!invalid.isEmpty()) {
+            throw new IllegalArgumentException("Invalid dietary restriction(s): " + invalid);
+        }
+
+        List<String> deduplicated = requested.stream()
+                .distinct()
+                .collect(Collectors.toList());
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+
+        user.setDietaryRestrictions(deduplicated);
+        userRepository.save(user);
+
+        return ResponseEntity.ok(deduplicated);
+    }
+
+    private boolean isValidRestriction(String value) {
+        if (value == null) {
+            return false;
+        }
+        return Arrays.stream(DietaryRestriction.values())
+                .anyMatch(r -> r.name().equals(value));
     }
 
     private String getUserId(Authentication authentication) {

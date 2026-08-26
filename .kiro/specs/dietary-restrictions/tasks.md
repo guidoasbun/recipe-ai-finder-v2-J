@@ -26,13 +26,13 @@ This plan implements dietary restriction management across the backend (Spring B
     - Add `@NotNull @Size(max = 10) private List<String> restrictions` field with Lombok @Data
     - _Requirements: 2.1, 1.4_
 
-- [ ] 2. Backend API endpoints for dietary restrictions
-  - [ ] 2.1 Add GET /api/account/dietary-restrictions endpoint
+- [x] 2. Backend API endpoints for dietary restrictions
+  - [x] 2.1 Add GET /api/account/dietary-restrictions endpoint
     - Add endpoint to `AccountController` that retrieves the authenticated user's dietaryRestrictions list
     - Return HTTP 200 with the list; return HTTP 404 if user not found
     - _Requirements: 2.2, 2.6_
 
-  - [ ] 2.2 Add PUT /api/account/dietary-restrictions endpoint
+  - [x] 2.2 Add PUT /api/account/dietary-restrictions endpoint
     - Add endpoint to `AccountController` that accepts `UpdateDietaryRestrictionsRequest`
     - Validate each restriction value against `DietaryRestriction.valueOf()`; return 400 with invalid values if any fail
     - Deduplicate the list using `stream().distinct()`
@@ -40,18 +40,18 @@ This plan implements dietary restriction management across the backend (Spring B
     - Return 404 if user not found
     - _Requirements: 2.1, 2.3, 2.4, 2.5, 2.6_
 
-  - [ ] 2.3 Update GET /api/account/profile to include dietaryRestrictions
+  - [x] 2.3 Update GET /api/account/profile to include dietaryRestrictions
     - Modify the `getProfile` method in `AccountController` to map `user.getDietaryRestrictions()` into the `UserDto` builder
     - _Requirements: 1.5_
 
-  - [ ] 2.4 Write property tests for dietary restrictions API (jqwik)
+  - [x] 2.4 Write property tests for dietary restrictions API (jqwik)
     - **Property 1: Restriction persistence round-trip** — For any valid subset of predefined restrictions, saving via PUT and retrieving via GET returns the same set (order-independent)
     - **Property 2: Invalid restrictions are rejected without side effects** — For any list with at least one invalid value, PUT returns 400 and stored restrictions remain unchanged
     - **Property 3: Deduplication preserves unique values** — For any list with duplicates, PUT saves a deduplicated list matching the distinct input set
     - **Property 4: Maximum cardinality enforcement** — For any submitted list, stored list contains at most 10 elements
     - **Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5**
 
-  - [ ] 2.5 Write unit tests for AccountController dietary restriction endpoints
+  - [x] 2.5 Write unit tests for AccountController dietary restriction endpoints
     - Test GET returns current restrictions
     - Test PUT with valid values saves and returns updated list
     - Test PUT with invalid values returns 400
