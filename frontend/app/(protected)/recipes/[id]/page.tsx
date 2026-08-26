@@ -1,21 +1,63 @@
-import { getSession } from "@/lib/session";
-import { apiFetch } from "@/lib/api";
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { Recipe } from "@/types/recipe";
-import { notFound } from "next/navigation";
 import DeleteRecipeButton from "@/components/recipe/DeleteRecipeButton";
 import { MODELS, IMAGE_MODELS } from "@/lib/constants";
 
-export default async function RecipeDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const token = await getSession();
-  const res = await apiFetch(`/api/recipes/${id}`, {}, token ?? undefined);
+export default function RecipeDetailPage() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id;
 
-  if (!res.ok) notFound();
-  const recipe: Recipe = await res.json();
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const loadRecipe = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await fetch(`/api/backend/api/recipes/${id}`);
+      if (!res.ok) throw new Error(`Failed to load recipe: ${res.status}`);
+      const data: Recipe = await res.json();
+      setRecipe(data);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadRecipe();
+  }, [loadRecipe]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (error || !recipe) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+        <p className="text-sm text-red-700">
+          We couldn&apos;t load this recipe.
+        </p>
+        <button
+          onClick={loadRecipe}
+          className="mt-4 inline-flex items-center gap-2 rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   const modelLabel = MODELS.find((m) => m.id === recipe.model)?.label;
   const imageModelLabel = IMAGE_MODELS.find(
