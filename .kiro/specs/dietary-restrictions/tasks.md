@@ -89,8 +89,8 @@ This plan implements dietary restriction management across the backend (Spring B
 - [x] 5. Checkpoint - Backend integration verification
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Frontend account page restructure
-  - [ ] 6.1 Create account layout with sidebar navigation
+- [x] 6. Frontend account page restructure
+  - [x] 6.1 Create account layout with sidebar navigation
     - Create `frontend/app/(protected)/account/layout.tsx`
     - Render a sidebar nav with links to `/account/settings` and `/account/dietary`
     - Use `<nav>` element with `aria-label="Account navigation"`
@@ -98,7 +98,7 @@ This plan implements dietary restriction management across the backend (Spring B
     - Ensure links are keyboard-focusable
     - _Requirements: 3.1, 3.5, 3.6, 3.7_
 
-  - [ ] 6.2 Move existing account settings to sub-route
+  - [x] 6.2 Move existing account settings to sub-route
     - Create `frontend/app/(protected)/account/settings/page.tsx` with the existing account page content
     - Modify `frontend/app/(protected)/account/page.tsx` to redirect to `/account/settings` using Next.js `redirect()`
     - _Requirements: 3.2, 3.4_
