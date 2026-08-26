@@ -56,6 +56,9 @@ public class BedrockService {
     private String buildPrompt(List<String> ingredients) {
         return String.format(
             "You are a professional chef. Generate exactly 3 creative recipes using some or all of these ingredients: %s. " +
+            "Assume the user already has basic pantry staples at home such as salt, pepper, garlic powder, onion powder, " +
+            "paprika, cumin, oregano, chili flakes, flour, sugar, butter, olive oil, vegetable oil, vinegar, and soy sauce. " +
+            "You may include these staples in the recipes without the user needing to list them. " +
             "Respond ONLY with a valid JSON array of 3 recipe objects. Each object must have these exact fields: " +
             "\"title\" (string), \"description\" (string, 1-2 sentences), " +
             "\"ingredients\" (array of strings with quantities), \"steps\" (array of strings). " +
