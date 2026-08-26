@@ -9,6 +9,8 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Builder
@@ -26,6 +28,8 @@ public class User {
     private AccountStatus accountStatus = AccountStatus.ACTIVE;
     private Instant deletionRequestedAt;
     private Instant scheduledDeletionDate;
+    @Builder.Default
+    private List<String> dietaryRestrictions = new ArrayList<>();
 
     @DynamoDbPartitionKey
     public String getUserId() {
