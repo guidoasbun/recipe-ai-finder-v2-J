@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.List;
 
 @Data
 @Builder
@@ -19,4 +20,5 @@ public class UserDto {
     private Instant createdAt;
     private String accountStatus;
     private Instant scheduledDeletionDate;
+    private List<String> dietaryRestrictions;
 }

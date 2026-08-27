@@ -119,9 +119,15 @@ public class RecipeController {
             }
         }
 
+        List<String> dietaryRestrictions = userOpt
+                .map(u -> u.getDietaryRestrictions() == null
+                        ? java.util.Collections.<String>emptyList()
+                        : u.getDietaryRestrictions())
+                .orElse(java.util.Collections.emptyList());
+
         long start = System.currentTimeMillis();
         List<GenerateRecipeResponse> recipes = bedrockService.generateRecipes(
-                request.getIngredients(), request.getModel());
+                request.getIngredients(), dietaryRestrictions, request.getModel());
         long generationMs = System.currentTimeMillis() - start;
         recipes.forEach(r -> r.setGenerationMs(generationMs));
 
