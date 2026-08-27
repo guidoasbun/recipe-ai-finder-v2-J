@@ -6,9 +6,12 @@ import io.asbun.backend.model.enums.DietaryRestriction;
 import io.asbun.backend.repository.UserRepository;
 import io.asbun.backend.service.AccountDeletionService;
 import io.asbun.backend.service.DataExportService;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import net.jqwik.api.*;
 import net.jqwik.api.Tag;
-import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -21,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -40,6 +42,12 @@ class AccountControllerDietaryRestrictionsPropertyTest {
     private static final String[] VALID_VALUES = Arrays.stream(DietaryRestriction.values())
             .map(Enum::name)
             .toArray(String[]::new);
+
+    private static final Validator VALIDATOR;
+    static {
+        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+        VALIDATOR = factory.getValidator();
+    }
 
     // ========================================================================
     // Property 1: Restriction persistence round-trip
@@ -149,30 +157,31 @@ class AccountControllerDietaryRestrictionsPropertyTest {
     // ========================================================================
 
     /**
-     * Property 4: For any submitted valid list, the stored list contains at most 10 elements.
+     * Property 4: For any submitted list larger than the allowed maximum, the
+     * request is rejected by the {@code @Size(max = 10)} bean-validation constraint
+     * before any persistence occurs.
+     *
+     * This exercises the actual validation contract on
+     * {@link UpdateDietaryRestrictionsRequest} rather than the controller's internal
+     * logic, so the property genuinely fails if the {@code @Size(max = 10)}
+     * annotation were removed.
      *
      * Validates: Requirements 1.4
      */
     @Property(tries = 100)
     @Tag("Property 4: Maximum cardinality enforcement")
-    void storedRestrictions_neverExceedTen(
-            @ForAll("userIds") String userId,
-            @ForAll("validRestrictionSubsets") List<String> restrictions
+    void oversizedRequests_areRejectedByValidation(
+            @ForAll("oversizedRestrictionLists") List<String> restrictions
     ) {
-        UserRepository userRepository = mock(UserRepository.class);
-        AccountController controller = newController(userRepository);
+        Set<ConstraintViolation<UpdateDietaryRestrictionsRequest>> violations =
+                VALIDATOR.validate(request(restrictions));
 
-        User user = User.builder().userId(userId).dietaryRestrictions(new ArrayList<>()).build();
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        JwtAuthenticationToken auth = createMockAuthentication(userId);
-
-        controller.updateDietaryRestrictions(request(restrictions), auth);
-
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(captor.capture());
-        assertThat(captor.getValue().getDietaryRestrictions().size()).isLessThanOrEqualTo(10);
+        // The list exceeds the cap, so at least one Size violation must be reported.
+        assertThat(violations)
+                .as("a list of size %d must violate @Size(max = 10)", restrictions.size())
+                .isNotEmpty();
+        assertThat(violations)
+                .anyMatch(v -> v.getPropertyPath().toString().equals("restrictions"));
     }
 
     // ========================================================================
@@ -192,6 +201,17 @@ class AccountControllerDietaryRestrictionsPropertyTest {
                 .ofMinSize(0)
                 .ofMaxSize(VALID_VALUES.length)
                 .map(ArrayList::new);
+    }
+
+    /**
+     * A list whose size always exceeds the {@code @Size(max = 10)} cap (11..30).
+     * Values are drawn from the valid restriction names (with repetition allowed);
+     * validity is irrelevant here because {@code @Size} counts elements.
+     */
+    @Provide
+    Arbitrary<List<String>> oversizedRestrictionLists() {
+        return Arbitraries.of(VALID_VALUES)
+                .list().ofMinSize(11).ofMaxSize(30);
     }
 
     /** A valid list guaranteed to contain at least one duplicate. */

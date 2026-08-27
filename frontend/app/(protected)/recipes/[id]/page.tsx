@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, notFound } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Recipe } from "@/types/recipe";
 import DeleteRecipeButton from "@/components/recipe/DeleteRecipeButton";
@@ -14,13 +14,22 @@ export default function RecipeDetailPage() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [missing, setMissing] = useState(false);
 
   const loadRecipe = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(false);
+    setMissing(false);
     try {
       const res = await fetch(`/api/backend/api/recipes/${id}`);
+      // A 404 is a definitive "this recipe does not exist" answer, not a
+      // recoverable failure. Route it to the not-found experience instead of
+      // offering a Retry that can never succeed.
+      if (res.status === 404) {
+        setMissing(true);
+        return;
+      }
       if (!res.ok) throw new Error(`Failed to load recipe: ${res.status}`);
       const data: Recipe = await res.json();
       setRecipe(data);
@@ -35,6 +44,11 @@ export default function RecipeDetailPage() {
     loadRecipe();
   }, [loadRecipe]);
 
+  // Render the nearest not-found.tsx for a missing recipe.
+  if (missing) {
+    notFound();
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -43,6 +57,7 @@ export default function RecipeDetailPage() {
     );
   }
 
+  // Reserve the Retry UI for genuinely recoverable (transient) failures.
   if (error || !recipe) {
     return (
       <div className="mx-auto max-w-2xl rounded-lg border border-red-200 bg-red-50 p-6 text-center">

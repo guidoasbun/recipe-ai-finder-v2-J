@@ -59,20 +59,21 @@ describe("DashboardPage dietary badges", () => {
     expect(edit).toHaveAttribute("href", "/account/dietary");
   });
 
-  it("shows an empty-state box with no badges when there are no restrictions", async () => {
+  it("does not render the restrictions banner when there are no saved restrictions", async () => {
     vi.stubGlobal("fetch", vi.fn(() => mockProfile([])));
     render(<DashboardPage />);
 
-    // The box and its empty-state message render, but no restriction badges.
-    expect(await screen.findByText(/Dietary restrictions:/)).toBeInTheDocument();
-    expect(screen.getByText(/No dietary restrictions/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Edit/ })).toHaveAttribute(
-      "href",
-      "/account/dietary"
-    );
+    // Wait for the primary form to render so the profile load has settled.
+    expect(
+      await screen.findByPlaceholderText(/chicken, garlic, lemon/i)
+    ).toBeInTheDocument();
+
+    // Per Requirement 5.2, the banner must not render for an empty profile.
+    expect(screen.queryByText(/Dietary restrictions:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Edit/ })).not.toBeInTheDocument();
   });
 
-  it("shows the empty-state box when the profile fetch fails", async () => {
+  it("does not render the restrictions banner when the profile fetch fails", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -81,6 +82,12 @@ describe("DashboardPage dietary badges", () => {
     );
     render(<DashboardPage />);
 
-    expect(await screen.findByText(/No dietary restrictions/)).toBeInTheDocument();
+    // Wait for the primary form to render so the profile load has settled.
+    expect(
+      await screen.findByPlaceholderText(/chicken, garlic, lemon/i)
+    ).toBeInTheDocument();
+
+    // A failed request must not be presented as a confirmed empty profile.
+    expect(screen.queryByText(/Dietary restrictions:/)).not.toBeInTheDocument();
   });
 });

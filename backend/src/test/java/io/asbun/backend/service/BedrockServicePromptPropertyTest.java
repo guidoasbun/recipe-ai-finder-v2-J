@@ -93,7 +93,10 @@ class BedrockServicePromptPropertyTest {
 
     @Provide
     Arbitrary<List<String>> emptyOrNullRestrictions() {
-        return Arbitraries.of(new ArrayList<String>(), (List<String>) null);
+        // Build the empty-list arbitrary and inject null explicitly. Placing null
+        // directly in Arbitraries.of(...) is not a valid value source in jqwik.
+        Arbitrary<List<String>> emptyList = Arbitraries.just(new ArrayList<>());
+        return emptyList.injectNull(0.5);
     }
 
     // ========================================================================

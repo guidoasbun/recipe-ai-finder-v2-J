@@ -54,23 +54,19 @@ export default function DashboardPage() {
       <h1 className="mb-2 text-3xl font-bold text-gray-900">What&apos;s in your fridge or pantry?</h1>
       <p className="mb-8 text-gray-500">Enter your ingredients and we&apos;ll generate recipes for you.</p>
 
-      {profileLoaded && (
+      {profileLoaded && restrictions.length > 0 && (
         <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-gray-700">Dietary restrictions:</span>
-              {restrictions.length > 0 ? (
-                restrictions.map((r) => (
-                  <span
-                    key={r}
-                    className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800"
-                  >
-                    {dietaryLabel(r)}
-                  </span>
-                ))
-              ) : (
-                <span className="text-sm text-gray-500">No dietary restrictions</span>
-              )}
+              {restrictions.map((r) => (
+                <span
+                  key={r}
+                  className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800"
+                >
+                  {dietaryLabel(r)}
+                </span>
+              ))}
             </div>
             <Link
               href="/account/dietary"
