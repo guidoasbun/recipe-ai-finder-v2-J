@@ -21,7 +21,7 @@ export default function DashboardPage() {
   const loadProfile = useCallback(async () => {
     setProfileError(false);
     try {
-      const res = await fetch("/api/account/profile");
+      const res = await fetch("/api/backend/api/account/profile");
       if (!res.ok) throw new Error("Failed to load profile");
       const data = await res.json();
       setRestrictions(
