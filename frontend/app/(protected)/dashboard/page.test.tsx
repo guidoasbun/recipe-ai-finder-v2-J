@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import DashboardPage from "./page";
 
 vi.mock("next/navigation", () => ({
@@ -71,9 +71,11 @@ describe("DashboardPage dietary badges", () => {
     // Per Requirement 5.2, the banner must not render for an empty profile.
     expect(screen.queryByText(/Dietary restrictions:/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Edit/ })).not.toBeInTheDocument();
+    // An empty profile is a success, not an error.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("does not render the restrictions banner when the profile fetch fails", async () => {
+  it("surfaces an error (not an empty state) when the profile fetch fails", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -82,12 +84,32 @@ describe("DashboardPage dietary badges", () => {
     );
     render(<DashboardPage />);
 
-    // Wait for the primary form to render so the profile load has settled.
-    expect(
-      await screen.findByPlaceholderText(/chicken, garlic, lemon/i)
-    ).toBeInTheDocument();
+    // The failure must be visible to the user, not masked as an empty profile.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/couldn.?t load your dietary restrictions/i);
+    expect(screen.getByRole("button", { name: /Retry/ })).toBeInTheDocument();
 
-    // A failed request must not be presented as a confirmed empty profile.
+    // And it must not be presented as a confirmed empty profile.
     expect(screen.queryByText(/Dietary restrictions:/)).not.toBeInTheDocument();
+  });
+
+  it("recovers and shows badges when Retry succeeds after a failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve(null),
+      } as Response)
+      .mockImplementationOnce(() => mockProfile(["VEGAN"]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<DashboardPage />);
+
+    const retry = await screen.findByRole("button", { name: /Retry/ });
+    fireEvent.click(retry);
+
+    expect(await screen.findByText("Vegan")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

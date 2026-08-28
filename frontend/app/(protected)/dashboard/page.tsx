@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil } from "lucide-react";
+import { Pencil, AlertCircle } from "lucide-react";
 import { MODELS, ModelId, IMAGE_MODELS, ImageModelId } from "@/lib/constants";
 import { dietaryLabel } from "@/lib/dietary";
 
@@ -16,8 +16,10 @@ export default function DashboardPage() {
 
   const [restrictions, setRestrictions] = useState<string[]>([]);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profileError, setProfileError] = useState(false);
 
   const loadProfile = useCallback(async () => {
+    setProfileError(false);
     try {
       const res = await fetch("/api/account/profile");
       if (!res.ok) throw new Error("Failed to load profile");
@@ -26,7 +28,11 @@ export default function DashboardPage() {
         Array.isArray(data.dietaryRestrictions) ? data.dietaryRestrictions : []
       );
     } catch {
+      // Surface the failure instead of masquerading it as an empty profile.
+      // Otherwise a backend/routing outage looks identical to a user who has
+      // simply not set any restrictions.
       setRestrictions([]);
+      setProfileError(true);
     } finally {
       setProfileLoaded(true);
     }
@@ -54,7 +60,25 @@ export default function DashboardPage() {
       <h1 className="mb-2 text-3xl font-bold text-gray-900">What&apos;s in your fridge or pantry?</h1>
       <p className="mb-8 text-gray-500">Enter your ingredients and we&apos;ll generate recipes for you.</p>
 
-      {profileLoaded && restrictions.length > 0 && (
+      {profileLoaded && profileError && (
+        <div
+          role="alert"
+          className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4"
+        >
+          <div className="flex items-center gap-2 text-sm text-amber-800">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <span>We couldn&apos;t load your dietary restrictions.</span>
+          </div>
+          <button
+            onClick={loadProfile}
+            className="inline-flex flex-shrink-0 items-center rounded-md border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {profileLoaded && !profileError && restrictions.length > 0 && (
         <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
