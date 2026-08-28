@@ -22,7 +22,7 @@ export default function PendingDeletionBanner({ scheduledDeletionDate }: Pending
     setError(null);
 
     try {
-      const res = await fetch("/api/account/cancel-deletion", {
+      const res = await fetch("/api/backend/api/account/cancel-deletion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

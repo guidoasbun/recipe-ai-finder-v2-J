@@ -44,7 +44,7 @@ export default function AccountSettingsPage() {
 
   const loadProfile = useCallback(async () => {
     try {
-      const res = await fetch("/api/account/profile");
+      const res = await fetch("/api/backend/api/account/profile");
       if (!res.ok) throw new Error("Failed to load profile");
       const data = await res.json();
       setProfile(data);
@@ -55,7 +55,7 @@ export default function AccountSettingsPage() {
 
   const loadConsents = useCallback(async () => {
     try {
-      const res = await fetch("/api/account/consents");
+      const res = await fetch("/api/backend/api/consent");
       if (!res.ok) throw new Error("Failed to load consents");
       const data = await res.json();
       setConsents(data);
@@ -66,7 +66,7 @@ export default function AccountSettingsPage() {
 
   const loadZipStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/account/export/status");
+      const res = await fetch("/api/backend/api/account/export/status");
       if (res.status === 204) {
         setZipStatus(null);
         return;
@@ -98,7 +98,7 @@ export default function AccountSettingsPage() {
   async function handleJsonExport() {
     setJsonExporting(true);
     try {
-      const res = await fetch("/api/account/export/json");
+      const res = await fetch("/api/backend/api/account/export?format=json");
       if (!res.ok) throw new Error("Export failed");
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -122,7 +122,9 @@ export default function AccountSettingsPage() {
   async function handleZipExport() {
     setZipExporting(true);
     try {
-      const res = await fetch("/api/account/export/zip", { method: "POST" });
+      const res = await fetch("/api/backend/api/account/export?format=zip", {
+        method: "POST",
+      });
       if (!res.ok) throw new Error("Failed to start ZIP export");
       const data = await res.json();
       setZipStatus(data);
@@ -136,7 +138,7 @@ export default function AccountSettingsPage() {
   async function handleSoftDelete() {
     setSoftDeleting(true);
     try {
-      const res = await fetch("/api/account/delete", {
+      const res = await fetch("/api/backend/api/account/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "soft" }),
@@ -153,7 +155,7 @@ export default function AccountSettingsPage() {
   async function handleHardDelete() {
     setHardDeleting(true);
     try {
-      const res = await fetch("/api/account/delete", {
+      const res = await fetch("/api/backend/api/account/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "immediate" }),
@@ -172,10 +174,8 @@ export default function AccountSettingsPage() {
   async function handleRevokeAiConsent() {
     setRevoking(true);
     try {
-      const res = await fetch("/api/account/consents", {
+      const res = await fetch("/api/backend/api/consent/AI_DATA_PROCESSING", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ consentType: "AI_DATA_PROCESSING" }),
       });
       if (!res.ok) throw new Error("Failed to revoke consent");
       await loadConsents();

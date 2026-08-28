@@ -90,26 +90,6 @@ resource "aws_lb_listener_rule" "frontend_auth" {
   }
 }
 
-resource "aws_lb_listener_rule" "frontend_account" {
-  listener_arn = aws_lb_listener.https.arn
-  priority     = 6
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.frontend.arn
-  }
-
-  condition {
-    path_pattern {
-      # Account endpoints are served by Next.js route handlers, which read the
-      # session cookie and attach the Authorization: Bearer header before calling
-      # the backend. They must reach the frontend, not fall through to the
-      # broader "/api/*" backend rule below.
-      values = ["/api/account/*"]
-    }
-  }
-}
-
 resource "aws_lb_listener_rule" "frontend_backend_proxy" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 7

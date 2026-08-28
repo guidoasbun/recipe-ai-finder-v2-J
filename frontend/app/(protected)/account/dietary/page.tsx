@@ -18,7 +18,7 @@ export default function DietaryRestrictionsPage() {
     setLoading(true);
     setLoadError(false);
     try {
-      const res = await fetch("/api/account/dietary-restrictions");
+      const res = await fetch("/api/backend/api/account/dietary-restrictions");
       if (!res.ok) throw new Error("Failed to load");
       const data: string[] = await res.json();
       setSelected(new Set(data as DietaryRestriction[]));
@@ -57,7 +57,7 @@ export default function DietaryRestrictionsPage() {
     setSaveError(null);
     setShowSuccess(false);
     try {
-      const res = await fetch("/api/account/dietary-restrictions", {
+      const res = await fetch("/api/backend/api/account/dietary-restrictions", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ restrictions: Array.from(selected) }),
