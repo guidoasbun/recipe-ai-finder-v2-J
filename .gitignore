@@ -43,6 +43,7 @@ backend/.nb-gradle/
 backend/build/
 !backend/**/src/main/**/build/
 !backend/**/src/test/**/build/
+backend/data/
 
 # ── Shared ────────────────────────────────────────────────
 .env*
@@ -74,3 +75,9 @@ aws-exports.js
 
 # ── Backend local config ──────────────────────────────────
 backend/src/main/resources/application-local.properties
+
+# ── Secret hygiene ────────────────────────────────────────
+# Never commit raw API keys. A pre-commit secret guard is in .githooks/ (see
+# .githooks/README.md). Enable per clone with: git config core.hooksPath .githooks
+# Keep real keys in AWS Secrets Manager (deploy) or application-local.properties (local);
+# *.tfvars must hold only Secrets Manager ARNs.

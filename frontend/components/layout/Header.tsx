@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Generate" },
+  { href: "/browse", label: "Look for Existing Recipes" },
   { href: "/recipes", label: "Saved Recipes" },
   { href: "/model-stats", label: "Model Stats" },
   { href: "/account", label: "Account Settings" },

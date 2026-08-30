@@ -14,6 +14,14 @@ output "recipes_table_arn" {
   value = aws_dynamodb_table.recipes.arn
 }
 
+output "catalog_table_name" {
+  value = aws_dynamodb_table.catalog.name
+}
+
+output "catalog_table_arn" {
+  value = aws_dynamodb_table.catalog.arn
+}
+
 output "consent_table_name" {
   value = aws_dynamodb_table.consent.name
 }

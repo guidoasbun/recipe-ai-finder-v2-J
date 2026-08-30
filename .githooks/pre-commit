@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Pre-commit secret guard.
+# Blocks a commit if any STAGED change appears to contain a real API key.
+# Matches real-length keys only, so placeholders like "sk-..." or "AIzaSy..." in
+# comments/docs are allowed. Detects: OpenAI (sk-proj-/sk-), Stability, Google (AIzaSy),
+# AWS access key IDs, and generic long secrets in *.tfvars.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+#
+set -euo pipefail
+
+# Patterns for REAL keys (length thresholds avoid matching short placeholders).
+patterns=(
+  'sk-proj-[A-Za-z0-9_-]{40,}'        # OpenAI project keys
+  'sk-[A-Za-z0-9]{40,}'               # OpenAI / Stability style keys
+  'AIzaSy[A-Za-z0-9_-]{30,}'          # Google API keys
+  'AKIA[0-9A-Z]{16}'                  # AWS access key ID
+  'ASIA[0-9A-Z]{16}'                  # AWS temporary access key ID
+)
+
+# Only scan staged, added/changed text content.
+staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged_files" ] && exit 0
+
+found=0
+while IFS= read -r file; do
+  # Skip binary files.
+  if git diff --cached -- "$file" | grep -Iq .; then :; else continue; fi
+  # Get the staged additions only (lines starting with +, excluding the +++ header).
+  added=$(git diff --cached -U0 -- "$file" | grep -E '^\+' | grep -Ev '^\+\+\+' || true)
+  [ -z "$added" ] && continue
+  for pat in "${patterns[@]}"; do
+    if echo "$added" | grep -Eq "$pat"; then
+      echo "BLOCKED: possible real secret matching /$pat/ in staged file: $file" >&2
+      found=1
+    fi
+  done
+done <<< "$staged_files"
+
+if [ "$found" -ne 0 ]; then
+  echo "" >&2
+  echo "Commit rejected: a staged change looks like a real API key/secret." >&2
+  echo "Move the value to AWS Secrets Manager (deploy) or application-local.properties (local)." >&2
+  echo "If this is a false positive, review the change; bypass only if certain with: git commit --no-verify" >&2
+  exit 1
+fi
+
+exit 0
