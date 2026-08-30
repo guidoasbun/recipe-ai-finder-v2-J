@@ -4,14 +4,18 @@ Incremental, test-backed steps. Each task references the requirements it satisfi
 the data + search core first (behind the interface), then the API, ingestion, and finally
 the frontend. Nothing here provisions OpenSearch; that stays a documented future swap.
 
-> **Status (Phase 1 complete):** The in-app search feature is built and verified
-> end-to-end. Ingestion loaded **two** datasets — TheMealDB (~300, international) and
-> "Better Recipes for a Better Life"/AllRecipes (~1,090, American) — for **1,261 recipes
-> embedded** (129 within-source duplicate URLs deduped, 0 failed). Live search verified:
-> keyword, semantic (Bedrock Titan V2), dietary filtering, and pagination all working.
-> Deferred by scope: automated unit/web-layer tests (verified manually against live data
-> instead), the `BatchEmbeddingStrategy` (docs/future only), and all Phase 2 (RecipeNLG)
-> work.
+> **Status (all tasks complete).** In-app search built and verified end-to-end. Ingestion
+> loaded **two** datasets — TheMealDB (~300, international) and "Better Recipes for a Better
+> Life"/AllRecipes (~1,090, American) — for **1,261 recipes embedded** (129 within-source
+> duplicate URLs deduped, 0 failed). Live search verified: keyword, semantic (Bedrock Titan
+> V2), dietary filtering, pagination. **28 automated tests** added and passing. Phase 2 code
+> (`BatchEmbeddingStrategy` scaffold, `RecipeNlgCsvSource`) is in place but not run against a
+> real RecipeNLG file (dataset not downloaded). A `RUNBOOK.md` documents ingestion, config,
+> and the backend swap.
+>
+> Automated tests caught a real bug: keyword search was not filtering out non-matching
+> recipes (returned the whole catalog for any query). Fixed with a score>0 filter plus a
+> semantic-match threshold.
 
 - [x] 1. Catalog data model and config
   - [x] 1.1 Add `CatalogRecipe` `@DynamoDbBean` (PK `catalogRecipeId`; fields: title,
@@ -35,10 +39,11 @@ the frontend. Nothing here provisions OpenSearch; that stays a documented future
   - [x] 2.4 Implement `SynchronousEmbeddingStrategy`: RPM-based pacing, backoff via
         `EmbeddingService`, resumable (runner skips recipes that already have an embedding).
         Serves ≤ ~50K.
-  - [ ] 2.5 Scaffold `BatchEmbeddingStrategy` (Bedrock Batch Inference, S3 JSONL, async)
-        for ~2.2M. **NOT built** — documented as future in design.md §5.1; Phase 2 item.
-  - [ ] 2.6 Unit tests for request/response parsing and resume/skip behavior. **Deferred** —
-        verified manually against live Bedrock + data instead of automated tests.
+  - [x] 2.5 Scaffold `BatchEmbeddingStrategy` (Bedrock Batch Inference, S3 JSONL, async)
+        for ~2.2M. Present as a documented scaffold (not a `@Component`, `embed` throws with
+        guidance); real submit/poll/collect wiring is Phase 2. See design.md §5.1.
+  - [x] 2.6 Unit tests: `EmbeddingServiceTest` (request body shape, response parse, retry
+        exhaustion) and `SynchronousEmbeddingStrategyTest` (delegation, RPM pacing).
   - _Requirements: 3.1, 3.2, 3.6, 3.7, 3.8_
 
 - [x] 3. Search abstraction (the swap seam)
@@ -65,8 +70,9 @@ the frontend. Nothing here provisions OpenSearch; that stays a documented future
         language query returned semantically relevant results.)
   - [x] 4.5 Graceful fallback: on embedding failure, returns keyword-ranked results.
   - [x] 4.6 Applies pagination (bounded page size) and populates `totalMatches`.
-  - [ ] 4.7 Unit tests. **Deferred** — behavior verified manually against the live catalog
-        (keyword, semantic, dietary exclusion, browse, pagination bounds all confirmed).
+  - [x] 4.7 Unit tests (`InAppCatalogSearchServiceTest`): keyword ranking + match filtering,
+        dietary exclusion, blank-query browse, pagination bounds, empty results, semantic-
+        failure fallback, `findById`. These caught and drove the keyword-filter bug fix.
   - _Requirements: 2.1–2.6, 3.1, 3.3, 3.4, 3.5, 4.2, 7.2, 8.1, 8.2_
 
 - [x] 5. Catalog API
@@ -77,8 +83,9 @@ the frontend. Nothing here provisions OpenSearch; that stays a documented future
         `ResourceNotFoundException`/`GlobalExceptionHandler`.
   - [x] 5.3 Input validation (bounded `q` via `@Size`, capped `pageSize`, valid tags) per
         existing jakarta-validation conventions.
-  - [ ] 5.4 Web-layer tests. **Deferred** — auth (401 unauthenticated) confirmed manually;
-        automated web-layer tests not written.
+  - [x] 5.4 Web-layer tests (`CatalogControllerTest`): effective-tags resolution (saved vs
+        request override), invalid-tag dropping, pageSize cap, negative-page clamp, 404 on
+        unknown id. (Auth 401-unauthenticated also confirmed manually against the running app.)
   - _Requirements: 1.4, 2.4, 2.6, 4.1, 4.3, 5.1, 5.3_
 
 - [x] 6. Ingestion pipeline
@@ -95,8 +102,10 @@ the frontend. Nothing here provisions OpenSearch; that stays a documented future
         attribution; RPM-paced Bedrock calls with progress logging.
   - [x] 6.5 Idempotency: deterministic id + skip-if-already-embedded. Verified live — the
         129 within-AllRecipes duplicate URLs were correctly skipped, no duplicates created.
-  - [ ] 6.6 Phase 2 source: RecipeNLG-subset parser (≤ ~50K). **NOT started** — Phase 2,
-        out of current scope.
+  - [x] 6.6 Phase 2 source: `RecipeNlgCsvSource` — parses RecipeNLG CSV (title/ingredients/
+        directions/link/source, JSON-array fields) with a hard record cap for the in-app
+        ceiling. Built and compiles; NOT run against a real file (dataset not downloaded).
+        Also refactored the shared CSV parsing into `CsvReader` (used by both CSV sources).
   - _Requirements: 4.5, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
 
 - [x] 7. Frontend — tab and search page
@@ -126,13 +135,16 @@ the frontend. Nothing here provisions OpenSearch; that stays a documented future
         confirmed to fail on a clean tree — unrelated to this feature.
   - [x] 9.2 Default config uses the in-app backend and provisions no OpenSearch; AI
         generation, saved-recipe tables, and dietary endpoints untouched.
-  - [ ] 9.3 Written docs (how to run ingestion / flip `catalog.search.backend` /
-        attribution). **Partial** — captured in design.md and this file; a dedicated
-        README/runbook section is not yet written.
+  - [x] 9.3 `RUNBOOK.md` written: how to run ingestion, config reference, backend-switch
+        steps, frontend overview, and dataset attribution.
 
 ## Follow-ups / known items
-- Add automated tests (tasks 2.6, 4.7, 5.4) — currently verified manually.
-- `backend/.../application-local.properties` contains real committed API keys — rotate and
-  remove from source control (pre-existing, unrelated to this feature).
-- Optional: a `not-found.tsx` for the `/browse/[id]` route.
-- Phase 2 (RecipeNLG subset + `BatchEmbeddingStrategy`) when desired.
+- All spec tasks complete. Remaining items are optional / future:
+- **Phase 2 execution:** download the RecipeNLG CSV, register `RecipeNlgCsvSource` in the
+  ingestion runner with a record cap, and run ingestion. The parser is built but unrun.
+  Full 2.2M needs the OpenSearch backend + real `BatchEmbeddingStrategy` wiring.
+- **Frontend `<img>` → `next/image`:** the browse pages use `<img>` (a lint warning shared
+  with the existing recipes pages). Optional polish, consistent with the codebase as-is.
+- **Secret hygiene (resolved earlier):** verified no real API keys are committed to git.
+  `application-local.properties` is gitignored/untracked; `dev.tfvars` holds only Secrets
+  Manager ARNs. A pre-commit secret guard is in `.githooks/`. Rotating keys is optional.

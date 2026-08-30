@@ -2,7 +2,6 @@ package io.asbun.backend.ingest;
 
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -14,8 +13,8 @@ import java.util.List;
 /**
  * Parses the "Better Recipes for a Better Life" (AllRecipes-sourced) CSV.
  * Columns include: recipe_name, ingredients (comma-separated string), directions
- * (newline-separated steps), url, cuisine_path, img_src. Uses a minimal RFC-4180 reader
- * because fields contain embedded commas and newlines inside quotes.
+ * (newline-separated steps), url, cuisine_path, img_src. Uses {@link CsvReader} because
+ * fields contain embedded commas and newlines inside quotes.
  */
 @Slf4j
 public class CsvBetterRecipesSource implements RecipeSource {
@@ -38,7 +37,7 @@ public class CsvBetterRecipesSource implements RecipeSource {
     public List<ParsedRecipe> load() {
         List<ParsedRecipe> recipes = new ArrayList<>();
         try (Reader reader = Files.newBufferedReader(csvFile, StandardCharsets.UTF_8)) {
-            List<List<String>> rows = readCsv(reader);
+            List<List<String>> rows = CsvReader.readAll(reader);
             if (rows.isEmpty()) {
                 return recipes;
             }
@@ -134,76 +133,5 @@ public class CsvBetterRecipesSource implements RecipeSource {
         // e.g. "/Desserts/Fruit Desserts/Apple Dessert Recipes/" -> "Desserts / Fruit Desserts / Apple Dessert Recipes"
         String trimmed = path.replaceAll("^/|/$", "");
         return trimmed.replace("/", " / ").trim();
-    }
-
-    /** Minimal RFC-4180 CSV reader supporting quoted fields with embedded commas/newlines. */
-    private List<List<String>> readCsv(Reader in) throws IOException {
-        List<List<String>> rows = new ArrayList<>();
-        List<String> current = new ArrayList<>();
-        StringBuilder field = new StringBuilder();
-        boolean inQuotes = false;
-        boolean fieldStarted = false;
-
-        try (BufferedReader br = new BufferedReader(in)) {
-            int ci;
-            while ((ci = br.read()) != -1) {
-                char c = (char) ci;
-                if (inQuotes) {
-                    if (c == '"') {
-                        int next = br.read();
-                        if (next == '"') {
-                            field.append('"'); // escaped quote
-                        } else {
-                            inQuotes = false;
-                            if (next != -1) {
-                                c = (char) next;
-                                // reprocess this char below via fallthrough handling
-                                if (c == ',') {
-                                    current.add(field.toString());
-                                    field.setLength(0);
-                                    fieldStarted = false;
-                                } else if (c == '\n') {
-                                    current.add(field.toString());
-                                    field.setLength(0);
-                                    rows.add(current);
-                                    current = new ArrayList<>();
-                                    fieldStarted = false;
-                                } else if (c != '\r') {
-                                    field.append(c);
-                                }
-                            }
-                        }
-                    } else {
-                        field.append(c);
-                    }
-                } else {
-                    if (c == '"' && !fieldStarted) {
-                        inQuotes = true;
-                        fieldStarted = true;
-                    } else if (c == ',') {
-                        current.add(field.toString());
-                        field.setLength(0);
-                        fieldStarted = false;
-                    } else if (c == '\n') {
-                        current.add(field.toString());
-                        field.setLength(0);
-                        rows.add(current);
-                        current = new ArrayList<>();
-                        fieldStarted = false;
-                    } else if (c == '\r') {
-                        // ignore
-                    } else {
-                        field.append(c);
-                        fieldStarted = true;
-                    }
-                }
-            }
-        }
-        // flush trailing field/row
-        if (field.length() > 0 || !current.isEmpty()) {
-            current.add(field.toString());
-            rows.add(current);
-        }
-        return rows;
     }
 }

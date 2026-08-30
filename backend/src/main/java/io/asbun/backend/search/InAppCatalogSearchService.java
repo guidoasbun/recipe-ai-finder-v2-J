@@ -73,6 +73,13 @@ public class InAppCatalogSearchService implements CatalogSearchService {
                     .collect(Collectors.toList());
         } else {
             scored = rank(candidates, query.text());
+            // A text query is a filter, not just a sort: drop recipes that do not match.
+            // In keyword mode "match" means a positive keyword score. In semantic/hybrid
+            // mode, ranking already orders by relevance, but we still drop recipes with no
+            // signal at all (guards against returning the entire catalog for a query).
+            scored = scored.stream()
+                    .filter(s -> s.score > 0.0)
+                    .collect(Collectors.toList());
         }
 
         long total = scored.size();
@@ -108,23 +115,34 @@ public class InAppCatalogSearchService implements CatalogSearchService {
         List<Scored> result = new ArrayList<>(candidates.size());
         for (CatalogRecipe r : candidates) {
             double keywordScore = keywordScore(r, terms);
+            boolean keywordHit = keywordScore > 0.0;
             double semanticScore = (queryVector != null && r.getEmbedding() != null)
                     ? cosine(queryVector, r.getEmbedding())
                     : 0.0;
 
             double score;
             if ("semantic".equalsIgnoreCase(mode) && queryVector != null) {
-                score = semanticScore;
+                // Pure semantic: rank by similarity, keep only reasonably-similar recipes.
+                score = semanticScore >= SEMANTIC_MATCH_THRESHOLD ? semanticScore : 0.0;
             } else if (queryVector != null) {
-                // hybrid: blend. Keyword score is normalized roughly into [0,1] by term coverage.
-                score = 0.5 * semanticScore + 0.5 * normalizeKeyword(keywordScore, terms.length);
+                // Hybrid: a recipe matches if it has a keyword hit OR a strong semantic score.
+                boolean semanticHit = semanticScore >= SEMANTIC_MATCH_THRESHOLD;
+                if (keywordHit || semanticHit) {
+                    score = 0.5 * semanticScore + 0.5 * normalizeKeyword(keywordScore, terms.length);
+                } else {
+                    score = 0.0;
+                }
             } else {
+                // Keyword-only (mode=keyword, semantic disabled, or embedding failed).
                 score = keywordScore;
             }
             result.add(new Scored(r, score));
         }
         return result;
     }
+
+    /** Minimum cosine similarity for a recipe to count as a semantic match. */
+    private static final double SEMANTIC_MATCH_THRESHOLD = 0.35;
 
     private boolean matchesDietary(CatalogRecipe r, List<String> requiredTags) {
         if (requiredTags == null || requiredTags.isEmpty()) {
