@@ -39,7 +39,8 @@ A demo account is available so you can explore the app without creating your own
 4. An image generation model (Stability AI, OpenAI, or Google Imagen) produces professional food photography for each recipe
 5. Photos are stored in S3 and served via presigned URLs; recipes are persisted in DynamoDB
 6. Browse, view, and delete your saved recipe collection
-7. Visit the **Model Stats** page to see aggregated performance charts across all users — average image and text generation times per model, sample counts, and a 30-day trend line
+7. Set your **dietary restrictions** in Account Settings — every recipe generated afterwards is guaranteed to comply
+8. Visit the **Model Stats** page to see aggregated performance charts across all users — average image and text generation times per model, sample counts, and a 30-day trend line
 
 ---
 
@@ -135,6 +136,62 @@ The frontend renders three pulsing skeleton cards while waiting and swaps them f
 - [backend/.../repository/StatsRepository.java](backend/src/main/java/io/asbun/backend/repository/StatsRepository.java)
 - [frontend/app/(protected)/model-stats/ModelStatsLoader.tsx](<frontend/app/(protected)/model-stats/ModelStatsLoader.tsx>)
 - [frontend/app/(protected)/model-stats/ModelStatsChart.tsx](<frontend/app/(protected)/model-stats/ModelStatsChart.tsx>)
+
+---
+
+## Dietary Restrictions
+
+Users can save a set of dietary restrictions to their profile, and every recipe generated afterwards is guaranteed to comply. Restrictions are managed at `/account/dietary` and surfaced on the dashboard so they're always visible.
+
+### Supported restrictions
+
+Ten restrictions are supported. The canonical list lives in the backend enum ([`DietaryRestriction`](backend/src/main/java/io/asbun/backend/model/enums/DietaryRestriction.java)) and is mirrored on the frontend ([`lib/dietary.ts`](frontend/lib/dietary.ts)):
+
+| Value          | Label       |
+| -------------- | ----------- |
+| `GLUTEN_FREE`  | Gluten-Free |
+| `KETO`         | Keto        |
+| `VEGAN`        | Vegan       |
+| `VEGETARIAN`   | Vegetarian  |
+| `DAIRY_FREE`   | Dairy-Free  |
+| `NUT_FREE`     | Nut-Free    |
+| `PALEO`        | Paleo       |
+| `LOW_CARB`     | Low-Carb    |
+| `HALAL`        | Halal       |
+| `KOSHER`       | Kosher      |
+
+### Persistence & API
+
+Restrictions are stored as a `List<String>` on the `User` item in DynamoDB and exposed through the account API:
+
+| Method | Path                                | Description                                        |
+| ------ | ----------------------------------- | -------------------------------------------------- |
+| `GET`  | `/api/account/dietary-restrictions` | Return the current user's saved restrictions       |
+| `PUT`  | `/api/account/dietary-restrictions` | Replace the saved restrictions with a new list     |
+
+The `PUT` payload is validated on both sides:
+
+- **Server:** [`UpdateDietaryRestrictionsRequest`](backend/src/main/java/io/asbun/backend/dto/UpdateDietaryRestrictionsRequest.java) enforces `@NotNull` and `@Size(max = 10)`; the controller rejects values outside the supported enum with a `400`, and de-duplicates the list before saving.
+- **Client:** the selector at `/account/dietary` only offers the ten supported values, and the dashboard shows the active restrictions (or a "None set" state) with a link to edit.
+
+The current user's restrictions are also included in the profile response (`GET /api/account/profile`), which the dashboard uses to render its badges.
+
+### AI enforcement
+
+When restrictions are set, they are injected into the Bedrock prompt so the model is constrained at generation time — not filtered afterwards. On `POST /api/recipes/generate`, [`RecipeController`](backend/src/main/java/io/asbun/backend/controller/RecipeController.java) loads the user's saved restrictions and passes them to [`BedrockService.generateRecipes()`](backend/src/main/java/io/asbun/backend/service/BedrockService.java), which:
+
+1. Adds an explicit dietary-constraints clause listing the restrictions by display name and instructing the model that every recipe **must** fully comply.
+2. Qualifies the "pantry staples" permission (flour, butter, soy sauce, etc.) so that any dietary restriction always overrides it — preventing contradictory instructions such as suggesting flour to a gluten-free user.
+
+When a user has no restrictions, the clause is omitted entirely and generation behaves exactly as before.
+
+**Key files:**
+
+- [backend/.../controller/AccountController.java](backend/src/main/java/io/asbun/backend/controller/AccountController.java) — dietary restriction endpoints
+- [backend/.../service/BedrockService.java](backend/src/main/java/io/asbun/backend/service/BedrockService.java) — prompt injection & enforcement
+- [backend/.../model/enums/DietaryRestriction.java](backend/src/main/java/io/asbun/backend/model/enums/DietaryRestriction.java) — supported values
+- [frontend/app/(protected)/account/dietary/page.tsx](<frontend/app/(protected)/account/dietary/page.tsx>) — restriction selection UI
+- [frontend/lib/dietary.ts](frontend/lib/dietary.ts) — shared restriction types & labels
 
 ---
 
@@ -387,5 +444,8 @@ npm run dev
 | `GET`    | `/api/recipes/{id}/image-stream` | SSE stream — fires `image-ready` event when image generation completes                                |
 | `DELETE` | `/api/recipes/{id}`              | Delete recipe                                                                                         |
 | `POST`   | `/api/images/upload`             | Upload image to S3                                                                                    |
+| `GET`    | `/api/account/profile`           | Get current user's profile (includes saved dietary restrictions)                                     |
+| `GET`    | `/api/account/dietary-restrictions` | Get current user's saved dietary restrictions                                                      |
+| `PUT`    | `/api/account/dietary-restrictions` | Replace the current user's dietary restrictions (max 10, validated)                                |
 | `GET`    | `/api/stats/models`              | Return cached model performance stats (JSON)                                                          |
 | `GET`    | `/api/stats/stream`              | SSE stream — fires `stats-ready` event with full stats JSON; triggers async computation on cache miss |
