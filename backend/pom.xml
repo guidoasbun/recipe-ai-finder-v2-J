@@ -114,6 +114,13 @@
             <version>8.10.1</version>
         </dependency>
 
+        <!-- Apache POI - read .xlsx recipe datasets during catalog ingestion -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
+        </dependency>
+
         <!-- AWS Cognito -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

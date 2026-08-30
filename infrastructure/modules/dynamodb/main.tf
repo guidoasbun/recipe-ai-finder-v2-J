@@ -39,6 +39,22 @@ resource "aws_dynamodb_table" "recipes" {
   }
 }
 
+resource "aws_dynamodb_table" "catalog" {
+  name         = "${var.project_name}-${var.environment}-catalog"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "catalogRecipeId"
+
+  attribute {
+    name = "catalogRecipeId"
+    type = "S"
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-catalog"
+    Environment = var.environment
+  }
+}
+
 resource "aws_dynamodb_table" "consent" {
   name         = "${var.project_name}-${var.environment}-consent"
   billing_mode = "PAY_PER_REQUEST"
