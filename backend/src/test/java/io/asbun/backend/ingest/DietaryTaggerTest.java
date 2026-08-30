@@ -61,37 +61,34 @@ class DietaryTaggerTest {
     }
 
     @Test
-    void porkContaining_isNotHalal() {
-        List<String> tags = tagger.tag(List.of("bacon", "eggs"));
+    void halalAndKosher_areNeverInferredFromIngredients() {
+        // Certification/provenance cannot be established from ingredient text, so these tags
+        // are never produced here regardless of how "clean" the ingredient list looks.
+        List<String> tags = tagger.tag(List.of("spinach", "olive oil", "lemon", "salt"));
 
-        assertThat(tags).doesNotContain(DietaryRestriction.HALAL.name());
-    }
-
-    @Test
-    void shellfishContaining_isNotKosher() {
-        List<String> tags = tagger.tag(List.of("shrimp", "garlic", "butter"));
-
-        assertThat(tags).doesNotContain(DietaryRestriction.KOSHER.name());
+        assertThat(tags).doesNotContain(
+                DietaryRestriction.HALAL.name(),
+                DietaryRestriction.KOSHER.name());
     }
 
     @Test
     void wordBoundary_grahamDoesNotTriggerHam() {
         // "graham" contains "ham" as a substring; word-boundary matching must not flag it.
+        // graham crackers are vegan-friendly here but contain gluten (crackers).
         List<String> tags = tagger.tag(List.of("graham crackers", "sugar"));
 
-        // graham crackers are not pork; HALAL should remain (crackers do disqualify GLUTEN_FREE).
-        assertThat(tags).contains(DietaryRestriction.HALAL.name());
+        assertThat(tags).contains(DietaryRestriction.VEGETARIAN.name());
         assertThat(tags).doesNotContain(DietaryRestriction.GLUTEN_FREE.name());
     }
 
     @Test
-    void emptyIngredients_returnsAllTags() {
-        // With no disqualifiers present, the conservative tagger grants every restriction.
-        List<String> tags = tagger.tag(List.of());
+    void emptyIngredients_returnsNoTags() {
+        // Unknown/empty ingredients must not be labeled safe for anything.
+        assertThat(tagger.tag(List.of())).isEmpty();
+    }
 
-        assertThat(tags).contains(
-                DietaryRestriction.VEGAN.name(),
-                DietaryRestriction.GLUTEN_FREE.name(),
-                DietaryRestriction.NUT_FREE.name());
+    @Test
+    void nullIngredients_returnsNoTags() {
+        assertThat(tagger.tag(null)).isEmpty();
     }
 }

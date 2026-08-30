@@ -38,21 +38,26 @@ public class CatalogController {
     private int maxPageSize;
 
     /**
-     * Searches the shared recipe catalog. Dietary filtering defaults to the user's saved
-     * restrictions; passing {@code tags} overrides them for this search only (does not
-     * modify the user's account).
+     * Searches the shared recipe catalog.
+     *
+     * <p>Dietary filtering: by default (when {@code filtersApplied} is false/absent) the
+     * user's saved restrictions are applied. When {@code filtersApplied=true}, the request's
+     * {@code tags} are used verbatim as an explicit override for this search — including an
+     * empty list, which means "search with no dietary filter". This lets the UI express
+     * "I deselected everything" distinctly from "I didn't touch the filters".
      */
     @GetMapping("/search")
     public ResponseEntity<CatalogSearchResults> search(
             @RequestParam(required = false) @Size(max = 200) String q,
             @RequestParam(required = false) List<String> tags,
+            @RequestParam(defaultValue = "false") boolean filtersApplied,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(required = false) Integer pageSize,
             Authentication authentication) {
 
         String userId = getUserId(authentication);
 
-        List<String> effectiveTags = resolveDietaryTags(tags, userId);
+        List<String> effectiveTags = resolveDietaryTags(tags, filtersApplied, userId);
 
         int size = pageSize == null ? defaultPageSize : pageSize;
         size = Math.max(1, Math.min(size, maxPageSize));
@@ -74,16 +79,25 @@ public class CatalogController {
     }
 
     /**
-     * Uses request-supplied tags when present (validated against the enum), otherwise the
-     * user's saved dietary restrictions.
+     * Resolves the dietary tags to enforce.
+     *
+     * <p>When {@code filtersApplied} is true, the request's tags are the explicit override
+     * (an empty list means "no filter"). Otherwise the user's saved restrictions apply.
+     * Request tags are validated against the enum: any invalid value causes a 400 rather
+     * than being silently dropped (silently dropping "PIZZA_ONLY" would broaden results by
+     * disabling filtering the caller intended).
      */
-    private List<String> resolveDietaryTags(List<String> requestedTags, String userId) {
-        if (requestedTags != null) {
-            List<String> valid = requestedTags.stream()
-                    .filter(this::isValidRestriction)
+    private List<String> resolveDietaryTags(List<String> requestedTags, boolean filtersApplied, String userId) {
+        if (filtersApplied) {
+            List<String> requested = requestedTags == null ? List.of() : requestedTags;
+            List<String> invalid = requested.stream()
+                    .filter(t -> !isValidRestriction(t))
                     .distinct()
                     .collect(Collectors.toList());
-            return valid;
+            if (!invalid.isEmpty()) {
+                throw new IllegalArgumentException("Invalid dietary restriction(s): " + invalid);
+            }
+            return requested.stream().distinct().collect(Collectors.toList());
         }
         return userRepository.findById(userId)
                 .map(u -> u.getDietaryRestrictions() == null

@@ -18,8 +18,13 @@ import java.util.stream.Collectors;
 
 /**
  * In-memory catalog search. Loads the catalog from DynamoDB into a cache and ranks by
- * keyword score and/or embedding cosine similarity. Suitable up to the in-app ceiling
- * (~50K recipes). Selected when {@code catalog.search.backend=inapp} (default).
+ * keyword score and/or embedding cosine similarity.
+ *
+ * <p>Memory: embeddings are cached as primitive {@code float[]} (not boxed
+ * {@code List<Double>}). A 1,024-dim {@code float[]} is ~4 KB vs ~24 KB for the boxed form,
+ * so the practical in-app ceiling stays well under the backend's memory budget. Even so,
+ * keep the catalog in the low tens of thousands for the in-app backend; larger sets belong
+ * on OpenSearch (see design.md §6.2 / §12).
  */
 @Slf4j
 @Component
@@ -30,7 +35,7 @@ public class InAppCatalogSearchService implements CatalogSearchService {
     private final boolean semanticEnabled;
     private final String mode; // keyword | semantic | hybrid
 
-    private final AtomicReference<List<CatalogRecipe>> cache = new AtomicReference<>();
+    private final AtomicReference<List<CachedRecipe>> cache = new AtomicReference<>();
 
     public InAppCatalogSearchService(CatalogRecipeRepository repository,
                                      EmbeddingService embeddingService,
@@ -42,14 +47,32 @@ public class InAppCatalogSearchService implements CatalogSearchService {
         this.mode = mode;
     }
 
-    private List<CatalogRecipe> catalog() {
-        List<CatalogRecipe> current = cache.get();
+    private List<CachedRecipe> catalog() {
+        List<CachedRecipe> current = cache.get();
         if (current == null) {
-            current = repository.findAll();
+            List<CatalogRecipe> loaded = repository.findAll();
+            List<CachedRecipe> built = new ArrayList<>(loaded.size());
+            for (CatalogRecipe r : loaded) {
+                built.add(new CachedRecipe(r, toFloatArray(r.getEmbedding())));
+                // Release the boxed embedding so we do not retain both representations.
+                r.setEmbedding(null);
+            }
+            current = built;
             cache.set(current);
             log.info("Loaded {} catalog recipes into in-app search cache", current.size());
         }
         return current;
+    }
+
+    private static float[] toFloatArray(List<Double> embedding) {
+        if (embedding == null || embedding.isEmpty()) {
+            return null;
+        }
+        float[] arr = new float[embedding.size()];
+        for (int i = 0; i < arr.length; i++) {
+            arr[i] = embedding.get(i).floatValue();
+        }
+        return arr;
     }
 
     /** Clears the cache; next search reloads from DynamoDB (used after ingestion). */
@@ -59,8 +82,8 @@ public class InAppCatalogSearchService implements CatalogSearchService {
 
     @Override
     public CatalogSearchResults search(CatalogSearchQuery query) {
-        List<CatalogRecipe> candidates = catalog().stream()
-                .filter(r -> matchesDietary(r, query.dietaryTags()))
+        List<CachedRecipe> candidates = catalog().stream()
+                .filter(r -> matchesDietary(r.recipe, query.dietaryTags()))
                 .collect(Collectors.toList());
 
         boolean hasText = query.text() != null && !query.text().isBlank();
@@ -86,24 +109,26 @@ public class InAppCatalogSearchService implements CatalogSearchService {
 
         int pageSize = Math.max(1, query.pageSize());
         int page = Math.max(0, query.page());
-        int from = page * pageSize;
+        // Compute offset as long: page*pageSize with large page values would overflow int
+        // and pass a negative argument to Stream.skip (500 instead of an empty page).
+        long from = (long) page * pageSize;
 
         List<CatalogRecipeDto> items = scored.stream()
                 .sorted(Comparator.comparingDouble((Scored s) -> s.score).reversed())
                 .skip(from)
                 .limit(pageSize)
-                .map(s -> toDto(s.recipe))
+                .map(s -> toDto(s.cached.recipe))
                 .collect(Collectors.toList());
 
         return new CatalogSearchResults(items, page, pageSize, total);
     }
 
-    private List<Scored> rank(List<CatalogRecipe> candidates, String text) {
-        List<Double> queryVector = null;
+    private List<Scored> rank(List<CachedRecipe> candidates, String text) {
+        float[] queryVector = null;
         boolean useSemantic = semanticEnabled && !"keyword".equalsIgnoreCase(mode);
         if (useSemantic) {
             try {
-                queryVector = embeddingService.embed(text);
+                queryVector = toFloatArray(embeddingService.embed(text));
             } catch (Exception e) {
                 // Graceful fallback: semantic failed, use keyword only.
                 log.warn("Query embedding failed, falling back to keyword search: {}", e.getMessage());
@@ -113,11 +138,11 @@ public class InAppCatalogSearchService implements CatalogSearchService {
 
         String[] terms = tokenize(text);
         List<Scored> result = new ArrayList<>(candidates.size());
-        for (CatalogRecipe r : candidates) {
-            double keywordScore = keywordScore(r, terms);
+        for (CachedRecipe c : candidates) {
+            double keywordScore = keywordScore(c.recipe, terms);
             boolean keywordHit = keywordScore > 0.0;
-            double semanticScore = (queryVector != null && r.getEmbedding() != null)
-                    ? cosine(queryVector, r.getEmbedding())
+            double semanticScore = (queryVector != null && c.embedding != null)
+                    ? cosine(queryVector, c.embedding)
                     : 0.0;
 
             double score;
@@ -128,7 +153,11 @@ public class InAppCatalogSearchService implements CatalogSearchService {
                 // Hybrid: a recipe matches if it has a keyword hit OR a strong semantic score.
                 boolean semanticHit = semanticScore >= SEMANTIC_MATCH_THRESHOLD;
                 if (keywordHit || semanticHit) {
-                    score = 0.5 * semanticScore + 0.5 * normalizeKeyword(keywordScore, terms.length);
+                    // Clamp the semantic contribution at zero: cosine can be negative, and a
+                    // negative value must never cancel out a real keyword match (which would
+                    // then be filtered as score<=0 despite the keyword-hit OR semantic-hit rule).
+                    double semanticContribution = Math.max(0.0, semanticScore);
+                    score = 0.5 * semanticContribution + 0.5 * normalizeKeyword(keywordScore, terms.length);
                 } else {
                     score = 0.0;
                 }
@@ -136,7 +165,7 @@ public class InAppCatalogSearchService implements CatalogSearchService {
                 // Keyword-only (mode=keyword, semantic disabled, or embedding failed).
                 score = keywordScore;
             }
-            result.add(new Scored(r, score));
+            result.add(new Scored(c, score));
         }
         return result;
     }
@@ -189,14 +218,14 @@ public class InAppCatalogSearchService implements CatalogSearchService {
         return Math.min(1.0, rawScore / max);
     }
 
-    private double cosine(List<Double> a, List<Double> b) {
-        int n = Math.min(a.size(), b.size());
+    private double cosine(float[] a, float[] b) {
+        int n = Math.min(a.length, b.length);
         double dot = 0.0;
         double na = 0.0;
         double nb = 0.0;
         for (int i = 0; i < n; i++) {
-            double x = a.get(i);
-            double y = b.get(i);
+            double x = a[i];
+            double y = b[i];
             dot += x * y;
             na += x * x;
             nb += y * y;
@@ -229,12 +258,23 @@ public class InAppCatalogSearchService implements CatalogSearchService {
     }
 
     private static final class Scored {
-        final CatalogRecipe recipe;
+        final CachedRecipe cached;
         final double score;
 
-        Scored(CatalogRecipe recipe, double score) {
-            this.recipe = recipe;
+        Scored(CachedRecipe cached, double score) {
+            this.cached = cached;
             this.score = score;
+        }
+    }
+
+    /** Cached catalog entry: the recipe plus its embedding as a compact primitive array. */
+    private static final class CachedRecipe {
+        final CatalogRecipe recipe;
+        final float[] embedding;
+
+        CachedRecipe(CatalogRecipe recipe, float[] embedding) {
+            this.recipe = recipe;
+            this.embedding = embedding;
         }
     }
 }

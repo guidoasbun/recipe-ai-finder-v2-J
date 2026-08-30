@@ -15,8 +15,17 @@ import java.util.Set;
  *
  * <p>This is intentionally conservative (better to omit a tag than to wrongly claim a
  * recipe is safe). Tagging happens once at ingestion; querying is then a pure tag match.
- * Some restrictions (HALAL, KOSHER, PALEO, LOW_CARB, KETO) can only be approximated from
- * ingredient text, so their rules are best-effort and documented as such.
+ *
+ * <p>Two deliberate rules:
+ * <ul>
+ *   <li>If ingredients are missing/empty, NO tags are assigned. Absence of disqualifiers in
+ *       an empty list is not evidence of safety, so we do not label unknown recipes.</li>
+ *   <li>HALAL and KOSHER are NOT inferred here. They require certification/provenance that
+ *       ingredient text cannot establish (e.g. halal slaughter, kosher meat/dairy
+ *       separation), so absence of pork/shellfish alone is insufficient.</li>
+ * </ul>
+ * The remaining approximated restrictions (PALEO, LOW_CARB, KETO) are best-effort from
+ * ingredient text.
  */
 @Component
 public class DietaryTagger {
@@ -75,26 +84,19 @@ public class DietaryTagger {
             "butter", "cream", "yogurt", "sugar", "corn", "barley", "rye", "wheat"
     );
 
-    // Explicitly non-Halal / non-Kosher signals (best-effort).
-    private static final Set<String> PORK_ALCOHOL = Set.of(
-            "pork", "bacon", "ham", "prosciutto", "pancetta", "lard", "gelatin",
-            "wine", "beer", "rum", "vodka", "brandy", "bourbon", "whiskey", "liqueur",
-            "sherry", "sake", "alcohol"
-    );
-
-    // Shellfish + pork + mixing meat & dairy make strict KOSHER un-determinable from text;
-    // we only tag KOSHER when clearly free of pork, shellfish, and obvious non-kosher items.
-    private static final Set<String> NON_KOSHER = Set.of(
-            "pork", "bacon", "ham", "prosciutto", "pancetta", "lard",
-            "shrimp", "prawn", "crab", "lobster", "clam", "mussel", "oyster", "scallop",
-            "squid", "octopus", "gelatin"
-    );
-
     /**
      * @param ingredients recipe ingredient phrases (quantities allowed)
-     * @return the DietaryRestriction enum names (e.g. "VEGAN") the recipe satisfies
+     * @return the DietaryRestriction enum names (e.g. "VEGAN") the recipe satisfies. Empty
+     *         when ingredients are missing/empty (unknown recipes get no safety tags), and
+     *         never includes HALAL/KOSHER (not inferable from ingredient text).
      */
     public List<String> tag(List<String> ingredients) {
+        // Unknown ingredients => no safety claims. Absence of disqualifiers in an empty
+        // list is not evidence a recipe is vegan/nut-free/etc.
+        if (ingredients == null || ingredients.isEmpty()) {
+            return new ArrayList<>();
+        }
+
         String blob = normalize(ingredients);
         List<String> tags = new ArrayList<>();
 
@@ -105,8 +107,6 @@ public class DietaryTagger {
         boolean hasNuts = containsAny(blob, NUTS);
         boolean hasHighCarb = containsAny(blob, HIGH_CARB);
         boolean hasNonPaleo = containsAny(blob, NON_PALEO);
-        boolean hasPorkAlcohol = containsAny(blob, PORK_ALCOHOL);
-        boolean hasNonKosher = containsAny(blob, NON_KOSHER);
 
         if (!hasMeat) {
             tags.add(DietaryRestriction.VEGETARIAN.name());
@@ -131,20 +131,14 @@ public class DietaryTagger {
         if (!hasNonPaleo) {
             tags.add(DietaryRestriction.PALEO.name());
         }
-        if (!hasPorkAlcohol) {
-            tags.add(DietaryRestriction.HALAL.name());
-        }
-        if (!hasNonKosher) {
-            tags.add(DietaryRestriction.KOSHER.name());
-        }
+
+        // HALAL and KOSHER are intentionally NOT inferred: certification/provenance cannot
+        // be derived from ingredient text (halal slaughter, kosher meat/dairy separation).
 
         return tags;
     }
 
     private String normalize(List<String> ingredients) {
-        if (ingredients == null || ingredients.isEmpty()) {
-            return "";
-        }
         return String.join(" | ", ingredients).toLowerCase(Locale.ROOT);
     }
 

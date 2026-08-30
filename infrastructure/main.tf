@@ -62,6 +62,7 @@ module "ecs" {
   frontend_tg_arn        = module.alb.frontend_tg_arn
   dynamodb_users_table   = module.dynamodb.users_table_name
   dynamodb_recipes_table = module.dynamodb.recipes_table_name
+  dynamodb_catalog_table = module.dynamodb.catalog_table_name
   dynamodb_consent_table = module.dynamodb.consent_table_name
   dynamodb_audit_table   = module.dynamodb.audit_log_table_name
   s3_bucket              = module.s3.bucket_name

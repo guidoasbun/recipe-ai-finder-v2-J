@@ -15,6 +15,86 @@ final class CsvReader {
 
     private CsvReader() {}
 
+    /** Callback for streaming row consumption. Return {@code false} to stop reading early. */
+    interface RowHandler {
+        boolean onRow(List<String> row);
+    }
+
+    /**
+     * Streams rows one at a time via {@code handler}, without materializing the whole file.
+     * Stops early when the handler returns {@code false}. Use this for very large files
+     * (e.g. RecipeNLG ~2.2M rows) where a record cap must bound memory during the read.
+     */
+    static void stream(Reader in, RowHandler handler) throws IOException {
+        List<String> current = new ArrayList<>();
+        StringBuilder field = new StringBuilder();
+        boolean inQuotes = false;
+        boolean fieldStarted = false;
+
+        try (BufferedReader br = new BufferedReader(in)) {
+            int ci;
+            while ((ci = br.read()) != -1) {
+                char c = (char) ci;
+                if (inQuotes) {
+                    if (c == '"') {
+                        int next = br.read();
+                        if (next == '"') {
+                            field.append('"');
+                        } else {
+                            inQuotes = false;
+                            if (next != -1) {
+                                c = (char) next;
+                                if (c == ',') {
+                                    current.add(field.toString());
+                                    field.setLength(0);
+                                    fieldStarted = false;
+                                } else if (c == '\n') {
+                                    current.add(field.toString());
+                                    field.setLength(0);
+                                    if (!handler.onRow(current)) {
+                                        return;
+                                    }
+                                    current = new ArrayList<>();
+                                    fieldStarted = false;
+                                } else if (c != '\r') {
+                                    field.append(c);
+                                }
+                            }
+                        }
+                    } else {
+                        field.append(c);
+                    }
+                } else {
+                    if (c == '"' && !fieldStarted) {
+                        inQuotes = true;
+                        fieldStarted = true;
+                    } else if (c == ',') {
+                        current.add(field.toString());
+                        field.setLength(0);
+                        fieldStarted = false;
+                    } else if (c == '\n') {
+                        current.add(field.toString());
+                        field.setLength(0);
+                        if (!handler.onRow(current)) {
+                            return;
+                        }
+                        current = new ArrayList<>();
+                        fieldStarted = false;
+                    } else if (c == '\r') {
+                        // ignore
+                    } else {
+                        field.append(c);
+                        fieldStarted = true;
+                    }
+                }
+            }
+        }
+        if (field.length() > 0 || !current.isEmpty()) {
+            current.add(field.toString());
+            handler.onRow(current);
+        }
+    }
+
     static List<List<String>> readAll(Reader in) throws IOException {
         List<List<String>> rows = new ArrayList<>();
         List<String> current = new ArrayList<>();

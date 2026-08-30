@@ -54,6 +54,11 @@ variable "dynamodb_recipes_table" {
   type = string
 }
 
+variable "dynamodb_catalog_table" {
+  type        = string
+  description = "DynamoDB table name for the shared recipe catalog"
+}
+
 variable "s3_bucket" {
   type = string
 }

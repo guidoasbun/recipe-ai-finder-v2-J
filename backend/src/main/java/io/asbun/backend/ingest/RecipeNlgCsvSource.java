@@ -47,55 +47,60 @@ public class RecipeNlgCsvSource implements RecipeSource {
     @Override
     public List<ParsedRecipe> load() {
         List<ParsedRecipe> recipes = new ArrayList<>();
+        // Header column indices resolved from the first row; -1 until then.
+        int[] idx = {-1, -1, -1, -1, -1}; // title, ingredients, directions, link, source
+        boolean[] headerSeen = {false};
+        boolean[] headerValid = {true};
+
         try (Reader reader = Files.newBufferedReader(csvFile, StandardCharsets.UTF_8)) {
-            List<List<String>> rows = CsvReader.readAll(reader);
-            if (rows.isEmpty()) {
-                return recipes;
-            }
-            List<String> header = rows.get(0);
-            int titleIdx = header.indexOf("title");
-            int ingIdx = header.indexOf("ingredients");
-            int dirIdx = header.indexOf("directions");
-            int linkIdx = header.indexOf("link");
-            int sourceIdx = header.indexOf("source");
-
-            if (titleIdx < 0 || ingIdx < 0 || dirIdx < 0) {
-                log.warn("{}: unexpected header {}", SOURCE_NAME, header);
-                return recipes;
-            }
-
-            for (int r = 1; r < rows.size() && recipes.size() < maxRecords; r++) {
-                List<String> row = rows.get(r);
-                String title = get(row, titleIdx);
-                if (title == null || title.isBlank()) {
-                    continue;
+            // Stream row-by-row and stop once the cap is reached, so the full ~2.2M-row
+            // file is never materialized in memory just to discard most of it.
+            CsvReader.stream(reader, row -> {
+                if (!headerSeen[0]) {
+                    headerSeen[0] = true;
+                    idx[0] = row.indexOf("title");
+                    idx[1] = row.indexOf("ingredients");
+                    idx[2] = row.indexOf("directions");
+                    idx[3] = row.indexOf("link");
+                    idx[4] = row.indexOf("source");
+                    if (idx[0] < 0 || idx[1] < 0 || idx[2] < 0) {
+                        log.warn("{}: unexpected header {}", SOURCE_NAME, row);
+                        headerValid[0] = false;
+                        return false; // stop
+                    }
+                    return true; // continue to data rows
                 }
-                title = title.trim();
 
-                List<String> ingredients = CsvReader.parseJsonStringArray(get(row, ingIdx));
-                List<String> steps = CsvReader.parseJsonStringArray(get(row, dirIdx));
-                String link = normalizeLink(get(row, linkIdx));
-                String origin = get(row, sourceIdx);
+                String title = get(row, idx[0]);
+                if (title != null && !title.isBlank()) {
+                    title = title.trim();
+                    List<String> ingredients = CsvReader.parseJsonStringArray(get(row, idx[1]));
+                    List<String> steps = CsvReader.parseJsonStringArray(get(row, idx[2]));
+                    String link = normalizeLink(get(row, idx[3]));
+                    String origin = get(row, idx[4]);
+                    String sourceId = SOURCE_NAME + ":" + (link != null && !link.isBlank() ? link : title);
 
-                // RecipeNLG links are often bare hosts ("www.site.com/recipe"); use as the
-                // stable id when present, else fall back to the title.
-                String sourceId = SOURCE_NAME + ":" + (link != null && !link.isBlank() ? link : title);
-
-                recipes.add(new ParsedRecipe(
-                        sourceId,
-                        title,
-                        origin != null && !origin.isBlank() ? "Source: " + origin : null,
-                        ingredients,
-                        steps,
-                        null,
-                        SOURCE_NAME,
-                        link,
-                        SOURCE_LICENSE,
-                        null
-                ));
-            }
+                    recipes.add(new ParsedRecipe(
+                            sourceId,
+                            title,
+                            origin != null && !origin.isBlank() ? "Source: " + origin : null,
+                            ingredients,
+                            steps,
+                            null,
+                            SOURCE_NAME,
+                            link,
+                            SOURCE_LICENSE,
+                            null
+                    ));
+                }
+                // Stop reading once the cap is reached (enforced DURING the scan).
+                return recipes.size() < maxRecords;
+            });
         } catch (Exception e) {
             log.warn("Failed to read {}: {}", csvFile, e.getMessage());
+        }
+        if (!headerValid[0]) {
+            return new ArrayList<>();
         }
         log.info("{}: parsed {} recipes (cap {})", SOURCE_NAME, recipes.size(), maxRecords);
         return recipes;
