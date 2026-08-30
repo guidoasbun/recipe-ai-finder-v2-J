@@ -78,19 +78,23 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {profileLoaded && !profileError && restrictions.length > 0 && (
+      {profileLoaded && !profileError && (
         <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-gray-700">Dietary restrictions:</span>
-              {restrictions.map((r) => (
-                <span
-                  key={r}
-                  className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800"
-                >
-                  {dietaryLabel(r)}
-                </span>
-              ))}
+              {restrictions.length > 0 ? (
+                restrictions.map((r) => (
+                  <span
+                    key={r}
+                    className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800"
+                  >
+                    {dietaryLabel(r)}
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm text-gray-500">None set</span>
+              )}
             </div>
             <Link
               href="/account/dietary"
