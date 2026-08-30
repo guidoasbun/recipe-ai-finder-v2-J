@@ -40,7 +40,8 @@ A demo account is available so you can explore the app without creating your own
 5. Photos are stored in S3 and served via presigned URLs; recipes are persisted in DynamoDB
 6. Browse, view, and delete your saved recipe collection
 7. Set your **dietary restrictions** in Account Settings — every recipe generated afterwards is guaranteed to comply
-8. Visit the **Model Stats** page to see aggregated performance charts across all users — average image and text generation times per model, sample counts, and a 30-day trend line
+8. Browse a **catalog of existing recipes** with keyword and natural-language (semantic) search, filtered by your dietary restrictions
+9. Visit the **Model Stats** page to see aggregated performance charts across all users — average image and text generation times per model, sample counts, and a 30-day trend line
 
 ---
 
@@ -195,6 +196,70 @@ When a user has no restrictions, the clause is omitted entirely and generation b
 
 ---
 
+## Recipe Catalog Search
+
+Alongside AI generation, the app offers a **"Look for Existing Recipes"** tab (`/browse`) that searches a catalog of pre-made recipes ingested from open datasets. It supports keyword search, natural-language semantic search, and dietary filtering that reuses the same restrictions as the AI feature — all running **in-app** (no separate search cluster) at effectively zero added infrastructure cost.
+
+### Datasets
+
+The catalog is built from open recipe datasets, normalized into a common schema and tagged for dietary restrictions at ingestion. Each recipe records its `sourceName`, `sourceUrl`, and `sourceLicense` for attribution.
+
+| Source | Recipes | Style | Format |
+| ------ | ------- | ----- | ------ |
+| TheMealDB (Kaggle export) | ~300 | International (34 countries) | XLSX |
+| Better Recipes / AllRecipes (Kaggle) | ~1,090 | American home cooking | CSV |
+| RecipeNLG (optional, capped) | up to ~50K | Mixed | CSV |
+
+Current catalog size: **~1,261 unique recipes** (within-source duplicate URLs are de-duplicated during ingestion). This is a non-commercial project; dataset licenses are respected accordingly.
+
+### Semantic search with Bedrock embeddings
+
+At ingestion, each recipe is embedded with **Amazon Bedrock Titan Text Embeddings V2** (`amazon.titan-embed-text-v2:0`, 1,024 dimensions). At query time the search string is embedded once and compared against the stored vectors by cosine similarity. Three modes are configurable:
+
+| Mode | Behavior |
+| ---- | -------- |
+| `keyword` | Term matching over title/description/ingredients (title weighted higher) |
+| `semantic` | Vector similarity only — finds recipes by meaning, e.g. "something warm for a rainy day" |
+| `hybrid` (default) | Blends keyword and semantic scores; a recipe matches on a keyword hit **or** a strong semantic score |
+
+If a query embedding call fails, search degrades gracefully to keyword-only rather than erroring. Embedding vectors are cached in memory as primitive `float[]` to keep the footprint small.
+
+### Swappable search backend (OpenSearch-ready)
+
+All search runs behind a [`CatalogSearchService`](backend/src/main/java/io/asbun/backend/search/CatalogSearchService.java) interface, selected by the `catalog.search.backend` property (default `inapp`). The in-app implementation loads the catalog into memory and ranks it there — ideal for the current low-traffic, few-thousand-recipe scale. Because dietary tags and embeddings are **persisted in DynamoDB**, a future OpenSearch backend can reindex from the same data and be switched in via configuration with no API, DTO, or frontend changes. The in-app backend is intended for catalogs up to ~50K recipes; larger sets (e.g. the full ~2.2M-row RecipeNLG) are the trigger to move to OpenSearch.
+
+### Dietary tagging
+
+Recipes are tagged at ingestion by a deterministic [`DietaryTagger`](backend/src/main/java/io/asbun/backend/ingest/DietaryTagger.java) using per-restriction disqualifier keyword lists with word-boundary matching. The tagging is intentionally conservative:
+
+- Recipes with missing/unknown ingredients receive **no** tags (absence of disqualifiers is not evidence of safety).
+- **HALAL and KOSHER are not inferred** from ingredient text — they require certification/provenance that ingredients cannot establish — so they are only present when a source supplies them explicitly.
+
+Filtering at query time is then a simple tag match. The browse UI defaults its filter chips to the user's saved dietary restrictions; toggling them applies a per-search override without changing the saved account settings. Deselecting every chip explicitly searches with no dietary filter (distinct from never touching the filters, which uses saved restrictions).
+
+### API
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/api/catalog/search` | Search the catalog (`q`, repeated `tags`, `filtersApplied`, `page`, `pageSize`); returns paginated results |
+| `GET` | `/api/catalog/{id}` | Get a single catalog recipe (404 if not found) |
+
+`filtersApplied=true` treats the request's `tags` as an explicit override (including an empty list = "no filter"); when absent/false, the user's saved restrictions apply. Invalid dietary tags are rejected with a `400`.
+
+### Ingestion
+
+Ingestion is a one-off, profile-guarded job (`catalog.ingest.enabled=true`) that never runs on normal boot. It parses each dataset behind a common [`RecipeSource`](backend/src/main/java/io/asbun/backend/ingest/RecipeSource.java) abstraction, tags dietary restrictions, embeds via a paced (RPM-limited) synchronous strategy, and persists to the catalog table. It is idempotent (deterministic `catalogRecipeId` + skip-if-already-embedded), so re-running is safe and resumable. A `BatchEmbeddingStrategy` scaffold documents the Bedrock Batch Inference path for the full-scale (~2.2M) dataset. See the [runbook](.kiro/specs/existing-recipe-search/RUNBOOK.md) for how to run ingestion and switch backends.
+
+**Key files:**
+
+- [backend/.../search/InAppCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/InAppCatalogSearchService.java) — in-memory keyword + semantic ranking
+- [backend/.../service/EmbeddingService.java](backend/src/main/java/io/asbun/backend/service/EmbeddingService.java) — Bedrock Titan V2 embeddings
+- [backend/.../controller/CatalogController.java](backend/src/main/java/io/asbun/backend/controller/CatalogController.java) — search & detail endpoints
+- [backend/.../ingest/CatalogIngestionRunner.java](backend/src/main/java/io/asbun/backend/ingest/CatalogIngestionRunner.java) — ingestion pipeline
+- [frontend/app/(protected)/browse/page.tsx](<frontend/app/(protected)/browse/page.tsx>) — search UI
+
+---
+
 ## Architecture
 
 ![Infrastructure Image](images/Deployment-Archetecture.png)
@@ -240,7 +305,8 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **ECS Fargate**               | Runs backend and frontend containers (ARM64, no EC2 to manage)                                                                                         |
 | **Application Load Balancer** | HTTPS termination, HTTP→HTTPS redirect, path-based routing                                                                                             |
-| **DynamoDB**                  | Serverless NoSQL; `PAY_PER_REQUEST` billing; GSI on `userId` for per-user recipe queries                                                               |
+| **DynamoDB**                  | Serverless NoSQL; `PAY_PER_REQUEST` billing; GSI on `userId` for per-user recipe queries; shared read-only recipe catalog table                        |
+| **Bedrock (Titan Embeddings)**| Titan Text Embeddings V2 for catalog semantic search (embedded at ingestion, queried in-app)                                                            |
 | **S3**                        | Image storage with SSE-AES256 encryption, versioning off, 90-day lifecycle                                                                             |
 | **Cognito**                   | User pool with Google as a federated identity provider; JWT-based sessions                                                                             |
 | **ECR**                       | Private container registries for backend and frontend images                                                                                           |
@@ -262,7 +328,7 @@ infrastructure/
     ├── alb/                 # ALB, target groups, HTTPS listener, path-based rules
     ├── ecs/                 # Cluster, task definitions, Fargate services
     ├── iam/                 # ECS execution role, ECS task role, GitHub Actions OIDC role
-    ├── dynamodb/            # Users table + Recipes table with GSI
+    ├── dynamodb/            # Users, Recipes (GSI), Catalog, Consent, Audit tables
     ├── cognito/             # User pool, Google IdP, app client, hosted UI
     ├── s3/                  # Image bucket, encryption, lifecycle
     ├── ecr/                 # Backend and frontend repositories
@@ -277,6 +343,7 @@ infrastructure/
 - **No static credentials:** GitHub Actions authenticates to AWS via OIDC — no long-lived access keys anywhere.
 - **Secrets at runtime:** API keys are pulled from Secrets Manager by the ECS execution role and injected as environment variables; they never touch application code or version control.
 - **JWT validation:** Spring Security validates Cognito-issued JWTs on every protected endpoint using the Cognito JWKS endpoint.
+- **Secret hygiene:** a pre-commit hook ([`.githooks/pre-commit`](.githooks/pre-commit)) blocks commits containing real API keys or AWS access keys (and inline secrets in `*.tfvars`), so credentials can't slip into version control. `*.tfvars` files reference secrets only by Secrets Manager/SSM ARN. Enable per clone with `git config core.hooksPath .githooks`.
 
 ---
 
@@ -360,17 +427,20 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 recipe-ai-finder-v2/
 ├── backend/                          # Spring Boot 4 service
 │   └── src/main/java/io/asbun/backend/
-│       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig, AsyncConfig
-│       ├── controller/               # RecipeController, ImageController, AuthController, StatsController
-│       ├── service/                  # BedrockService, ImageGenerationService, S3Service, AsyncImageService, ImageSseService, StatsService, StatsSseService
-│       ├── repository/               # RecipeRepository, UserRepository, StatsRepository (DynamoDB)
-│       └── model/                    # Recipe, User, DTOs, enums (BedrockModel, ImageModel)
+│       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig, AsyncConfig, CatalogSearchConfig
+│       ├── controller/               # RecipeController, ImageController, AuthController, StatsController, CatalogController
+│       ├── service/                  # BedrockService, ImageGenerationService, S3Service, AsyncImageService, ImageSseService, StatsService, StatsSseService, EmbeddingService
+│       ├── search/                   # CatalogSearchService (+ in-app impl), query/result types
+│       ├── ingest/                   # RecipeSource parsers, DietaryTagger, embedding strategies, CatalogIngestionRunner
+│       ├── repository/               # RecipeRepository, UserRepository, StatsRepository, CatalogRecipeRepository (DynamoDB)
+│       └── model/                    # Recipe, User, CatalogRecipe, DTOs, enums (BedrockModel, ImageModel)
 ├── frontend/                         # Next.js 16 app
 │   └── app/
 │       ├── (auth)/login/             # Google OAuth login page
 │       ├── (protected)/dashboard/    # Ingredient input + model selection
 │       ├── (protected)/generate/     # Generated recipe display
 │       ├── (protected)/recipes/      # Saved recipe gallery + detail view
+│       ├── (protected)/browse/       # Catalog search + recipe detail (keyword + semantic)
 │       └── (protected)/model-stats/  # Model performance charts (SSE-loaded)
 ├── infrastructure/                   # Terraform IaC
 │   └── modules/                      # networking, alb, ecs, iam, dynamodb, cognito, s3, ecr
@@ -406,6 +476,7 @@ Required variables in application-local.properties:
 # COGNITO_ISSUER_URI=
 # dynamodb.users-table=
 # dynamodb.recipes-table=
+# dynamodb.catalog-table=
 # S3_BUCKET=
 # STABILITY_API_KEY=
 # OPENAI_API_KEY=
@@ -447,5 +518,7 @@ npm run dev
 | `GET`    | `/api/account/profile`           | Get current user's profile (includes saved dietary restrictions)                                     |
 | `GET`    | `/api/account/dietary-restrictions` | Get current user's saved dietary restrictions                                                      |
 | `PUT`    | `/api/account/dietary-restrictions` | Replace the current user's dietary restrictions (max 10, validated)                                |
+| `GET`    | `/api/catalog/search`            | Search the recipe catalog (`q`, `tags`, `filtersApplied`, `page`, `pageSize`); paginated results     |
+| `GET`    | `/api/catalog/{id}`              | Get a single catalog recipe (404 if not found)                                                       |
 | `GET`    | `/api/stats/models`              | Return cached model performance stats (JSON)                                                          |
 | `GET`    | `/api/stats/stream`              | SSE stream — fires `stats-ready` event with full stats JSON; triggers async computation on cache miss |
