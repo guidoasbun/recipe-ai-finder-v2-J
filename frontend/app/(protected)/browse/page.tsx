@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Loader2, Search } from "lucide-react";
 import { DIETARY_RESTRICTIONS, dietaryLabel } from "@/lib/dietary";
@@ -29,11 +29,18 @@ export default function BrowsePage() {
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [tagsInitialized, setTagsInitialized] = useState(false);
+  // Distinguishes "user hasn't touched filters" (use saved restrictions) from an explicit
+  // selection — including deselecting everything (search with no dietary filter).
+  const [filtersTouched, setFiltersTouched] = useState(false);
   const [page, setPage] = useState(0);
 
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  // Monotonic request id: only the newest request may commit its result (fixes races).
+  const requestSeq = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Default the dietary filters to the user's saved restrictions on first load.
   useEffect(() => {
@@ -57,23 +64,41 @@ export default function BrowsePage() {
   }, []);
 
   const runSearch = useCallback(async () => {
+    const seq = ++requestSeq.current;
+    // Cancel any in-flight request; its response will be ignored regardless.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError(false);
     try {
       const params = new URLSearchParams();
       if (submittedQuery.trim()) params.set("q", submittedQuery.trim());
-      activeTags.forEach((t) => params.append("tags", t));
+      // Once the user has interacted with filters, send them explicitly (even when empty),
+      // so an all-deselected state means "no filter" rather than falling back to saved.
+      if (filtersTouched) {
+        params.set("filtersApplied", "true");
+        activeTags.forEach((t) => params.append("tags", t));
+      }
       params.set("page", String(page));
-      const res = await fetch(`/api/backend/api/catalog/search?${params.toString()}`);
+
+      const res = await fetch(`/api/backend/api/catalog/search?${params.toString()}`, {
+        signal: controller.signal,
+      });
       if (!res.ok) throw new Error(`Search failed: ${res.status}`);
       const data: SearchResults = await res.json();
+      // Ignore stale responses that resolved after a newer request started.
+      if (seq !== requestSeq.current) return;
       setResults(data);
-    } catch {
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") return; // superseded, not a failure
+      if (seq !== requestSeq.current) return;
       setError(true);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [submittedQuery, activeTags, page]);
+  }, [submittedQuery, activeTags, filtersTouched, page]);
 
   // Run search once dietary defaults are loaded, and whenever query/tags/page change.
   useEffect(() => {
@@ -89,6 +114,7 @@ export default function BrowsePage() {
 
   function toggleTag(tag: string) {
     setPage(0);
+    setFiltersTouched(true);
     setActiveTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
     );
@@ -116,6 +142,7 @@ export default function BrowsePage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name or ingredient..."
+            aria-label="Search recipes by name or ingredient"
             maxLength={200}
             className="w-full text-gray-900 rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none"
           />
@@ -135,6 +162,7 @@ export default function BrowsePage() {
             <button
               key={value}
               type="button"
+              aria-pressed={active}
               onClick={() => toggleTag(value)}
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 active

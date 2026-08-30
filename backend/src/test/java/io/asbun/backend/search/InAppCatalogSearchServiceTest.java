@@ -106,6 +106,22 @@ class InAppCatalogSearchServiceTest {
     }
 
     @Test
+    void hugePageNumber_returnsEmptyPageWithoutError() {
+        // Regression: page*pageSize must be computed as long, or Stream.skip gets a negative
+        // argument and throws (500) instead of returning an empty page.
+        CatalogRecipeRepository repo = repoWith(
+                recipe("1", "Chicken Curry", List.of()),
+                recipe("2", "Chicken Soup", List.of()));
+
+        InAppCatalogSearchService svc = keywordService(repo);
+        CatalogSearchResults results =
+                svc.search(new CatalogSearchQuery("chicken", List.of(), Integer.MAX_VALUE, 20));
+
+        assertThat(results.items()).isEmpty();
+        assertThat(results.totalMatches()).isEqualTo(2);
+    }
+
+    @Test
     void noMatches_returnsEmptyResults() {
         CatalogRecipeRepository repo = repoWith(recipe("1", "Chicken Curry", List.of()));
 

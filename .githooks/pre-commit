@@ -19,6 +19,12 @@ patterns=(
   'ASIA[0-9A-Z]{16}'                  # AWS temporary access key ID
 )
 
+# Additional rule for *.tfvars: a secret-looking assignment (password/secret/token/api_key)
+# with a long quoted value. Excludes Secrets Manager/SSM ARNs and short placeholders, which
+# are the legitimate way to reference secrets from tfvars.
+tfvars_secret_pattern='(password|secret|token|api[_-]?key)[[:space:]]*=[[:space:]]*"[^"]{20,}"'
+tfvars_allow_pattern='arn:aws:(secretsmanager|ssm|kms):|_ssm[[:space:]]*=|_arn[[:space:]]*='
+
 # Only scan staged, added/changed text content.
 staged_files=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$staged_files" ] && exit 0
@@ -36,6 +42,17 @@ while IFS= read -r file; do
       found=1
     fi
   done
+  # tfvars-specific generic-secret rule.
+  case "$file" in
+    *.tfvars|*.tfvars.json)
+      tfvars_hits=$(echo "$added" | grep -iE "$tfvars_secret_pattern" | grep -ivE "$tfvars_allow_pattern" || true)
+      if [ -n "$tfvars_hits" ]; then
+        echo "BLOCKED: possible inline secret assignment in tfvars file: $file" >&2
+        echo "  Reference secrets by Secrets Manager/SSM ARN instead of an inline value." >&2
+        found=1
+      fi
+      ;;
+  esac
 done <<< "$staged_files"
 
 if [ "$found" -ne 0 ]; then

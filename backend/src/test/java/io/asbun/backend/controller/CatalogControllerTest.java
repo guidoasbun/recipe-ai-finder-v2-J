@@ -61,13 +61,14 @@ class CatalogControllerTest {
     }
 
     @Test
-    void search_usesUsersSavedRestrictionsWhenNoTagsProvided() {
+    void search_usesUsersSavedRestrictionsWhenFiltersNotApplied() {
         User user = User.builder().userId(USER_ID)
                 .dietaryRestrictions(new ArrayList<>(List.of(DietaryRestriction.VEGAN.name())))
                 .build();
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
-        controller.search("salad", null, 0, null, auth);
+        // filtersApplied=false => saved restrictions are used regardless of tags.
+        controller.search("salad", null, false, 0, null, auth);
 
         ArgumentCaptor<CatalogSearchQuery> captor = ArgumentCaptor.forClass(CatalogSearchQuery.class);
         org.mockito.Mockito.verify(searchService).search(captor.capture());
@@ -75,13 +76,13 @@ class CatalogControllerTest {
     }
 
     @Test
-    void search_requestTagsOverrideSavedRestrictions() {
+    void search_requestTagsOverrideSavedRestrictionsWhenFiltersApplied() {
         User user = User.builder().userId(USER_ID)
                 .dietaryRestrictions(new ArrayList<>(List.of(DietaryRestriction.VEGAN.name())))
                 .build();
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
-        controller.search("salad", List.of(DietaryRestriction.KETO.name()), 0, null, auth);
+        controller.search("salad", List.of(DietaryRestriction.KETO.name()), true, 0, null, auth);
 
         ArgumentCaptor<CatalogSearchQuery> captor = ArgumentCaptor.forClass(CatalogSearchQuery.class);
         org.mockito.Mockito.verify(searchService).search(captor.capture());
@@ -90,17 +91,35 @@ class CatalogControllerTest {
     }
 
     @Test
-    void search_dropsInvalidRequestTags() {
-        controller.search("salad", List.of("VEGAN", "PIZZA_ONLY"), 0, null, auth);
+    void search_filtersAppliedWithEmptyTagsMeansNoFilter() {
+        User user = User.builder().userId(USER_ID)
+                .dietaryRestrictions(new ArrayList<>(List.of(DietaryRestriction.VEGAN.name())))
+                .build();
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        // Explicit empty override (user deselected all chips) must NOT fall back to saved.
+        controller.search("salad", List.of(), true, 0, null, auth);
 
         ArgumentCaptor<CatalogSearchQuery> captor = ArgumentCaptor.forClass(CatalogSearchQuery.class);
         org.mockito.Mockito.verify(searchService).search(captor.capture());
-        assertThat(captor.getValue().dietaryTags()).containsExactly("VEGAN");
+        assertThat(captor.getValue().dietaryTags()).isEmpty();
+    }
+
+    @Test
+    void search_rejectsInvalidRequestTagsWithException() {
+        // Invalid tags are no longer silently dropped; they raise a 400 (IllegalArgumentException).
+        assertThatThrownBy(() ->
+                controller.search("salad", List.of("VEGAN", "PIZZA_ONLY"), true, 0, null, auth))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("PIZZA_ONLY");
+
+        org.mockito.Mockito.verify(searchService, org.mockito.Mockito.never())
+                .search(any(CatalogSearchQuery.class));
     }
 
     @Test
     void search_capsPageSizeAtMax() {
-        controller.search(null, List.of(), 0, 500, auth);
+        controller.search(null, null, false, 0, 500, auth);
 
         ArgumentCaptor<CatalogSearchQuery> captor = ArgumentCaptor.forClass(CatalogSearchQuery.class);
         org.mockito.Mockito.verify(searchService).search(captor.capture());
@@ -109,7 +128,7 @@ class CatalogControllerTest {
 
     @Test
     void search_negativePageClampedToZero() {
-        controller.search(null, List.of(), -5, null, auth);
+        controller.search(null, null, false, -5, null, auth);
 
         ArgumentCaptor<CatalogSearchQuery> captor = ArgumentCaptor.forClass(CatalogSearchQuery.class);
         org.mockito.Mockito.verify(searchService).search(captor.capture());

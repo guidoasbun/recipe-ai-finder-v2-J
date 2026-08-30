@@ -45,6 +45,7 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "COGNITO_ISSUER_URI", value = var.cognito_issuer_uri },
       { name = "DYNAMODB_USERS_TABLE", value = var.dynamodb_users_table },
       { name = "DYNAMODB_RECIPES_TABLE", value = var.dynamodb_recipes_table },
+      { name = "DYNAMODB_CATALOG_TABLE", value = var.dynamodb_catalog_table },
       { name = "DYNAMODB_CONSENT_TABLE", value = var.dynamodb_consent_table },
       { name = "DYNAMODB_AUDIT_TABLE", value = var.dynamodb_audit_table },
       { name = "COGNITO_USER_POOL_ID", value = var.cognito_user_pool_id },
