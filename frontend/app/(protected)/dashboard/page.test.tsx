@@ -59,18 +59,17 @@ describe("DashboardPage dietary badges", () => {
     expect(edit).toHaveAttribute("href", "/account/dietary");
   });
 
-  it("does not render the restrictions banner when there are no saved restrictions", async () => {
+  it("renders the box with an empty-state message and Edit link when there are no restrictions", async () => {
     vi.stubGlobal("fetch", vi.fn(() => mockProfile([])));
     render(<DashboardPage />);
 
-    // Wait for the primary form to render so the profile load has settled.
-    expect(
-      await screen.findByPlaceholderText(/chicken, garlic, lemon/i)
-    ).toBeInTheDocument();
-
-    // Per Requirement 5.2, the banner must not render for an empty profile.
-    expect(screen.queryByText(/Dietary restrictions:/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Edit/ })).not.toBeInTheDocument();
+    // The box renders on a successful load even when the list is empty.
+    expect(await screen.findByText(/Dietary restrictions:/)).toBeInTheDocument();
+    expect(screen.getByText(/None set/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Edit/ })).toHaveAttribute(
+      "href",
+      "/account/dietary"
+    );
     // An empty profile is a success, not an error.
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
