@@ -121,6 +121,18 @@
             <version>5.4.1</version>
         </dependency>
 
+        <!-- OpenSearch Java client (catalog.search.backend=opensearch) -->
+        <dependency>
+            <groupId>org.opensearch.client</groupId>
+            <artifactId>opensearch-java</artifactId>
+            <version>3.9.0</version>
+        </dependency>
+        <!-- AWS SDK v2 CRT HTTP client used by AwsSdk2Transport for SigV4-signed requests -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>aws-crt-client</artifactId>
+        </dependency>
+
         <!-- AWS Cognito -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
