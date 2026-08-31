@@ -79,10 +79,13 @@ class BatchEmbeddingStrategyTest {
                 + "{\"recordId\":\"b\",\"error\":{\"message\":\"bad\"}}\n";
         when(s3.getObject(any(GetObjectRequest.class))).thenReturn(s3Stream(out));
 
-        Map<String, List<Double>> result = strategy(s3, bedrock)
-                .embedAll(new java.util.LinkedHashMap<>(Map.of("a", "apple pie", "b", "burnt toast")));
+        java.util.LinkedHashMap<String, List<Double>> result = new java.util.LinkedHashMap<>();
+        long emitted = strategy(s3, bedrock)
+                .embedAll(new java.util.LinkedHashMap<>(Map.of("a", "apple pie", "b", "burnt toast")),
+                        result::put);
 
         // 'a' embedded, 'b' had an error → omitted.
+        assertThat(emitted).isEqualTo(1);
         assertThat(result).containsOnlyKeys("a");
         assertThat(result.get("a")).containsExactly(0.1, 0.2, 0.3);
 
@@ -110,7 +113,7 @@ class BatchEmbeddingStrategyTest {
                 .thenReturn(GetModelInvocationJobResponse.builder()
                         .status(ModelInvocationJobStatus.FAILED).message("boom").build());
 
-        assertThatThrownBy(() -> strategy(s3, bedrock).embedAll(Map.of("a", "x")))
+        assertThatThrownBy(() -> strategy(s3, bedrock).embedAll(Map.of("a", "x"), (id, v) -> {}))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("did not complete");
     }
@@ -121,7 +124,7 @@ class BatchEmbeddingStrategyTest {
                 mock(S3Client.class), mock(BedrockClient.class),
                 "amazon.titan-embed-text-v2:0", "", "", "", 0);
 
-        assertThatThrownBy(() -> missingConfig.embedAll(Map.of("a", "x")))
+        assertThatThrownBy(() -> missingConfig.embedAll(Map.of("a", "x"), (id, v) -> {}))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input-bucket");
     }
@@ -150,7 +153,7 @@ class BatchEmbeddingStrategyTest {
             inputs.put("id" + i, "t");
         }
 
-        strategy(s3, bedrock).embedAll(inputs);
+        strategy(s3, bedrock).embedAll(inputs, (id, v) -> {});
 
         // 2 jobs submitted, 2 input files uploaded.
         verify(bedrock, org.mockito.Mockito.times(2)).createModelInvocationJob(any(CreateModelInvocationJobRequest.class));

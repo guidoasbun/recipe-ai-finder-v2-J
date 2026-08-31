@@ -92,17 +92,19 @@ public class BatchEmbeddingStrategy implements EmbeddingStrategy {
     }
 
     /**
-     * Embeds all inputs via one or more Bedrock batch jobs. Splits into sub-jobs that each respect
-     * the Bedrock limits ({@value #MAX_RECORDS_PER_JOB} records and ~1 GB input file), submitting,
-     * polling, and collecting each in turn. Keys of the returned map are the same recordIds passed
-     * in; a recordId is omitted if the model returned an error for it.
+     * Embeds all inputs via one or more Bedrock batch jobs, invoking {@code onVector} for each
+     * (recordId, vector) as the output is STREAMED from S3 — vectors are never all held in
+     * memory at once (the batch output is ~4.4 GB per 100K records). Splits into sub-jobs that
+     * each respect the Bedrock limits ({@value #MAX_RECORDS_PER_JOB} records and ~1 GB input
+     * file). A recordId is simply not emitted if the model returned an error for it.
      *
-     * @param inputs recordId (deterministic catalogRecipeId) -> text to embed
-     * @return recordId -> embedding vector
+     * @param inputs   recordId (deterministic catalogRecipeId) -> text to embed
+     * @param onVector callback per successfully embedded record; must not retain the vector
+     * @return number of vectors emitted
      */
-    public Map<String, List<Double>> embedAll(Map<String, String> inputs) {
+    public long embedAll(Map<String, String> inputs, java.util.function.BiConsumer<String, List<Double>> onVector) {
         requireConfig();
-        Map<String, List<Double>> allVectors = new LinkedHashMap<>();
+        long[] emitted = {0};
 
         List<Map<String, String>> jobs = splitIntoJobs(inputs);
         log.info("Batch embedding {} records across {} job(s)", inputs.size(), jobs.size());
@@ -119,13 +121,13 @@ public class BatchEmbeddingStrategy implements EmbeddingStrategy {
             log.info("Submitted batch job {}/{} ({} records): {}", jobNum, jobs.size(), jobInputs.size(), jobArn);
 
             waitForCompletion(jobArn);
-            Map<String, List<Double>> vectors = collectOutput(outputPrefix);
-            allVectors.putAll(vectors);
-            log.info("Job {}/{} produced {} vectors", jobNum, jobs.size(), vectors.size());
+            long jobEmitted = collectOutput(outputPrefix, onVector);
+            emitted[0] += jobEmitted;
+            log.info("Job {}/{} produced {} vectors", jobNum, jobs.size(), jobEmitted);
         }
 
-        log.info("Batch embedding produced {} vectors for {} inputs", allVectors.size(), inputs.size());
-        return allVectors;
+        log.info("Batch embedding produced {} vectors for {} inputs", emitted[0], inputs.size());
+        return emitted[0];
     }
 
     /**
@@ -246,8 +248,8 @@ public class BatchEmbeddingStrategy implements EmbeddingStrategy {
         }
     }
 
-    private Map<String, List<Double>> collectOutput(String outputPrefix) {
-        Map<String, List<Double>> result = new LinkedHashMap<>();
+    private long collectOutput(String outputPrefix, java.util.function.BiConsumer<String, List<Double>> onVector) {
+        long emitted = 0;
         String continuationToken = null;
         do {
             ListObjectsV2Response listing = s3Client.listObjectsV2(ListObjectsV2Request.builder()
@@ -257,15 +259,21 @@ public class BatchEmbeddingStrategy implements EmbeddingStrategy {
                     .build());
             for (S3Object obj : listing.contents()) {
                 if (obj.key().endsWith(".jsonl.out") || obj.key().endsWith(".jsonl")) {
-                    readOutputFile(obj.key(), result);
+                    emitted += readOutputFile(obj.key(), onVector);
                 }
             }
             continuationToken = Boolean.TRUE.equals(listing.isTruncated()) ? listing.nextContinuationToken() : null;
         } while (continuationToken != null);
-        return result;
+        return emitted;
     }
 
-    private void readOutputFile(String key, Map<String, List<Double>> result) {
+    /**
+     * Streams one output file, invoking {@code onVector} per record. The parsed vector is handed
+     * off and released immediately — never accumulated — so a multi-GB output file processes in
+     * flat memory. Returns the number of vectors emitted.
+     */
+    private long readOutputFile(String key, java.util.function.BiConsumer<String, List<Double>> onVector) {
+        long emitted = 0;
         GetObjectRequest get = GetObjectRequest.builder().bucket(outputBucket).key(key).build();
         try (ResponseInputStream<?> in = s3Client.getObject(get);
              BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
@@ -283,7 +291,8 @@ public class BatchEmbeddingStrategy implements EmbeddingStrategy {
                 if (embedding.isArray() && embedding.size() > 0) {
                     List<Double> vector = new ArrayList<>(embedding.size());
                     embedding.forEach(v -> vector.add(v.asDouble()));
-                    result.put(recordId, vector);
+                    onVector.accept(recordId, vector);
+                    emitted++;
                 } else {
                     log.warn("No embedding for recordId {} (error or empty output)", recordId);
                 }
@@ -291,6 +300,7 @@ public class BatchEmbeddingStrategy implements EmbeddingStrategy {
         } catch (Exception e) {
             throw new RuntimeException("Failed to read batch output " + key, e);
         }
+        return emitted;
     }
 
     private void sleep() {

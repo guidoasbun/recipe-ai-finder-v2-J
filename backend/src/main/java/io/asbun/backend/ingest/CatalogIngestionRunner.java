@@ -232,22 +232,24 @@ public class CatalogIngestionRunner implements CommandLineRunner {
         state.chunkById.clear();
     }
 
-    /** Embeds one chunk via a batch job and persists each recipe with its vector. */
+    /**
+     * Embeds one chunk via a batch job and persists each recipe as its vector STREAMS back from
+     * S3. Vectors are consumed one at a time and written in batches of 25 — never accumulated —
+     * so the ~4.4 GB batch output for a 100K chunk processes in flat memory.
+     */
     private int[] embedAndPersistChunk(Map<String, String> toEmbed, Map<String, ParsedRecipe> byId) {
         log.info("Embedding chunk of {} recipes via batch inference", toEmbed.size());
-        Map<String, List<Double>> vectors = batchStrategy.embedAll(toEmbed);
 
-        int missing = 0;
-        List<CatalogRecipe> toSave = new ArrayList<>(byId.size());
-        for (Map.Entry<String, ParsedRecipe> entry : byId.entrySet()) {
-            String catalogId = entry.getKey();
-            ParsedRecipe p = entry.getValue();
-            List<Double> vector = vectors.get(catalogId);
-            if (vector == null || vector.isEmpty()) {
-                missing++;
-                continue;
+        final int writeBatch = 25;
+        List<CatalogRecipe> buffer = new ArrayList<>(writeBatch);
+        int[] persisted = {0};
+
+        long emitted = batchStrategy.embedAll(toEmbed, (catalogId, vector) -> {
+            ParsedRecipe p = byId.get(catalogId);
+            if (p == null || vector == null || vector.isEmpty()) {
+                return;
             }
-            toSave.add(CatalogRecipe.builder()
+            buffer.add(CatalogRecipe.builder()
                     .catalogRecipeId(catalogId)
                     .title(p.title())
                     .description(p.description())
@@ -263,12 +265,22 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                     .sourceCountry(p.sourceCountry())
                     .ingestedAt(Instant.now())
                     .build());
+            if (buffer.size() >= writeBatch) {
+                repository.saveAll(buffer);
+                persisted[0] += buffer.size();
+                buffer.clear();
+            }
+        });
+        // Flush the remainder.
+        if (!buffer.isEmpty()) {
+            repository.saveAll(buffer);
+            persisted[0] += buffer.size();
+            buffer.clear();
         }
-        // Batched writes (25/request) — far faster than per-item saves for a 100K chunk.
-        repository.saveAll(toSave);
-        int persisted = toSave.size();
-        log.info("Chunk persisted: {} saved, {} missing-vector", persisted, missing);
-        return new int[]{persisted, missing};
+
+        int missing = (int) (toEmbed.size() - emitted);
+        log.info("Chunk persisted: {} saved, {} missing-vector", persisted[0], missing);
+        return new int[]{persisted[0], missing};
     }
 
     private String embeddingInput(ParsedRecipe p) {
