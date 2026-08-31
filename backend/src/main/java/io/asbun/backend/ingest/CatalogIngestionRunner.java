@@ -38,8 +38,12 @@ public class CatalogIngestionRunner implements CommandLineRunner {
     public CatalogIngestionRunner(CatalogRecipeRepository repository,
                                   DietaryTagger dietaryTagger,
                                   EmbeddingStrategy embeddingStrategy,
-                                  @Value("${catalog.ingest.source-dir}") String sourceDir) {
-        this.repository = repository;
+                                  @Value("${catalog.ingest.source-dir}") String sourceDir,
+                                  @Value("${dynamodb.catalog-full-table:${dynamodb.catalog-table}}") String targetTable) {
+        // Target the configured catalog table. Defaults to the small in-app table, so existing
+        // ingestion is unchanged; set dynamodb.catalog-full-table to load the full dataset into
+        // the separate table without touching the in-app table (rollback preservation).
+        this.repository = repository.forTable(targetTable);
         this.dietaryTagger = dietaryTagger;
         this.embeddingStrategy = embeddingStrategy;
         this.sourceDir = Path.of(sourceDir);
@@ -47,6 +51,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        log.info("Catalog ingestion target table: {}", repository.tableName());
         List<RecipeSource> sources = new ArrayList<>();
         sources.add(new XlsxMealDbSource(sourceDir.resolveSibling("archive")));
         sources.add(new CsvBetterRecipesSource(sourceDir.resolveSibling("archive-1").resolve("recipes.csv")));

@@ -91,11 +91,19 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         `inapp` selection still resolves with the new provider parameter.
   - _Requirements: 1.4, 1.5_
 
-- [ ] 5. Two catalog tables (rollback preservation)
-  - [ ] 5.1 Add `dynamodb.catalog-full-table` property; make ingestion and reindex targets
-        table-name-configurable so the full load never overwrites/grows the small in-app table.
-  - [ ] 5.2 Keep the small table as the in-app backend's source; both tables share the
-        `CatalogRecipe` schema (no code change to operate on either).
+- [x] 5. Two catalog tables (rollback preservation)
+  - [x] 5.1 Added `dynamodb.catalog-full-table` (defaults to `dynamodb.catalog-table`, so
+        behavior is unchanged until the full load is set up). `CatalogRecipeRepository` gained
+        `forTable(name)` (returns a repo bound to a different table, sharing the client) and
+        `tableName()`. `CatalogIngestionRunner` now targets `forTable(catalog-full-table)`, so
+        loading the full dataset never overwrites the small in-app table.
+  - [x] 5.2 The default `@Repository` bean stays bound to the small table (in-app backend +
+        controller unchanged); both tables use the same `CatalogRecipe` schema so no code
+        change is needed to operate on either. The reindex job (task 6) will use the same
+        `forTable(...)` mechanism.
+  - [x] Verified: compile clean; `CatalogControllerTest` (8, nested-default `@Value` resolves
+        in context), `InAppCatalogSearchServiceTest` (8, mocked repo signatures preserved),
+        `OpenSearchIndexProvisionerTest` (7) all pass.
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
 - [ ] 6. Reindex from DynamoDB (no re-embedding)

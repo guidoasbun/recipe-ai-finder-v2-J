@@ -13,18 +13,54 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Access to the shared catalog table. The in-app search backend scans all items into memory,
- * so a {@link #findAll()} is provided; that is acceptable at Phase 1 scale (~300 recipes) and
- * up to the in-app ceiling (~50K). A future OpenSearch backend would not scan here.
+ * Access to a catalog table. The default Spring-managed bean is bound to the small in-app
+ * catalog table ({@code dynamodb.catalog-table}) used by the in-app search backend and the
+ * controller.
+ *
+ * <p>To support two tables (rollback preservation, design §6.0), {@link #forTable} produces a
+ * repository bound to a different table (e.g. the full 2.2M {@code dynamodb.catalog-full-table})
+ * without disturbing the default bean. Ingestion and reindex use whichever table is configured
+ * as their target so loading the full dataset never overwrites the small in-app table.
+ *
+ * <p>The in-app search backend scans all items into memory, so {@link #findAll()} is provided;
+ * that is acceptable up to the in-app ceiling (~50K). The OpenSearch reindex also scans, but
+ * bulk-indexes into OpenSearch rather than holding everything in memory.
  */
 @Repository
 public class CatalogRecipeRepository {
 
+    private final DynamoDbEnhancedClient enhancedClient;
     private final DynamoDbTable<CatalogRecipe> table;
 
     public CatalogRecipeRepository(DynamoDbEnhancedClient enhancedClient,
                                    @Value("${dynamodb.catalog-table}") String tableName) {
+        this.enhancedClient = enhancedClient;
         this.table = enhancedClient.table(tableName, TableSchema.fromBean(CatalogRecipe.class));
+    }
+
+    private CatalogRecipeRepository(DynamoDbEnhancedClient enhancedClient,
+                                    DynamoDbTable<CatalogRecipe> table) {
+        this.enhancedClient = enhancedClient;
+        this.table = table;
+    }
+
+    /**
+     * Returns a repository bound to {@code tableName}. If it matches the table this instance is
+     * already bound to, returns {@code this}; otherwise a new instance sharing the same client.
+     * Used to target the full-catalog table for ingestion/reindex.
+     */
+    public CatalogRecipeRepository forTable(String tableName) {
+        if (tableName == null || tableName.isBlank() || tableName.equals(table.tableName())) {
+            return this;
+        }
+        DynamoDbTable<CatalogRecipe> other =
+                enhancedClient.table(tableName, TableSchema.fromBean(CatalogRecipe.class));
+        return new CatalogRecipeRepository(enhancedClient, other);
+    }
+
+    /** The DynamoDB table name this repository is bound to. */
+    public String tableName() {
+        return table.tableName();
     }
 
     public CatalogRecipe save(CatalogRecipe recipe) {
