@@ -70,6 +70,51 @@ public class CatalogRecipeRepository {
         return recipe;
     }
 
+    /**
+     * Writes many recipes using DynamoDB {@code BatchWriteItem} (25 items per request) — far
+     * faster than per-item {@link #save} for bulk ingestion. Handles "unprocessed items"
+     * (DynamoDB may defer some under load) by retrying them with exponential backoff.
+     */
+    public void saveAll(List<CatalogRecipe> recipes) {
+        final int maxPerBatch = 25;
+        for (int start = 0; start < recipes.size(); start += maxPerBatch) {
+            List<CatalogRecipe> slice = recipes.subList(start, Math.min(start + maxPerBatch, recipes.size()));
+            writeBatchWithRetry(slice);
+        }
+    }
+
+    private void writeBatchWithRetry(List<CatalogRecipe> slice) {
+        List<CatalogRecipe> pending = new java.util.ArrayList<>(slice);
+        int attempt = 0;
+        while (!pending.isEmpty()) {
+            software.amazon.awssdk.enhanced.dynamodb.model.WriteBatch.Builder<CatalogRecipe> wb =
+                    software.amazon.awssdk.enhanced.dynamodb.model.WriteBatch.builder(CatalogRecipe.class)
+                            .mappedTableResource(table);
+            for (CatalogRecipe r : pending) {
+                wb.addPutItem(r);
+            }
+            var result = enhancedClient.batchWriteItem(b -> b.addWriteBatch(wb.build()));
+
+            List<CatalogRecipe> unprocessed = result.unprocessedPutItemsForTable(table);
+            if (unprocessed == null || unprocessed.isEmpty()) {
+                return;
+            }
+            // Some items were throttled/deferred; back off and retry only those.
+            attempt++;
+            if (attempt > 8) {
+                throw new IllegalStateException(
+                        "BatchWriteItem left " + unprocessed.size() + " items unprocessed after retries");
+            }
+            try {
+                Thread.sleep(Math.min(2000L, 100L * (1L << Math.min(attempt, 4))));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted during batch write retry", e);
+            }
+            pending = unprocessed;
+        }
+    }
+
     public Optional<CatalogRecipe> findById(String catalogRecipeId) {
         Key key = Key.builder().partitionValue(catalogRecipeId).build();
         return Optional.ofNullable(table.getItem(key));

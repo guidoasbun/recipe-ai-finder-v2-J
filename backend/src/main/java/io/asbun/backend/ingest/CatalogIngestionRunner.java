@@ -237,8 +237,8 @@ public class CatalogIngestionRunner implements CommandLineRunner {
         log.info("Embedding chunk of {} recipes via batch inference", toEmbed.size());
         Map<String, List<Double>> vectors = batchStrategy.embedAll(toEmbed);
 
-        int persisted = 0;
         int missing = 0;
+        List<CatalogRecipe> toSave = new ArrayList<>(byId.size());
         for (Map.Entry<String, ParsedRecipe> entry : byId.entrySet()) {
             String catalogId = entry.getKey();
             ParsedRecipe p = entry.getValue();
@@ -247,7 +247,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                 missing++;
                 continue;
             }
-            repository.save(CatalogRecipe.builder()
+            toSave.add(CatalogRecipe.builder()
                     .catalogRecipeId(catalogId)
                     .title(p.title())
                     .description(p.description())
@@ -263,8 +263,10 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                     .sourceCountry(p.sourceCountry())
                     .ingestedAt(Instant.now())
                     .build());
-            persisted++;
         }
+        // Batched writes (25/request) — far faster than per-item saves for a 100K chunk.
+        repository.saveAll(toSave);
+        int persisted = toSave.size();
         log.info("Chunk persisted: {} saved, {} missing-vector", persisted, missing);
         return new int[]{persisted, missing};
     }
