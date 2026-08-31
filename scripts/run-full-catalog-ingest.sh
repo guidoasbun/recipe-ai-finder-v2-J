@@ -63,15 +63,14 @@ if ! aws sts get-caller-identity &>/dev/null; then
 fi
 echo "  ✅ AWS credentials OK"
 
+# Always rebuild so the JAR reflects the current source (a stale JAR silently runs old code).
+echo "  🔨 Building backend JAR (fresh, so it matches current source)..."
+(cd "$BACKEND_DIR" && ./mvnw -q package -DskipTests)
 if [[ ! -f "$JAR" ]]; then
-  echo "  ⚠️  JAR not found at $JAR — building..."
-  (cd "$BACKEND_DIR" && ./mvnw -q package -DskipTests)
-  if [[ ! -f "$JAR" ]]; then
-    echo "❌ Build failed. Fix errors and re-run."
-    exit 1
-  fi
+  echo "❌ Build failed. Fix errors and re-run."
+  exit 1
 fi
-echo "  ✅ JAR built"
+echo "  ✅ JAR built (fresh)"
 
 if [[ ! -f "$RECIPENLG_FILE" ]]; then
   echo "❌ RecipeNLG dataset not found at $RECIPENLG_FILE"
