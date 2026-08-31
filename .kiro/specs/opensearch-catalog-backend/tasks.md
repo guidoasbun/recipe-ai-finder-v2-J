@@ -145,14 +145,20 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         no new infra (opt-in gating).
   - _Requirements: 4.4, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
-- [ ] 8. Tests
-  - [ ] 8.1 Unit — query translation: dietary filter, keyword clause, knn clause, mode
-        handling, pagination (mock client).
-  - [ ] 8.2 Unit — response mapping + `findById` (present/absent).
-  - [ ] 8.3 Unit — semantic fallback on embed failure.
-  - [ ] 8.4 Unit — `CatalogSearchConfig` selects OpenSearch vs in-app by property; existing
-        `CatalogControllerTest` still passes.
-  - [ ] 8.5 Unit — reindex idempotency + no-Bedrock-for-vectors (mock bulk client + repo).
+- [x] 8. Tests
+  - [x] 8.1 `OpenSearchCatalogSearchServiceTest` (11) — captures the built `SearchRequest` and
+        asserts the typed query: dietary tags → one `term` filter each; keyword mode →
+        `multi_match` (no knn, no embed call); semantic mode → knn (no multi_match); hybrid →
+        both + `minimum_should_match=1`; blank text → `match_all` browse with dietary filter;
+        pagination (from=page*size, negative/zero clamped).
+  - [x] 8.2 Same class — response mapping (hits → DTOs, `totalMatches` from hits total) and
+        `findById` present/absent.
+  - [x] 8.3 Same class — embed throws → vector clause dropped, keyword clause retained.
+  - [x] 8.4 `CatalogSearchConfigTest` (3) — defaults to in-app; selects OpenSearch when
+        configured + available; fail-fast when `opensearch` selected but unavailable. Existing
+        `CatalogControllerTest` (8) still passes unchanged.
+  - [x] 8.5 `CatalogReindexRunnerTest` (3, from task 6) — idempotent doc id, skips id-less,
+        batches flush; constructor takes no embedding service (no-Bedrock proof).
   - _Requirements: 1.5, 2.5, 5.3, 5.4_
 
 - [ ] 9. Migration, verification, and docs
