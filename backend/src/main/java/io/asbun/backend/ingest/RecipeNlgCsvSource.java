@@ -34,9 +34,21 @@ public class RecipeNlgCsvSource implements RecipeSource {
      * @param csvFile    path to the RecipeNLG CSV
      * @param maxRecords hard cap on recipes parsed (keeps in-app backend within its ceiling)
      */
+    private final int skipRecords;
+
     public RecipeNlgCsvSource(Path csvFile, int maxRecords) {
+        this(csvFile, maxRecords, 0);
+    }
+
+    /**
+     * @param maxRecords  max data records to collect after skipping (window size)
+     * @param skipRecords number of leading data records to skip (window offset) — lets the full
+     *                    dataset be processed one window at a time across separate runs
+     */
+    public RecipeNlgCsvSource(Path csvFile, int maxRecords, int skipRecords) {
         this.csvFile = csvFile;
         this.maxRecords = maxRecords;
+        this.skipRecords = Math.max(0, skipRecords);
     }
 
     @Override
@@ -51,6 +63,7 @@ public class RecipeNlgCsvSource implements RecipeSource {
         int[] idx = {-1, -1, -1, -1, -1}; // title, ingredients, directions, link, source
         boolean[] headerSeen = {false};
         boolean[] headerValid = {true};
+        long[] dataRowsSeen = {0}; // data rows encountered (for the skip offset)
 
         try (Reader reader = Files.newBufferedReader(csvFile, StandardCharsets.UTF_8)) {
             // Stream row-by-row and stop once the cap is reached, so the full ~2.2M-row
@@ -69,6 +82,13 @@ public class RecipeNlgCsvSource implements RecipeSource {
                         return false; // stop
                     }
                     return true; // continue to data rows
+                }
+
+                // Skip the first skipRecords data rows (window offset). Count every data row so
+                // the offset is stable and reproducible across runs regardless of blank titles.
+                dataRowsSeen[0]++;
+                if (dataRowsSeen[0] <= skipRecords) {
+                    return true; // keep scanning until we reach the window start
                 }
 
                 String title = get(row, idx[0]);
@@ -102,7 +122,8 @@ public class RecipeNlgCsvSource implements RecipeSource {
         if (!headerValid[0]) {
             return new ArrayList<>();
         }
-        log.info("{}: parsed {} recipes (cap {})", SOURCE_NAME, recipes.size(), maxRecords);
+        log.info("{}: parsed {} recipes (skip {}, cap {})",
+                SOURCE_NAME, recipes.size(), skipRecords, maxRecords);
         return recipes;
     }
 

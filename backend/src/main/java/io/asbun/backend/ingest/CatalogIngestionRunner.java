@@ -40,6 +40,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
     private final String strategyName;
     private final String recipeNlgFile;
     private final int recipeNlgMaxRecords;
+    private final int recipeNlgSkipRecords;
     private final int batchChunkSize;
 
     public CatalogIngestionRunner(CatalogRecipeRepository repository,
@@ -51,7 +52,8 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                                   @Value("${catalog.ingest.embedding-strategy:sync}") String strategyName,
                                   @Value("${catalog.ingest.recipenlg-file:}") String recipeNlgFile,
                                   @Value("${catalog.ingest.recipenlg-max-records:0}") int recipeNlgMaxRecords,
-                                  @Value("${catalog.ingest.batch-chunk-size:50000}") int batchChunkSize) {
+                                  @Value("${catalog.ingest.recipenlg-skip-records:0}") int recipeNlgSkipRecords,
+                                  @Value("${catalog.ingest.batch-chunk-size:100000}") int batchChunkSize) {
         // Target the configured catalog table. Defaults to the small in-app table, so existing
         // ingestion is unchanged; set dynamodb.catalog-full-table to load the full dataset into
         // the separate table without touching the in-app table (rollback preservation).
@@ -63,6 +65,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
         this.strategyName = strategyName;
         this.recipeNlgFile = recipeNlgFile;
         this.recipeNlgMaxRecords = recipeNlgMaxRecords;
+        this.recipeNlgSkipRecords = recipeNlgSkipRecords;
         this.batchChunkSize = Math.max(1, batchChunkSize);
     }
 
@@ -80,9 +83,9 @@ public class CatalogIngestionRunner implements CommandLineRunner {
         // RecipeNLG (Phase 2 / full 2.2M) when a file is configured; otherwise Phase 1 sources.
         if (recipeNlgFile != null && !recipeNlgFile.isBlank()) {
             int cap = recipeNlgMaxRecords > 0 ? recipeNlgMaxRecords : Integer.MAX_VALUE;
-            sources.add(new RecipeNlgCsvSource(Path.of(recipeNlgFile), cap));
-            log.info("RecipeNLG source enabled: file={}, cap={}", recipeNlgFile,
-                    cap == Integer.MAX_VALUE ? "none (full set)" : cap);
+            sources.add(new RecipeNlgCsvSource(Path.of(recipeNlgFile), cap, recipeNlgSkipRecords));
+            log.info("RecipeNLG source enabled: file={}, skip={}, cap={}", recipeNlgFile,
+                    recipeNlgSkipRecords, cap == Integer.MAX_VALUE ? "none (full set)" : cap);
         } else {
             sources.add(new XlsxMealDbSource(sourceDir.resolveSibling("archive")));
             sources.add(new CsvBetterRecipesSource(sourceDir.resolveSibling("archive-1").resolve("recipes.csv")));

@@ -46,6 +46,7 @@ backend/build/
 backend/data/
 
 # ── Shared ────────────────────────────────────────────────
+logs/
 .env*
 .DS_Store
 *.pem
