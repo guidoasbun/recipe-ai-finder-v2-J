@@ -79,12 +79,16 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         (query-clause assertion tests are Task 8).
   - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
-- [ ] 4. Backend selection wiring
-  - [ ] 4.1 Update `CatalogSearchConfig` to return `OpenSearchCatalogSearchService` when
-        `catalog.search.backend=opensearch` (replace the current warn-and-fallback stub),
-        in-app otherwise.
-  - [ ] 4.2 Confirm the controller, `CatalogRecipeDto`, and frontend require no changes
-        (existing `CatalogControllerTest` passes unchanged).
+- [x] 4. Backend selection wiring
+  - [x] 4.1 `CatalogSearchConfig` now returns `OpenSearchCatalogSearchService` when
+        `catalog.search.backend=opensearch` (replaced the warn-and-fallback stub), in-app
+        otherwise. The OpenSearch bean is injected via `ObjectProvider` (it is conditional, so
+        absent in `inapp` mode); if `opensearch` is selected but the bean is unavailable, the
+        factory throws (fail-fast, consistent with `OpenSearchConfig`) rather than silently
+        serving in-app results.
+  - [x] 4.2 Controller, `CatalogRecipeDto`, and frontend unchanged; `CatalogControllerTest`
+        (8) and `InAppCatalogSearchServiceTest` (8) pass unchanged, confirming the default
+        `inapp` selection still resolves with the new provider parameter.
   - _Requirements: 1.4, 1.5_
 
 - [ ] 5. Two catalog tables (rollback preservation)
