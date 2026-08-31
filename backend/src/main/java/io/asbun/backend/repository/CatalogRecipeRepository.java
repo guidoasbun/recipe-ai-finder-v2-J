@@ -79,4 +79,13 @@ public class CatalogRecipeRepository {
                 .flatMap(page -> page.items().stream())
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Scans the table page-by-page, invoking {@code pageConsumer} for each page of items,
+     * without materializing the whole table in memory. Used by the reindex job so a 2.2M-row
+     * full table streams into OpenSearch rather than loading all at once.
+     */
+    public void scanInPages(java.util.function.Consumer<List<CatalogRecipe>> pageConsumer) {
+        table.scan().stream().forEach(page -> pageConsumer.accept(page.items()));
+    }
 }

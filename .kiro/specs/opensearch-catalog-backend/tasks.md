@@ -106,15 +106,20 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         `OpenSearchIndexProvisionerTest` (7) all pass.
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 6. Reindex from DynamoDB (no re-embedding)
-  - [ ] 6.1 Add `CatalogReindexRunner` gated by `catalog.reindex.enabled=true` (never on
-        normal boot); scans the configured `CatalogRecipe` table (small or full) via
-        `CatalogRecipeRepository`.
-  - [ ] 6.2 Build the OpenSearch doc from persisted fields incl. `embedding`; bulk index in
-        batches of `catalog.reindex.batch-size`, using `catalogRecipeId` as doc id (idempotent
-        upsert).
-  - [ ] 6.3 No Bedrock calls for recipe vectors (read from DynamoDB); log
-        `indexed / skipped / failed` + final summary; safe to re-run.
+- [x] 6. Reindex from DynamoDB (no re-embedding)
+  - [x] 6.1 `CatalogReindexRunner` (`CommandLineRunner`) gated by
+        `catalog.reindex.enabled=true` (never on normal boot); reads the configured table via
+        `repository.forTable(dynamodb.catalog-full-table)` and streams it with a new
+        `scanInPages(...)` (page-by-page, so a 2.2M table isn't materialized in memory). Calls
+        `provisioner.ensureIndex()` first.
+  - [x] 6.2 Bulk-indexes the persisted `CatalogRecipe` (incl. `embedding`) in batches of
+        `catalog.reindex.batch-size` (default 500), using `catalogRecipeId` as the doc id
+        (idempotent upsert). Per-item bulk errors counted, first error logged.
+  - [x] 6.3 No Bedrock/`EmbeddingService` dependency at all (vectors read from DynamoDB); logs
+        `seen / indexed / skipped / failed` progress + final summary; safe to re-run.
+  - [x] Tests: `CatalogReindexRunnerTest` (3, all pass) — doc id = `catalogRecipeId`, skips
+        id-less recipes, batches flush at batch-size. The runner's constructor takes no
+        embedding service, which is itself the proof of no-re-embedding.
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
 - [ ] 7. Infrastructure as code (opt-in, cost-bounded)
