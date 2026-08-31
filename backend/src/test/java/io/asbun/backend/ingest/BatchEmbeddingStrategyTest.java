@@ -131,4 +131,29 @@ class BatchEmbeddingStrategyTest {
         BatchEmbeddingStrategy s = strategy(mock(S3Client.class), mock(BedrockClient.class));
         assertThatThrownBy(() -> s.embed("x")).isInstanceOf(UnsupportedOperationException.class);
     }
+
+    @Test
+    void embedAll_splitsIntoMultipleJobsAboveRecordLimit() throws Exception {
+        S3Client s3 = mock(S3Client.class);
+        BedrockClient bedrock = mock(BedrockClient.class);
+        when(bedrock.createModelInvocationJob(any(CreateModelInvocationJobRequest.class)))
+                .thenReturn(CreateModelInvocationJobResponse.builder().jobArn("job-arn").build());
+        when(bedrock.getModelInvocationJob(any(GetModelInvocationJobRequest.class)))
+                .thenReturn(GetModelInvocationJobResponse.builder().status(ModelInvocationJobStatus.COMPLETED).build());
+        // Each output listing empty (we only assert job count / splitting here).
+        when(s3.listObjectsV2(any(ListObjectsV2Request.class)))
+                .thenReturn(ListObjectsV2Response.builder().isTruncated(false).build());
+
+        // 100,001 records => must split into 2 jobs (100K cap).
+        java.util.LinkedHashMap<String, String> inputs = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < 100_001; i++) {
+            inputs.put("id" + i, "t");
+        }
+
+        strategy(s3, bedrock).embedAll(inputs);
+
+        // 2 jobs submitted, 2 input files uploaded.
+        verify(bedrock, org.mockito.Mockito.times(2)).createModelInvocationJob(any(CreateModelInvocationJobRequest.class));
+        verify(s3, org.mockito.Mockito.times(2)).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
 }

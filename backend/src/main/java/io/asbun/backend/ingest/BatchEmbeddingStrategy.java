@@ -53,6 +53,11 @@ import java.util.Map;
 @Component
 public class BatchEmbeddingStrategy implements EmbeddingStrategy {
 
+    // Bedrock Titan V2 batch quotas (us-east-1): max 100,000 records/job and 1 GB input file.
+    // A single job must respect BOTH; embedAll splits its input into sub-jobs accordingly.
+    private static final int MAX_RECORDS_PER_JOB = 100_000;
+    private static final long MAX_INPUT_BYTES = 950L * 1024 * 1024; // ~950 MB safety margin under 1 GB
+
     private final S3Client s3Client;
     private final BedrockClient bedrockClient;
     private final String modelId;
@@ -87,28 +92,75 @@ public class BatchEmbeddingStrategy implements EmbeddingStrategy {
     }
 
     /**
-     * Embeds all inputs via one Bedrock batch job. Keys of the returned map are the same
-     * recordIds passed in; a recordId is omitted if the model returned an error for it.
+     * Embeds all inputs via one or more Bedrock batch jobs. Splits into sub-jobs that each respect
+     * the Bedrock limits ({@value #MAX_RECORDS_PER_JOB} records and ~1 GB input file), submitting,
+     * polling, and collecting each in turn. Keys of the returned map are the same recordIds passed
+     * in; a recordId is omitted if the model returned an error for it.
      *
      * @param inputs recordId (deterministic catalogRecipeId) -> text to embed
      * @return recordId -> embedding vector
      */
     public Map<String, List<Double>> embedAll(Map<String, String> inputs) {
         requireConfig();
-        String jobStamp = Long.toString(Instant.now().toEpochMilli());
-        String inputKey = "batch-embed/" + jobStamp + "/input.jsonl";
-        String outputPrefix = "batch-embed/" + jobStamp + "/out/";
+        Map<String, List<Double>> allVectors = new LinkedHashMap<>();
 
-        uploadInputJsonl(inputs, inputKey);
+        List<Map<String, String>> jobs = splitIntoJobs(inputs);
+        log.info("Batch embedding {} records across {} job(s)", inputs.size(), jobs.size());
 
-        String jobArn = submitJob(jobStamp, inputKey, outputPrefix);
-        log.info("Submitted Bedrock batch embedding job: {}", jobArn);
+        int jobNum = 0;
+        for (Map<String, String> jobInputs : jobs) {
+            jobNum++;
+            String jobStamp = Instant.now().toEpochMilli() + "-" + jobNum;
+            String inputKey = "batch-embed/" + jobStamp + "/input.jsonl";
+            String outputPrefix = "batch-embed/" + jobStamp + "/out/";
 
-        waitForCompletion(jobArn);
+            uploadInputJsonl(jobInputs, inputKey);
+            String jobArn = submitJob(jobStamp, inputKey, outputPrefix);
+            log.info("Submitted batch job {}/{} ({} records): {}", jobNum, jobs.size(), jobInputs.size(), jobArn);
 
-        Map<String, List<Double>> vectors = collectOutput(outputPrefix);
-        log.info("Batch embedding produced {} vectors for {} inputs", vectors.size(), inputs.size());
-        return vectors;
+            waitForCompletion(jobArn);
+            Map<String, List<Double>> vectors = collectOutput(outputPrefix);
+            allVectors.putAll(vectors);
+            log.info("Job {}/{} produced {} vectors", jobNum, jobs.size(), vectors.size());
+        }
+
+        log.info("Batch embedding produced {} vectors for {} inputs", allVectors.size(), inputs.size());
+        return allVectors;
+    }
+
+    /**
+     * Splits inputs into sub-jobs each within the record-count and input-file-size limits. The
+     * per-record JSONL size is estimated as the record text plus a small fixed overhead for the
+     * JSON envelope.
+     */
+    private List<Map<String, String>> splitIntoJobs(Map<String, String> inputs) {
+        List<Map<String, String>> jobs = new ArrayList<>();
+        Map<String, String> current = new LinkedHashMap<>();
+        long currentBytes = 0;
+
+        for (Map.Entry<String, String> e : inputs.entrySet()) {
+            // Envelope: {"recordId":"...","modelInput":{"inputText":"...","normalize":true}}\n
+            long recordBytes = estimateRecordBytes(e.getKey(), e.getValue());
+            boolean wouldExceed = current.size() >= MAX_RECORDS_PER_JOB
+                    || (currentBytes + recordBytes) > MAX_INPUT_BYTES;
+            if (wouldExceed && !current.isEmpty()) {
+                jobs.add(current);
+                current = new LinkedHashMap<>();
+                currentBytes = 0;
+            }
+            current.put(e.getKey(), e.getValue());
+            currentBytes += recordBytes;
+        }
+        if (!current.isEmpty()) {
+            jobs.add(current);
+        }
+        return jobs;
+    }
+
+    private long estimateRecordBytes(String recordId, String text) {
+        // ~60 bytes of JSON envelope + UTF-8 length of id and text (UTF-8 worst case ~ chars).
+        return 60L + recordId.length()
+                + text.getBytes(StandardCharsets.UTF_8).length;
     }
 
     private void requireConfig() {
