@@ -9,9 +9,10 @@
 #   3. Logs everything to a timestamped file so you can check progress or come back later.
 #
 # How to run (from the project root):
-#   caffeinate -i ./scripts/run-full-catalog-ingest.sh
+#   ./scripts/run-full-catalog-ingest.sh
 #
-# The caffeinate wrapper prevents macOS from sleeping mid-run.
+# The script AUTOMATICALLY re-launches itself under `caffeinate` so macOS will not sleep
+# mid-run — you do NOT need to prefix it yourself. (Prefixing with caffeinate is harmless too.)
 # Runtime: expect several hours (each 100K-record batch job takes ~30-60 min).
 # Cost: ~$3-6 one-time for Bedrock batch embeddings + ~$3-5 DynamoDB writes.
 #
@@ -19,6 +20,15 @@
 # The script exits non-zero if the ingestion reports failures.
 #
 set -euo pipefail
+
+# Self-caffeinate: if not already running under caffeinate, re-exec under it so the Mac stays
+# awake for the whole run. The guard env var prevents an infinite re-exec loop.
+if [[ -z "${INGEST_CAFFEINATED:-}" ]] && command -v caffeinate >/dev/null 2>&1; then
+  echo "☕ Re-launching under caffeinate to keep the Mac awake for the full run..."
+  export INGEST_CAFFEINATED=1
+  # -i prevent idle sleep, -m prevent disk sleep, -s prevent system sleep (on AC power)
+  exec caffeinate -ims "$0" "$@"
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/.."
