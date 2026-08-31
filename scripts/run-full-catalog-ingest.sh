@@ -35,7 +35,8 @@ CATALOG_FULL_TABLE="recipe-ai-dev-catalog-full"
 BATCH_INPUT_BUCKET="recipe-ai-dev-batch-embed-input-412381751532"
 BATCH_OUTPUT_BUCKET="recipe-ai-dev-batch-embed-output-412381751532"
 BATCH_ROLE_ARN="arn:aws:iam::412381751532:role/recipe-ai-dev-batch-embed-role"
-RECIPENLG_FILE="data/recipeNGL/RecipeNLG_dataset.csv"
+# Absolute path so it resolves regardless of the java process working directory.
+RECIPENLG_FILE="$BACKEND_DIR/data/recipeNGL/RecipeNLG_dataset.csv"
 # 0 = full set (all ~2.23M records, no cap)
 MAX_RECORDS=0
 # Poll Bedrock job status every 60 seconds
@@ -62,8 +63,8 @@ if [[ ! -f "$JAR" ]]; then
 fi
 echo "  ✅ JAR built"
 
-if [[ ! -f "$BACKEND_DIR/$RECIPENLG_FILE" ]]; then
-  echo "❌ RecipeNLG dataset not found at $BACKEND_DIR/$RECIPENLG_FILE"
+if [[ ! -f "$RECIPENLG_FILE" ]]; then
+  echo "❌ RecipeNLG dataset not found at $RECIPENLG_FILE"
   exit 1
 fi
 echo "  ✅ RecipeNLG dataset found"
