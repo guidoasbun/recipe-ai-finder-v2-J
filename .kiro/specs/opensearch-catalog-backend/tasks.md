@@ -34,31 +34,49 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         the default in-app deployment is unaffected.
   - _Requirements: 1.4, 6.1, 6.2, 6.3_
 
-- [ ] 2. Index mapping and provisioning
-  - [ ] 2.1 Define the index mapping (text title/description/ingredients, `knn_vector`
-        dim 1024 cosine/HNSW, `dietaryTags` keyword, stored attribution) per design §3.
-  - [ ] 2.2 Add create-if-absent provisioning (idempotent) invoked by the reindex job.
-  - [ ] 2.3 Wire the quantization knob (`none | fp16 | byte`) into the mapping; default `none`
-        for parity verification, documented switch to fp16/byte before the full 2.2M load.
-  - [ ] 2.4 (Optional, future-fit) Reserve an `ownerScope` keyword field in the mapping now so
-        the future private-recipe feature (design §9a) needs no re-mapping. Unused until then.
+- [x] 2. Index mapping and provisioning
+  - [x] 2.1 `OpenSearchIndexProvisioner.buildMappingJson()` builds the design §3 mapping:
+        `text` title (+ `kw` keyword sub-field)/description/ingredients, non-indexed `steps`
+        and attribution URLs, `dietaryTags`/`sourceName`/`sourceCountry` keyword, and a Faiss
+        HNSW `knn_vector` (dim 1024, `cosinesimil`, `ef_construction`=128, `m`=16).
+  - [x] 2.2 `ensureIndex()` is idempotent create-if-absent (checks `indices().exists`, creates
+        only when missing); conditional on `catalog.search.backend=opensearch`. The reindex
+        job (task 6) will call it.
+  - [x] 2.3 Quantization knob wired: `none` = float (default), `fp16` = Faiss scalar (`sq`)
+        encoder, `byte` = `data_type: byte`. Serverless (`aoss`) omits the explicit
+        `index.knn` setting (managed `es` sets it), matching NextGen constraints.
+  - [x] 2.4 Reserved an `ownerScope` keyword field for the future private-recipe feature
+        (design §9a); unused today, avoids a re-mapping later.
+  - [x] Tests: `OpenSearchIndexProvisionerTest` (7 tests, all pass) verify field types,
+        not-indexed fields, the Faiss HNSW vector definition, `ownerScope`, and all three
+        quantization modes.
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 10.1_
 
-- [ ] 3. OpenSearchCatalogSearchService (the implementation behind the seam)
-  - [ ] 3.1 Add `OpenSearchCatalogSearchService implements CatalogSearchService` in
-        `io.asbun.backend.search`.
-  - [ ] 3.2 `search`: build dietary `terms` filter (AND), keyword `multi_match`
-        (title boosted), and knn vector clause per `catalog.search.mode` +
-        `semantic-enabled`; blank text => `match_all` browse; pagination `from`/`size`
-        clamped to page-size bounds; `totalMatches` from hits total.
-  - [ ] 3.3 Hybrid mode: OpenSearch hybrid pipeline if supported, else `bool.should` score
-        blend (matches in-app blend intent).
-  - [ ] 3.4 Semantic fallback: on `EmbeddingService.embed` failure, drop the vector clause and
-        run keyword-only, still returning results.
-  - [ ] 3.5 `findById`: get by `catalogRecipeId` → `CatalogRecipeDto` (reuse existing mapper,
-        no `embedding`/`searchText`), else empty.
-  - [ ] 3.6 Map OpenSearch failures to the existing `GlobalExceptionHandler` (no fake empty
-        results on outage).
+- [x] 3. OpenSearchCatalogSearchService (the implementation behind the seam)
+  - [x] 3.1 Added `OpenSearchCatalogSearchService implements CatalogSearchService` in
+        `io.asbun.backend.search`, `@Component` conditional on
+        `catalog.search.backend=opensearch` (coexists with the in-app `@Component`; task 4
+        wires the `@Primary` selector).
+  - [x] 3.2 `search`: dietary filter is one `term` filter per required tag (AND, mirrors
+        `containsAll`); keyword `multi_match` over `title^3, description, ingredients`; knn
+        clause on `embedding` per mode + semantic-enabled; blank text => `match_all` browse;
+        `from`/`size` clamped (page/pageSize floored, long offset guard); `totalMatches` from
+        `hits.total`.
+  - [x] 3.3 Hybrid: keyword + knn as `should` clauses with `minimum_should_match=1` (score
+        blend, the design's flavor-robust choice over the version-dependent hybrid pipeline).
+        `minimum_should_match=1` makes text a filter (not just a sort), mirroring the in-app
+        drop-if-no-signal behavior.
+  - [x] 3.4 Semantic fallback: `embedQuietly` returns null instead of throwing on embed
+        failure, so `search` drops the vector clause and runs keyword-only.
+  - [x] 3.5 `findById`: client `get` by id → `CatalogRecipeDto` when found, else
+        `Optional.empty()`. DTO excludes `embedding`/`searchText`; the client mapper is
+        configured to ignore unknown document fields.
+  - [x] 3.6 OpenSearch `IOException`s wrapped in `IllegalStateException` (not swallowed into an
+        empty page) → the existing `GlobalExceptionHandler` catch-all returns 500.
+  - [x] Also: `OpenSearchConfig` transport now uses a lenient `JacksonJsonpMapper`
+        (`FAIL_ON_UNKNOWN_PROPERTIES` off + JSR-310) so hits with `embedding`/`ownerScope`
+        deserialize into the DTO cleanly. Compile clean; existing catalog/embedding tests pass
+        (query-clause assertion tests are Task 8).
   - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
 - [ ] 4. Backend selection wiring

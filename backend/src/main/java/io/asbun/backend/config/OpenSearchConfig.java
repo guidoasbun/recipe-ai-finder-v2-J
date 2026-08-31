@@ -1,7 +1,10 @@
 package io.asbun.backend.config;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.opensearch.client.json.jackson.JacksonJsonpMapper;
 import org.opensearch.client.opensearch.OpenSearchClient;
 import org.opensearch.client.transport.OpenSearchTransport;
 import org.opensearch.client.transport.aws.AwsSdk2Transport;
@@ -55,12 +58,20 @@ public class OpenSearchConfig {
         log.info("Configuring OpenSearch client: host={}, region={}, signingService={}, index={}",
                 host, awsRegion, signingService, properties.getIndex());
 
+        // Lenient mapper: OpenSearch documents carry fields the DTO does not declare
+        // (embedding, ownerScope, searchText); ignore unknowns so hit deserialization into
+        // CatalogRecipeDto never fails. JSR-310 for Instant support.
+        ObjectMapper docMapper = new ObjectMapper()
+                .findAndRegisterModules()
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
         OpenSearchTransport transport = new AwsSdk2Transport(
                 AwsCrtHttpClient.builder().build(),
                 host,
                 signingService,
                 region,
                 AwsSdk2TransportOptions.builder()
+                        .setMapper(new JacksonJsonpMapper(docMapper))
                         .setCredentials(DefaultCredentialsProvider.create())
                         .build());
 
