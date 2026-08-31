@@ -194,18 +194,43 @@ Manual (against the running app with `backend=opensearch`):
 
 ---
 
-## 7. Full 2.2M load (Task 10 — separate, later)
+## 7. Full 2.2M load
 
-1. Register `RecipeNlgCsvSource` in `CatalogIngestionRunner` pointed at
-   `backend/data/recipeNGL/RecipeNLG_dataset.csv`, cap lifted, targeting `catalog-full`
-   (`DYNAMODB_CATALOG_FULL_TABLE=recipe-ai-<env>-catalog-full`).
-2. Produce embeddings via the batch strategy (`BatchEmbeddingStrategy`, Bedrock Batch
-   Inference — S3 JSONL, ~$3–6 one-time). Finish that scaffold first.
-3. Run ingestion → `catalog-full` populated with 2.2M recipes + embeddings.
-4. Set `opensearch.knn.quantization=fp16` (or `byte`), then run the reindex (§3.4) against the
-   full table.
+Prereqs: two S3 buckets (batch input + output) and an IAM role Bedrock can assume to read the
+input / write the output (Bedrock Batch Inference service role). Then run ingestion in **batch**
+mode against the full table:
+
+```
+./mvnw spring-boot:run -pl backend \
+  -Dspring-boot.run.arguments="\
+    --catalog.ingest.enabled=true \
+    --catalog.ingest.embedding-strategy=batch \
+    --catalog.ingest.recipenlg-file=data/recipeNGL/RecipeNLG_dataset.csv \
+    --catalog.ingest.recipenlg-max-records=0 \
+    --dynamodb.catalog-full-table=recipe-ai-<env>-catalog-full \
+    --bedrock.batch.input-bucket=<batch-input-bucket> \
+    --bedrock.batch.output-bucket=<batch-output-bucket> \
+    --bedrock.batch.role-arn=<bedrock-batch-service-role-arn>"
+```
+
+What it does:
+1. Parses RecipeNLG (`RecipeNlgCsvSource`, `max-records=0` = full ~2.23M set), skipping any
+   already-embedded recipes (idempotent — safe to re-run).
+2. Writes all inputs as JSONL to S3, submits one Bedrock **Batch Inference** job
+   (`CreateModelInvocationJob`), polls to completion, reads vectors back from the output
+   (~$3–6 one-time, ~50% cheaper than on-demand).
+3. Persists each recipe + vector to `catalog-full`.
+
+Then:
+4. Set `opensearch.knn.quantization=fp16` (or `byte`) BEFORE the index is created (it changes
+   the mapping), then run the reindex (§3.4) against `catalog-full`.
 5. Re-verify parity + latency at 2.2M; tune `ef-search` and the OCU cap; confirm the budget
    threshold still fits observed cost.
+
+> Note: for very large batches Bedrock may split output across multiple files and enforce
+> per-job record limits/quotas; the collector reads all `*.jsonl(.out)` files under the output
+> prefix. If the job hits a max-records-per-job quota, split the run (the skip-if-embedded logic
+> makes multiple runs safe).
 
 ---
 

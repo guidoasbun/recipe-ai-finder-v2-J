@@ -8,6 +8,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.bedrock.BedrockClient;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -22,6 +23,15 @@ public class AwsConfig {
     @Bean
     public BedrockRuntimeClient bedrockRuntimeClient() {
         return BedrockRuntimeClient.builder()
+                .region(Region.of(awsRegion))
+                .credentialsProvider(DefaultCredentialsProvider.create())
+                .build();
+    }
+
+    /** Bedrock control-plane client for batch inference jobs (full 2.2M catalog embedding). */
+    @Bean
+    public BedrockClient bedrockClient() {
+        return BedrockClient.builder()
                 .region(Region.of(awsRegion))
                 .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();

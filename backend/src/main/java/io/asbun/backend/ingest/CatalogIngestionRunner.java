@@ -13,8 +13,10 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * One-off catalog ingestion. Runs ONLY when {@code catalog.ingest.enabled=true} so it never
@@ -32,29 +34,55 @@ public class CatalogIngestionRunner implements CommandLineRunner {
 
     private final CatalogRecipeRepository repository;
     private final DietaryTagger dietaryTagger;
-    private final EmbeddingStrategy embeddingStrategy;
+    private final SynchronousEmbeddingStrategy syncStrategy;
+    private final BatchEmbeddingStrategy batchStrategy;
     private final Path sourceDir;
+    private final String strategyName;
+    private final String recipeNlgFile;
+    private final int recipeNlgMaxRecords;
 
     public CatalogIngestionRunner(CatalogRecipeRepository repository,
                                   DietaryTagger dietaryTagger,
-                                  EmbeddingStrategy embeddingStrategy,
+                                  SynchronousEmbeddingStrategy syncStrategy,
+                                  BatchEmbeddingStrategy batchStrategy,
                                   @Value("${catalog.ingest.source-dir}") String sourceDir,
-                                  @Value("${dynamodb.catalog-full-table:${dynamodb.catalog-table}}") String targetTable) {
+                                  @Value("${dynamodb.catalog-full-table:${dynamodb.catalog-table}}") String targetTable,
+                                  @Value("${catalog.ingest.embedding-strategy:sync}") String strategyName,
+                                  @Value("${catalog.ingest.recipenlg-file:}") String recipeNlgFile,
+                                  @Value("${catalog.ingest.recipenlg-max-records:0}") int recipeNlgMaxRecords) {
         // Target the configured catalog table. Defaults to the small in-app table, so existing
         // ingestion is unchanged; set dynamodb.catalog-full-table to load the full dataset into
         // the separate table without touching the in-app table (rollback preservation).
         this.repository = repository.forTable(targetTable);
         this.dietaryTagger = dietaryTagger;
-        this.embeddingStrategy = embeddingStrategy;
+        this.syncStrategy = syncStrategy;
+        this.batchStrategy = batchStrategy;
         this.sourceDir = Path.of(sourceDir);
+        this.strategyName = strategyName;
+        this.recipeNlgFile = recipeNlgFile;
+        this.recipeNlgMaxRecords = recipeNlgMaxRecords;
     }
 
     @Override
     public void run(String... args) {
-        log.info("Catalog ingestion target table: {}", repository.tableName());
+        log.info("Catalog ingestion target table: {}, embedding-strategy: {}",
+                repository.tableName(), strategyName);
         List<RecipeSource> sources = new ArrayList<>();
-        sources.add(new XlsxMealDbSource(sourceDir.resolveSibling("archive")));
-        sources.add(new CsvBetterRecipesSource(sourceDir.resolveSibling("archive-1").resolve("recipes.csv")));
+        // RecipeNLG (Phase 2 / full 2.2M) when a file is configured; otherwise Phase 1 sources.
+        if (recipeNlgFile != null && !recipeNlgFile.isBlank()) {
+            int cap = recipeNlgMaxRecords > 0 ? recipeNlgMaxRecords : Integer.MAX_VALUE;
+            sources.add(new RecipeNlgCsvSource(Path.of(recipeNlgFile), cap));
+            log.info("RecipeNLG source enabled: file={}, cap={}", recipeNlgFile,
+                    cap == Integer.MAX_VALUE ? "none (full set)" : cap);
+        } else {
+            sources.add(new XlsxMealDbSource(sourceDir.resolveSibling("archive")));
+            sources.add(new CsvBetterRecipesSource(sourceDir.resolveSibling("archive-1").resolve("recipes.csv")));
+        }
+
+        if ("batch".equalsIgnoreCase(strategyName)) {
+            runBatch(sources);
+            return;
+        }
 
         int total = 0;
         int embedded = 0;
@@ -86,7 +114,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                 try {
                     List<String> tags = dietaryTagger.tag(p.ingredients());
                     String searchText = buildSearchText(p);
-                    List<Double> vector = embeddingStrategy.embed(embeddingInput(p));
+                    List<Double> vector = syncStrategy.embed(embeddingInput(p));
 
                     CatalogRecipe recipe = CatalogRecipe.builder()
                             .catalogRecipeId(catalogId)
@@ -120,6 +148,85 @@ public class CatalogIngestionRunner implements CommandLineRunner {
 
         log.info("Ingestion complete: {} seen, {} embedded, {} skipped, {} failed",
                 total, embedded, skipped, failed);
+    }
+
+    /**
+     * Batch path for the full 2.2M load: collect all not-yet-embedded recipes, embed them in one
+     * Bedrock Batch Inference job, then persist each with its returned vector. Idempotent —
+     * already-embedded recipes are skipped, so a re-run only embeds the remainder.
+     */
+    private void runBatch(List<RecipeSource> sources) {
+        Map<String, String> toEmbed = new LinkedHashMap<>();       // catalogId -> embedding input text
+        Map<String, ParsedRecipe> byId = new LinkedHashMap<>();     // catalogId -> parsed recipe
+        int seen = 0;
+        int skipped = 0;
+
+        for (RecipeSource source : sources) {
+            List<ParsedRecipe> parsed;
+            try {
+                parsed = source.load();
+            } catch (Exception e) {
+                log.error("Source {} failed to load: {}", source.name(), e.getMessage());
+                continue;
+            }
+            log.info("Preparing {} recipes from {} for batch embedding", parsed.size(), source.name());
+            for (ParsedRecipe p : parsed) {
+                seen++;
+                String catalogId = deterministicId(p.sourceId());
+                var existing = repository.findById(catalogId);
+                if (existing.isPresent() && existing.get().getEmbedding() != null
+                        && !existing.get().getEmbedding().isEmpty()) {
+                    skipped++;
+                    continue;
+                }
+                toEmbed.put(catalogId, embeddingInput(p));
+                byId.put(catalogId, p);
+            }
+        }
+
+        log.info("Batch embedding {} recipes ({} already embedded, skipped)", toEmbed.size(), skipped);
+        if (toEmbed.isEmpty()) {
+            log.info("Nothing to embed; batch ingestion complete.");
+            return;
+        }
+
+        Map<String, List<Double>> vectors = batchStrategy.embedAll(toEmbed);
+
+        int persisted = 0;
+        int missing = 0;
+        for (Map.Entry<String, ParsedRecipe> entry : byId.entrySet()) {
+            String catalogId = entry.getKey();
+            ParsedRecipe p = entry.getValue();
+            List<Double> vector = vectors.get(catalogId);
+            if (vector == null || vector.isEmpty()) {
+                missing++;
+                continue;
+            }
+            CatalogRecipe recipe = CatalogRecipe.builder()
+                    .catalogRecipeId(catalogId)
+                    .title(p.title())
+                    .description(p.description())
+                    .ingredients(p.ingredients())
+                    .steps(p.steps())
+                    .imageUrl(p.imageUrl())
+                    .dietaryTags(dietaryTagger.tag(p.ingredients()))
+                    .searchText(buildSearchText(p))
+                    .embedding(vector)
+                    .sourceName(p.sourceName())
+                    .sourceUrl(p.sourceUrl())
+                    .sourceLicense(p.sourceLicense())
+                    .sourceCountry(p.sourceCountry())
+                    .ingestedAt(Instant.now())
+                    .build();
+            repository.save(recipe);
+            persisted++;
+            if (persisted % 1000 == 0) {
+                log.info("Persisted {} / {} embedded recipes", persisted, vectors.size());
+            }
+        }
+
+        log.info("Batch ingestion complete: {} seen, {} skipped, {} persisted, {} missing-vector",
+                seen, skipped, persisted, missing);
     }
 
     private String embeddingInput(ParsedRecipe p) {

@@ -184,19 +184,23 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         in-app backend remains selectable.
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 9.1, 9.2, 9.3_
 
-- [ ] 10. Full 2.2M RecipeNLG load (separate operational step, NOT a gate on tasks 1–9)
-  - [ ] 10.1 Register `RecipeNlgCsvSource` in `CatalogIngestionRunner` pointed at
-        `backend/data/recipeNGL/RecipeNLG_dataset.csv`, `maxRecords` cap lifted, targeting the
-        `catalog-full` table.
-  - [ ] 10.2 Finish the `BatchEmbeddingStrategy` scaffold (Bedrock Batch Inference: write S3
-        JSONL, submit `CreateModelInvocationJob`, poll, collect vectors from S3 output) and use
-        it for the 2.2M run (~$3–6 one-time via batch) instead of the synchronous loop.
-  - [ ] 10.3 Run ingestion → `catalog-full` populated with 2.2M recipes + persisted embeddings.
-  - [ ] 10.4 Enable vector quantization (fp16 or byte) on the OpenSearch index before/at this
-        scale (design §3) to bound the ~9 GB+ vector footprint; run the reindex (task 6) against
-        the full table.
-  - [ ] 10.5 Re-verify parity + performance at 2.2M; tune `ef-search` and the OCU cap; confirm
-        the billing alarm threshold still fits observed cost.
+- [x] 10. Full 2.2M RecipeNLG load — CODE complete; the AWS run (10.3–10.5) is operator-invoked
+  - [x] 10.1 `CatalogIngestionRunner` now loads `RecipeNlgCsvSource` when
+        `catalog.ingest.recipenlg-file` is set, with `catalog.ingest.recipenlg-max-records=0`
+        meaning no cap (full set), targeting the `catalog-full` table (Task 5 mechanism).
+  - [x] 10.2 Finished `BatchEmbeddingStrategy` (real Bedrock Batch Inference): `embedAll(map)`
+        writes JSONL to S3, submits `CreateModelInvocationJob`, polls to completion, and parses
+        the S3 output JSONL back into vectors by `recordId` (dropping error records). Added the
+        `bedrock` control-plane SDK dep + `BedrockClient` bean + batch config properties. The
+        runner branches to a batch path on `catalog.ingest.embedding-strategy=batch`. Tests:
+        `BatchEmbeddingStrategyTest` (4) — upload/submit/poll/parse, job-failed, missing-config,
+        unsupported single embed. All catalog/ingest/embedding tests still green.
+  - [ ] 10.3 (operator, AWS cost ~$8–15 one-time) Run ingestion in batch mode → `catalog-full`
+        populated with 2.2M recipes + embeddings. Documented in RUNBOOK §7. NOT run here.
+  - [ ] 10.4 (operator) Set `opensearch.knn.quantization=fp16`/`byte`, run the reindex against
+        `catalog-full`. Documented in RUNBOOK §7.
+  - [ ] 10.5 (operator) Re-verify parity + performance at 2.2M; tune `ef-search`/OCU cap; confirm
+        budget threshold. Documented in RUNBOOK §5–6.
   - _Requirements: 3.4, 4.1, 5.1, 7.2, 7.6_
 
 ## Notes
