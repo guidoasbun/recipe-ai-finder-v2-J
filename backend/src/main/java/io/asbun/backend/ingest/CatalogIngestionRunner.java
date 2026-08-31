@@ -42,6 +42,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
     private final int recipeNlgMaxRecords;
     private final int recipeNlgSkipRecords;
     private final int batchChunkSize;
+    private final boolean batchDedup;
 
     public CatalogIngestionRunner(CatalogRecipeRepository repository,
                                   DietaryTagger dietaryTagger,
@@ -53,7 +54,8 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                                   @Value("${catalog.ingest.recipenlg-file:}") String recipeNlgFile,
                                   @Value("${catalog.ingest.recipenlg-max-records:0}") int recipeNlgMaxRecords,
                                   @Value("${catalog.ingest.recipenlg-skip-records:0}") int recipeNlgSkipRecords,
-                                  @Value("${catalog.ingest.batch-chunk-size:100000}") int batchChunkSize) {
+                                  @Value("${catalog.ingest.batch-chunk-size:100000}") int batchChunkSize,
+                                  @Value("${catalog.ingest.batch-dedup:false}") boolean batchDedup) {
         // Target the configured catalog table. Defaults to the small in-app table, so existing
         // ingestion is unchanged; set dynamodb.catalog-full-table to load the full dataset into
         // the separate table without touching the in-app table (rollback preservation).
@@ -67,6 +69,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
         this.recipeNlgMaxRecords = recipeNlgMaxRecords;
         this.recipeNlgSkipRecords = recipeNlgSkipRecords;
         this.batchChunkSize = Math.max(1, batchChunkSize);
+        this.batchDedup = batchDedup;
     }
 
     @Override
@@ -172,17 +175,24 @@ public class CatalogIngestionRunner implements CommandLineRunner {
     private void runBatch(List<RecipeSource> sources) {
         BatchState state = new BatchState();
 
+        log.info("Batch dedup (per-record findById) is {}", batchDedup ? "ON" : "OFF");
         for (RecipeSource source : sources) {
             log.info("Streaming recipes from {} for batch embedding", source.name());
             try {
                 source.stream(p -> {
                     state.seen++;
                     String catalogId = deterministicId(p.sourceId());
-                    var existing = repository.findById(catalogId);
-                    if (existing.isPresent() && existing.get().getEmbedding() != null
-                            && !existing.get().getEmbedding().isEmpty()) {
-                        state.skipped++;
-                        return;
+                    // Per-record dedup is a DynamoDB read PER recipe — on a fresh 2.2M load that
+                    // is millions of pointless "not found" reads and is very slow. It is OFF by
+                    // default; resume a partial load with catalog.ingest.recipenlg-skip-records
+                    // instead. Turn it ON only when you specifically want content-based skip.
+                    if (batchDedup) {
+                        var existing = repository.findById(catalogId);
+                        if (existing.isPresent() && existing.get().getEmbedding() != null
+                                && !existing.get().getEmbedding().isEmpty()) {
+                            state.skipped++;
+                            return;
+                        }
                     }
                     state.chunkToEmbed.put(catalogId, embeddingInput(p));
                     state.chunkById.put(catalogId, p);
