@@ -70,15 +70,16 @@ public class OpenSearchIndexProvisioner {
     }
 
     /**
-     * Serverless (aoss) manages k-NN implicitly and rejects the explicit {@code index.knn}
-     * setting, so it (and the {@code ef_search} algo param) is only set for the managed-domain
-     * ("es") signing service.
+     * {@code index.knn=true} is required whenever the mapping defines a {@code knn_vector} with a
+     * method — both for managed domains and for a serverless VECTORSEARCH collection (which
+     * otherwise rejects the mapping with "Cannot set modelId or method parameters when index.knn
+     * setting is false"). The {@code ef_search} algo param is a managed-domain-only setting;
+     * serverless does not accept it.
      */
     private IndexSettings buildSettings() {
         boolean managedDomain = "es".equalsIgnoreCase(properties.getSigningService());
-        IndexSettings.Builder builder = new IndexSettings.Builder();
+        IndexSettings.Builder builder = new IndexSettings.Builder().knn(true);
         if (managedDomain) {
-            builder.knn(true);
             // Wire the configured ef_search (query-time recall/latency) into the index setting.
             builder.customSettings("index.knn.algo_param.ef_search",
                     org.opensearch.client.json.JsonData.of(properties.getKnn().getEfSearch()));

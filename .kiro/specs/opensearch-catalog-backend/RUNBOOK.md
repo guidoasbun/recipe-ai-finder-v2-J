@@ -181,14 +181,29 @@ Automated:
 - `./mvnw -pl backend test -Dtest='*Catalog*,OpenSearch*,CatalogSearchConfigTest'` — all green.
   (Query translation, mapping, findById, semantic fallback, backend selection, reindex.)
 
-Manual (against the running app with `backend=opensearch`):
-1. **Keyword:** search a title term (e.g. "pancake") → relevant recipes, title matches ranked high.
-2. **Semantic:** a natural-language query (e.g. "something warm for a cold night") → semantically
-   relevant results even without exact keywords.
-3. **Dietary filter:** apply a restriction (e.g. VEGAN) → only VEGAN-tagged recipes returned.
-4. **Pagination:** page 0 vs page 1 return different, non-overlapping items; `totalMatches` stable.
-5. **Detail:** open a recipe → full fields + attribution; unknown id → 404.
-6. **Fallback:** (optional) temporarily deny Bedrock → semantic query still returns keyword results.
+Manual: run the built-in verify runner (logs the checks below) against the running app:
+```
+java -jar backend/target/backend-0.0.1-SNAPSHOT.jar \
+  --catalog.search.backend=opensearch --opensearch.endpoint=<endpoint> \
+  --catalog.verify.enabled=true
+```
+It exercises: keyword, semantic (natural-language), dietary VEGAN filter, browse total,
+pagination (no page overlap), and findById (present + missing). Verified on the ~1.3K catalog:
+browse total=1261, keyword 'chicken'=109, semantic top hit relevant, VEGAN filter all-tagged,
+pages non-overlapping, findById round-trips.
+
+### Serverless (aoss) constraints discovered during validation
+The implementation accounts for these OpenSearch Serverless behaviors (they differ from a
+managed domain):
+- `index.knn=true` **is** required on the index for a `knn_vector` mapping with a method
+  (contrary to some docs suggesting serverless manages it implicitly).
+- Custom document `_id` is **rejected** at index time — serverless auto-generates ids. The
+  reindex omits `_id` on serverless and stores `catalogRecipeId` as a field; `findById` queries
+  that field rather than getting by `_id`. Managed domains still use `catalogRecipeId` as `_id`.
+- The `knn` query accepts exactly one of `k` / `distance` / `score`; `min_score`/`max_distance`
+  are **rejected**. So the in-app 0.35 cosine threshold is not applied as a knn radial filter on
+  serverless — semantic uses k-bounded nearest neighbors, and in hybrid mode the keyword clause
+  is the precision signal.
 
 ---
 

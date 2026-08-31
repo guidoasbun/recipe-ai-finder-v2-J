@@ -55,9 +55,6 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
     /** Upper bound on knn {@code k} so deep pagination is reachable without unbounded fan-out. */
     private static final int MAX_KNN_K = 1000;
 
-    /** Minimum cosine similarity for a semantic match, mirroring the in-app threshold. */
-    private static final double SEMANTIC_MATCH_THRESHOLD = 0.35;
-
     public OpenSearchCatalogSearchService(
             OpenSearchClient client,
             OpenSearchProperties properties,
@@ -193,14 +190,18 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
             vec.add(v);
         }
         // k must cover the requested page (from + pageSize), bounded by MAX_KNN_K, so a deep page
-        // is reachable rather than capped at a fixed 100. minScore mirrors the in-app 0.35 cosine
-        // threshold so the knn clause filters by similarity instead of always matching top-k.
+        // is reachable rather than capped at a fixed 100.
+        //
+        // NOTE: OpenSearch Serverless requires exactly ONE of k / distance / score on a knn query
+        // and rejects min_score/max_distance ("[knn] requires exactly one of k, distance or score
+        // to be set"). So the in-app 0.35 cosine threshold cannot be applied as a knn radial
+        // filter here; we use k-bounded nearest neighbors. In hybrid mode the keyword clause is
+        // the precision signal; in pure semantic mode results are the top-k by similarity.
         int k = Math.max(1, Math.min(candidateDepth, MAX_KNN_K));
         return Query.of(q -> q.knn(kn -> kn
                 .field("embedding")
                 .vector(vec)
-                .k(k)
-                .minScore((float) SEMANTIC_MATCH_THRESHOLD)));
+                .k(k)));
     }
 
     /** Embeds the query text, returning null (not throwing) so search can fall back to keyword. */
@@ -223,16 +224,23 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
 
     @Override
     public Optional<CatalogRecipeDto> findById(String catalogRecipeId) {
+        // Query by the catalogRecipeId field rather than the document _id: OpenSearch Serverless
+        // auto-generates _id (custom ids are rejected at index time), so a get-by-_id would not
+        // work. A term query on the stored field works for both serverless and managed domains.
         try {
-            var response = client.get(g -> g
+            SearchResponse<CatalogRecipeDto> response = client.search(s -> s
                     .index(properties.getIndex())
-                    .id(catalogRecipeId), CatalogRecipeDto.class);
-            if (response.found() && response.source() != null) {
-                return Optional.of(response.source());
-            }
-            return Optional.empty();
+                    .size(1)
+                    .query(q -> q.term(t -> t
+                            .field("catalogRecipeId")
+                            .value(FieldValue.of(catalogRecipeId)))),
+                    CatalogRecipeDto.class);
+            return response.hits().hits().stream()
+                    .map(org.opensearch.client.opensearch.core.search.Hit::source)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst();
         } catch (IOException e) {
-            throw new IllegalStateException("OpenSearch get failed for id " + catalogRecipeId, e);
+            throw new IllegalStateException("OpenSearch findById failed for id " + catalogRecipeId, e);
         }
     }
 }

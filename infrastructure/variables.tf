@@ -137,6 +137,12 @@ variable "enable_catalog_full" {
   description = "Create the full 2.2M catalog DynamoDB table used by the OpenSearch backend."
 }
 
+variable "enable_batch_embedding" {
+  type        = bool
+  default     = false
+  description = "Provision S3 buckets + Bedrock batch service role for the full 2.2M batch embedding load (Task 10.3). Not needed for the small-catalog reindex validation."
+}
+
 variable "catalog_search_backend" {
   type        = string
   default     = "inapp"

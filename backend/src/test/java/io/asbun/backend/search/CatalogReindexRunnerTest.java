@@ -61,24 +61,25 @@ class CatalogReindexRunnerTest {
         return client;
     }
 
-    private OpenSearchProperties props() {
+    private OpenSearchProperties props(String signingService) {
         OpenSearchProperties p = new OpenSearchProperties();
         p.setIndex("catalog-recipes");
+        p.setSigningService(signingService);
         return p;
     }
 
     @Test
-    void bulkIndexes_usingCatalogRecipeIdAsDocumentId() throws Exception {
+    void managedDomain_usesCatalogRecipeIdAsDocumentId() throws Exception {
         CatalogRecipeRepository repo = repoReturning(List.of(recipe("aaa"), recipe("bbb")));
         OpenSearchClient client = clientNoErrors();
         OpenSearchIndexProvisioner provisioner = mock(OpenSearchIndexProvisioner.class);
 
+        // Managed domain (es) can set a custom _id.
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props(), 500, "catalog-full");
+                repo, client, provisioner, props("es"), 500, "catalog-full");
 
         runner.run();
 
-        // Index is ensured before indexing.
         verify(provisioner).ensureIndex();
 
         ArgumentCaptor<BulkRequest> captor = ArgumentCaptor.forClass(BulkRequest.class);
@@ -92,13 +93,32 @@ class CatalogReindexRunnerTest {
     }
 
     @Test
+    void serverless_omitsDocumentId() throws Exception {
+        CatalogRecipeRepository repo = repoReturning(List.of(recipe("aaa")));
+        OpenSearchClient client = clientNoErrors();
+        OpenSearchIndexProvisioner provisioner = mock(OpenSearchIndexProvisioner.class);
+
+        // Serverless (aoss) rejects a custom _id, so it must be omitted (auto-generated).
+        CatalogReindexRunner runner = new CatalogReindexRunner(
+                repo, client, provisioner, props("aoss"), 500, "catalog-full");
+
+        runner.run();
+
+        ArgumentCaptor<BulkRequest> captor = ArgumentCaptor.forClass(BulkRequest.class);
+        verify(client).bulk(captor.capture());
+        List<BulkOperation> ops = captor.getValue().operations();
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0).index().id()).isNull();
+    }
+
+    @Test
     void skipsRecipesWithoutId() throws Exception {
         CatalogRecipeRepository repo = repoReturning(List.of(recipe("aaa"), recipe(null)));
         OpenSearchClient client = clientNoErrors();
         OpenSearchIndexProvisioner provisioner = mock(OpenSearchIndexProvisioner.class);
 
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props(), 500, "catalog-full");
+                repo, client, provisioner, props("es"), 500, "catalog-full");
 
         runner.run();
 
@@ -117,7 +137,7 @@ class CatalogReindexRunnerTest {
 
         // batchSize 2 over 5 recipes => flushes of 2, 2, then remainder 1 = 3 bulk calls.
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props(), 2, "catalog-full");
+                repo, client, provisioner, props("es"), 2, "catalog-full");
 
         runner.run();
 

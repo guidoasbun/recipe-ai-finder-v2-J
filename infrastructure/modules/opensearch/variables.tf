@@ -51,3 +51,9 @@ variable "budget_notification_email" {
   default     = ""
   description = "Email for the budget alert. Empty = no budget resource created."
 }
+
+variable "enable_batch_embedding" {
+  type        = bool
+  default     = false
+  description = "Provision the S3 buckets + Bedrock batch service role for the full 2.2M batch embedding load. Not needed for the small-catalog reindex validation."
+}

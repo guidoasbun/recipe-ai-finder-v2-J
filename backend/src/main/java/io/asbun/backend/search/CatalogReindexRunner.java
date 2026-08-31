@@ -40,6 +40,7 @@ public class CatalogReindexRunner implements CommandLineRunner {
     private final OpenSearchIndexProvisioner provisioner;
     private final OpenSearchProperties properties;
     private final int batchSize;
+    private final boolean serverless;
 
     public CatalogReindexRunner(CatalogRecipeRepository repository,
                                 OpenSearchClient client,
@@ -53,6 +54,7 @@ public class CatalogReindexRunner implements CommandLineRunner {
         this.provisioner = provisioner;
         this.properties = properties;
         this.batchSize = Math.max(1, batchSize);
+        this.serverless = !"es".equalsIgnoreCase(properties.getSigningService());
     }
 
     @Override
@@ -98,6 +100,12 @@ public class CatalogReindexRunner implements CommandLineRunner {
         // title/description/ingredients that the OpenSearch document intentionally excludes —
         // design §3) so dynamic mapping does not index it across the whole catalog.
         recipe.setSearchText(null);
+        // OpenSearch Serverless (aoss) rejects a custom document _id ("Document ID is not
+        // supported"); it auto-generates ids. catalogRecipeId is stored as a document field for
+        // lookup/dedup instead. Managed domains (es) can use catalogRecipeId as _id for upsert.
+        if (serverless) {
+            return BulkOperation.of(op -> op.index(idx -> idx.index(index).document(recipe)));
+        }
         return BulkOperation.of(op -> op.index(idx -> idx
                 .index(index)
                 .id(recipe.getCatalogRecipeId())

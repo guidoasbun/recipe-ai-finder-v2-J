@@ -8,7 +8,6 @@ import org.mockito.ArgumentCaptor;
 import org.opensearch.client.opensearch.OpenSearchClient;
 import org.opensearch.client.opensearch._types.query_dsl.BoolQuery;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
-import org.opensearch.client.opensearch.core.GetResponse;
 import org.opensearch.client.opensearch.core.SearchRequest;
 import org.opensearch.client.opensearch.core.SearchResponse;
 import org.opensearch.client.opensearch.core.search.Hit;
@@ -166,10 +165,6 @@ class OpenSearchCatalogSearchServiceTest {
         BoolQuery bool = capturedBool(client);
         assertThat(bool.should()).anySatisfy(s -> assertThat(s.isKnn()).isTrue());
         assertThat(bool.should()).noneSatisfy(s -> assertThat(s.isMultiMatch()).isTrue());
-
-        // knn clause applies the in-app 0.35 min-score threshold (not "always match top-k").
-        bool.should().stream().filter(Query::isKnn).findFirst().ifPresent(s ->
-                assertThat(s.knn().minScore()).isEqualTo(0.35f));
     }
 
     @Test
@@ -254,15 +249,32 @@ class OpenSearchCatalogSearchServiceTest {
 
     // --- findById ---
 
-    @Test
-    @SuppressWarnings("unchecked")
-    void findById_returnsDtoWhenFound() throws Exception {
-        OpenSearchClient client = mock(OpenSearchClient.class);
-        GetResponse<CatalogRecipeDto> resp = new GetResponse.Builder<CatalogRecipeDto>()
-                .index("catalog-recipes").id("abc").found(true).source(dto("abc")).build();
-        when(client.get(any(Function.class), eq(CatalogRecipeDto.class))).thenReturn(resp);
+    // findById queries by the catalogRecipeId field via search (serverless auto-generates _id,
+    // so get-by-_id is not usable). Mock the Function-based search overload.
 
+    @SuppressWarnings("unchecked")
+    private OpenSearchClient clientFindByIdReturning(CatalogRecipeDto... hits) throws Exception {
+        OpenSearchClient client = mock(OpenSearchClient.class);
+        List<Hit<CatalogRecipeDto>> hitList = java.util.Arrays.stream(hits)
+                .map(dto -> new Hit.Builder<CatalogRecipeDto>()
+                        .index("catalog-recipes").id(dto.getCatalogRecipeId()).source(dto).build())
+                .toList();
+        HitsMetadata<CatalogRecipeDto> meta = new HitsMetadata.Builder<CatalogRecipeDto>()
+                .hits(hitList)
+                .total(new TotalHits.Builder().value(hits.length)
+                        .relation(org.opensearch.client.opensearch.core.search.TotalHitsRelation.Eq).build())
+                .build();
+        SearchResponse<CatalogRecipeDto> response = new SearchResponse.Builder<CatalogRecipeDto>()
+                .took(1).timedOut(false).shards(s -> s.total(1).successful(1).failed(0)).hits(meta).build();
+        when(client.search(any(Function.class), eq(CatalogRecipeDto.class))).thenReturn(response);
+        return client;
+    }
+
+    @Test
+    void findById_returnsDtoWhenFound() throws Exception {
+        OpenSearchClient client = clientFindByIdReturning(dto("abc"));
         var svc = service(client, mock(EmbeddingService.class), false, "keyword");
+
         Optional<CatalogRecipeDto> found = svc.findById("abc");
 
         assertThat(found).isPresent();
@@ -270,14 +282,10 @@ class OpenSearchCatalogSearchServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void findById_emptyWhenNotFound() throws Exception {
-        OpenSearchClient client = mock(OpenSearchClient.class);
-        GetResponse<CatalogRecipeDto> resp = new GetResponse.Builder<CatalogRecipeDto>()
-                .index("catalog-recipes").id("missing").found(false).build();
-        when(client.get(any(Function.class), eq(CatalogRecipeDto.class))).thenReturn(resp);
-
+        OpenSearchClient client = clientFindByIdReturning(); // no hits
         var svc = service(client, mock(EmbeddingService.class), false, "keyword");
+
         assertThat(svc.findById("missing")).isEmpty();
     }
 }

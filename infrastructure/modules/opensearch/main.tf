@@ -153,3 +153,107 @@ resource "aws_budgets_budget" "opensearch" {
     subscriber_email_addresses = [var.budget_notification_email]
   }
 }
+
+# ── Bedrock Batch Inference prerequisites (full 2.2M load only) ─────────────────────────────
+# Opt-in via var.enable_batch_embedding. The small-catalog reindex validation does NOT need
+# these — they are only used by the batch embedding job (Task 10.3).
+
+locals {
+  batch_enabled = local.enabled && var.enable_batch_embedding
+  batch_prefix  = "${var.project_name}-${var.environment}-batch-embed"
+}
+
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+resource "aws_s3_bucket" "batch_input" {
+  count         = local.batch_enabled ? 1 : 0
+  bucket        = "${local.batch_prefix}-input-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+  tags = {
+    Name        = "${local.batch_prefix}-input"
+    Environment = var.environment
+  }
+}
+
+resource "aws_s3_bucket" "batch_output" {
+  count         = local.batch_enabled ? 1 : 0
+  bucket        = "${local.batch_prefix}-output-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+  tags = {
+    Name        = "${local.batch_prefix}-output"
+    Environment = var.environment
+  }
+}
+
+# Lifecycle: batch input/output are transient; expire after 30 days to avoid lingering storage.
+resource "aws_s3_bucket_lifecycle_configuration" "batch_input" {
+  count  = local.batch_enabled ? 1 : 0
+  bucket = aws_s3_bucket.batch_input[0].id
+  rule {
+    id     = "expire-batch-input"
+    status = "Enabled"
+    filter {}
+    expiration {
+      days = 30
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "batch_output" {
+  count  = local.batch_enabled ? 1 : 0
+  bucket = aws_s3_bucket.batch_output[0].id
+  rule {
+    id     = "expire-batch-output"
+    status = "Enabled"
+    filter {}
+    expiration {
+      days = 30
+    }
+  }
+}
+
+# Service role that Bedrock assumes to read batch input and write batch output.
+data "aws_iam_policy_document" "batch_assume" {
+  count = local.batch_enabled ? 1 : 0
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["bedrock.amazonaws.com"]
+    }
+    # Scope the trust to this account's batch jobs (defense-in-depth against confused-deputy).
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_iam_role" "bedrock_batch" {
+  count              = local.batch_enabled ? 1 : 0
+  name               = "${local.batch_prefix}-role"
+  assume_role_policy = data.aws_iam_policy_document.batch_assume[0].json
+}
+
+resource "aws_iam_role_policy" "bedrock_batch" {
+  count = local.batch_enabled ? 1 : 0
+  name  = "${local.batch_prefix}-s3"
+  role  = aws_iam_role.bedrock_batch[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:ListBucket"]
+        Resource = [aws_s3_bucket.batch_input[0].arn, "${aws_s3_bucket.batch_input[0].arn}/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+        Resource = [aws_s3_bucket.batch_output[0].arn, "${aws_s3_bucket.batch_output[0].arn}/*"]
+      }
+    ]
+  })
+}

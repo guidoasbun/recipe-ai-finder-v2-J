@@ -22,3 +22,18 @@ output "ocu_cap_cli_command" {
     var.max_indexing_ocu, var.max_search_ocu
   ) : ""
 }
+
+output "batch_input_bucket" {
+  description = "S3 bucket for Bedrock batch input JSONL (empty unless enable_batch_embedding)."
+  value       = local.batch_enabled ? aws_s3_bucket.batch_input[0].bucket : ""
+}
+
+output "batch_output_bucket" {
+  description = "S3 bucket for Bedrock batch output (empty unless enable_batch_embedding)."
+  value       = local.batch_enabled ? aws_s3_bucket.batch_output[0].bucket : ""
+}
+
+output "bedrock_batch_role_arn" {
+  description = "IAM role ARN Bedrock assumes for batch jobs (empty unless enable_batch_embedding)."
+  value       = local.batch_enabled ? aws_iam_role.bedrock_batch[0].arn : ""
+}

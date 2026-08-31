@@ -50,3 +50,15 @@ output "opensearch_ocu_cap_cli_command" {
   description = "Run once to enforce the OCU cost ceiling (see RUNBOOK §3.2)."
   value       = module.opensearch.ocu_cap_cli_command
 }
+
+output "bedrock_batch_input_bucket" {
+  value = module.opensearch.batch_input_bucket
+}
+
+output "bedrock_batch_output_bucket" {
+  value = module.opensearch.batch_output_bucket
+}
+
+output "bedrock_batch_role_arn" {
+  value = module.opensearch.bedrock_batch_role_arn
+}

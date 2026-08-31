@@ -1,6 +1,7 @@
 package io.asbun.backend.repository;
 
 import io.asbun.backend.model.CatalogRecipe;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
@@ -32,6 +33,7 @@ public class CatalogRecipeRepository {
     private final DynamoDbEnhancedClient enhancedClient;
     private final DynamoDbTable<CatalogRecipe> table;
 
+    @Autowired
     public CatalogRecipeRepository(DynamoDbEnhancedClient enhancedClient,
                                    @Value("${dynamodb.catalog-table}") String tableName) {
         this.enhancedClient = enhancedClient;

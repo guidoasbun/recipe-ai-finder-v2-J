@@ -27,9 +27,10 @@ module "opensearch" {
   project_name = var.project_name
   environment  = var.environment
 
-  enable_opensearch = var.enable_opensearch
-  task_role_arn     = module.iam.task_role_arn
-  task_role_name    = module.iam.task_role_name
+  enable_opensearch      = var.enable_opensearch
+  enable_batch_embedding = var.enable_batch_embedding
+  task_role_arn          = module.iam.task_role_arn
+  task_role_name         = module.iam.task_role_name
 
   max_search_ocu   = var.opensearch_max_search_ocu
   max_indexing_ocu = var.opensearch_max_indexing_ocu
