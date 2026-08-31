@@ -122,20 +122,27 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         embedding service, which is itself the proof of no-re-embedding.
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 7. Infrastructure as code (opt-in, cost-bounded)
-  - [ ] 7.1 New `infrastructure/modules/opensearch/` gated by `enable_opensearch=false`
-        default (provisions nothing by default).
-  - [ ] 7.2 Serverless (default flavor): vector-search collection + collection group,
-        encryption/network/data-access policies, `maxSearchCapacityInOCU` cap, min OCU 0
-        (scale-to-zero).
-  - [ ] 7.3 Least-privilege IAM for the backend ECS task role to the collection/domain
-        (extend `infrastructure/modules/iam`).
-  - [ ] 7.4 Output the endpoint; feed `OPENSEARCH_ENDPOINT` (+ index/signing-service) into the
-        ECS task env in `infrastructure/modules/ecs`.
-  - [ ] 7.5 Add the `catalog-full` DynamoDB table to `infrastructure/modules/dynamodb`, gated
-        by the same opt-in flag.
-  - [ ] 7.6 Add a CloudWatch billing alarm / AWS Budget (threshold from design §2.1, e.g.
-        alert ~$30/mo) in Terraform.
+- [x] 7. Infrastructure as code (opt-in, cost-bounded)
+  - [x] 7.1 New `infrastructure/modules/opensearch/` gated by `enable_opensearch=false` default
+        (every resource `count = enable ? 1 : 0`, so the standard deployment provisions nothing).
+  - [x] 7.2 Serverless (NextGen flavor): `VECTORSEARCH` collection + encryption/network/data
+        access policies. Scale-to-zero is the serverless default (idle → 0 OCU). NOTE: the
+        account-level OCU cap is not settable via the AWS Terraform provider yet
+        (hashicorp/terraform-provider-aws #41245); documented as a one-time CLI step using
+        `max_search_ocu`/`max_indexing_ocu`, with the billing budget as the TF-managed guardrail.
+  - [x] 7.3 Least-privilege: the data-access policy scopes the ECS task role to the collection's
+        indexes/collection; added `aoss:APIAccessAll` (data-plane grant) to the task role in
+        `modules/iam`; exposed `task_role_name`.
+  - [x] 7.4 `collection_endpoint` output feeds `OPENSEARCH_ENDPOINT`; ECS task def now injects
+        `CATALOG_SEARCH_BACKEND`, `OPENSEARCH_ENDPOINT`, `OPENSEARCH_INDEX`, and
+        `DYNAMODB_CATALOG_FULL_TABLE` (env-var names verified to match `application.properties`).
+  - [x] 7.5 Added the opt-in `catalog-full` DynamoDB table (`enable_catalog_full=false` default)
+        with a `catalog_full_table_name` output.
+  - [x] 7.6 AWS Budget (COST, scoped to OpenSearch + Bedrock) with actual-80%/forecast-100%
+        email alerts; created only when enabled and an email is provided. Default limit $30
+        (design §2.1, ~$15 expected).
+  - [x] Verified: `terraform validate` succeeds, `terraform fmt -check` clean; defaults create
+        no new infra (opt-in gating).
   - _Requirements: 4.4, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
 - [ ] 8. Tests

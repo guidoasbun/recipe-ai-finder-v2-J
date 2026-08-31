@@ -59,6 +59,30 @@ variable "dynamodb_catalog_table" {
   description = "DynamoDB table name for the shared recipe catalog"
 }
 
+variable "dynamodb_catalog_full_table" {
+  type        = string
+  default     = ""
+  description = "Full 2.2M catalog table for the OpenSearch backend. Empty = falls back to the small catalog table."
+}
+
+variable "catalog_search_backend" {
+  type        = string
+  default     = "inapp"
+  description = "Catalog search backend: inapp | opensearch."
+}
+
+variable "opensearch_endpoint" {
+  type        = string
+  default     = ""
+  description = "OpenSearch Serverless collection endpoint. Empty when the OpenSearch backend is not enabled."
+}
+
+variable "opensearch_index" {
+  type        = string
+  default     = "catalog-recipes"
+  description = "OpenSearch index/collection index name."
+}
+
 variable "s3_bucket" {
   type = string
 }

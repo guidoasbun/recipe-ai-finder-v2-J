@@ -16,9 +16,26 @@ module "iam" {
 }
 
 module "dynamodb" {
-  source       = "./modules/dynamodb"
+  source              = "./modules/dynamodb"
+  project_name        = var.project_name
+  environment         = var.environment
+  enable_catalog_full = var.enable_catalog_full
+}
+
+module "opensearch" {
+  source       = "./modules/opensearch"
   project_name = var.project_name
   environment  = var.environment
+
+  enable_opensearch = var.enable_opensearch
+  task_role_arn     = module.iam.task_role_arn
+  task_role_name    = module.iam.task_role_name
+
+  max_search_ocu   = var.opensearch_max_search_ocu
+  max_indexing_ocu = var.opensearch_max_indexing_ocu
+
+  budget_limit_amount       = var.opensearch_budget_limit_amount
+  budget_notification_email = var.opensearch_budget_notification_email
 }
 
 module "s3" {
@@ -47,24 +64,28 @@ module "alb" {
 }
 
 module "ecs" {
-  source                 = "./modules/ecs"
-  project_name           = var.project_name
-  environment            = var.environment
-  aws_region             = var.aws_region
-  vpc_id                 = module.networking.vpc_id
-  private_subnets        = module.networking.private_subnet_ids
-  public_subnets         = module.networking.public_subnet_ids
-  execution_role_arn     = module.iam.execution_role_arn
-  task_role_arn          = module.iam.task_role_arn
-  backend_ecr_url        = module.ecr.backend_repository_url
-  frontend_ecr_url       = module.ecr.frontend_repository_url
-  backend_tg_arn         = module.alb.backend_tg_arn
-  frontend_tg_arn        = module.alb.frontend_tg_arn
-  dynamodb_users_table   = module.dynamodb.users_table_name
-  dynamodb_recipes_table = module.dynamodb.recipes_table_name
-  dynamodb_catalog_table = module.dynamodb.catalog_table_name
-  dynamodb_consent_table = module.dynamodb.consent_table_name
-  dynamodb_audit_table   = module.dynamodb.audit_log_table_name
+  source                      = "./modules/ecs"
+  project_name                = var.project_name
+  environment                 = var.environment
+  aws_region                  = var.aws_region
+  vpc_id                      = module.networking.vpc_id
+  private_subnets             = module.networking.private_subnet_ids
+  public_subnets              = module.networking.public_subnet_ids
+  execution_role_arn          = module.iam.execution_role_arn
+  task_role_arn               = module.iam.task_role_arn
+  backend_ecr_url             = module.ecr.backend_repository_url
+  frontend_ecr_url            = module.ecr.frontend_repository_url
+  backend_tg_arn              = module.alb.backend_tg_arn
+  frontend_tg_arn             = module.alb.frontend_tg_arn
+  dynamodb_users_table        = module.dynamodb.users_table_name
+  dynamodb_recipes_table      = module.dynamodb.recipes_table_name
+  dynamodb_catalog_table      = module.dynamodb.catalog_table_name
+  dynamodb_catalog_full_table = module.dynamodb.catalog_full_table_name
+  dynamodb_consent_table      = module.dynamodb.consent_table_name
+  dynamodb_audit_table        = module.dynamodb.audit_log_table_name
+
+  catalog_search_backend = var.catalog_search_backend
+  opensearch_endpoint    = module.opensearch.collection_endpoint
   s3_bucket              = module.s3.bucket_name
   cognito_issuer_uri     = module.cognito.issuer_uri
   cognito_domain         = module.cognito.cognito_domain

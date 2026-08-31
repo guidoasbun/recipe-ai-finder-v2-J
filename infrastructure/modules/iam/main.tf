@@ -80,6 +80,14 @@ resource "aws_iam_policy" "task_policy" {
         Resource = "*"
       },
       {
+        # OpenSearch Serverless data-plane access. Fine-grained authorization is enforced by
+        # the collection's data-access policy (see modules/opensearch); this IAM action is the
+        # required data-plane grant. Harmless when no collection exists (OpenSearch is opt-in).
+        Effect   = "Allow"
+        Action   = ["aoss:APIAccessAll"]
+        Resource = "*"
+      },
+      {
         Effect = "Allow"
         Action = [
           "cognito-idp:AdminDeleteUser",

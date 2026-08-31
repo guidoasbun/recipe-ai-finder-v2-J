@@ -122,3 +122,47 @@ variable "waf_budget_notification_email" {
   default     = ""
   description = "Email for budget alerts (empty = no budget resource created)"
 }
+
+# --- OpenSearch catalog backend (opt-in) ---
+
+variable "enable_opensearch" {
+  type        = bool
+  default     = false
+  description = "Provision OpenSearch Serverless (NextGen) for catalog search. Off by default (no extra cost)."
+}
+
+variable "enable_catalog_full" {
+  type        = bool
+  default     = false
+  description = "Create the full 2.2M catalog DynamoDB table used by the OpenSearch backend."
+}
+
+variable "catalog_search_backend" {
+  type        = string
+  default     = "inapp"
+  description = "Catalog search backend the backend service uses: inapp | opensearch."
+}
+
+variable "opensearch_max_search_ocu" {
+  type        = number
+  default     = 8
+  description = "Max search OCUs (cost ceiling). Scale-to-zero keeps the idle minimum at 0."
+}
+
+variable "opensearch_max_indexing_ocu" {
+  type        = number
+  default     = 8
+  description = "Max indexing OCUs (used during reindex). Scale-to-zero keeps the idle minimum at 0."
+}
+
+variable "opensearch_budget_limit_amount" {
+  type        = string
+  default     = "30"
+  description = "Monthly budget (USD) for the OpenSearch/Bedrock billing alarm (~$15 expected)."
+}
+
+variable "opensearch_budget_notification_email" {
+  type        = string
+  default     = ""
+  description = "Email for the OpenSearch budget alert. Empty = no budget resource created."
+}
