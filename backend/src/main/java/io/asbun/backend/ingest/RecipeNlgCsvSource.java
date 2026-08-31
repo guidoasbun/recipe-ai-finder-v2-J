@@ -8,18 +8,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
- * Phase 2 source: parses the RecipeNLG dataset CSV (full set ~2.2M recipes).
+ * RecipeNLG dataset CSV source (full set ~2.2M recipes).
  *
  * <p>Standard RecipeNLG columns: an index column, {@code title}, {@code ingredients}
  * (JSON string array), {@code directions} (JSON string array), {@code link}, {@code source},
- * {@code NER} (JSON string array of ingredient names). This source enforces a hard record
- * cap so the <b>in-app</b> backend stays within its memory ceiling (~50K). Ingesting the
- * full 2.2M requires the OpenSearch backend + {@link BatchEmbeddingStrategy} (see design.md).
+ * {@code NER}. Supports a window (skip + cap) so the full dataset can be processed in slices.
  *
- * <p>NOTE: not yet run against a real file — provided so Phase 2 can proceed by dropping the
- * RecipeNLG CSV into place and pointing the ingestion runner at it.
+ * <p>{@link #stream(Consumer)} pushes each recipe as it is parsed and NEVER accumulates the
+ * dataset in memory — this is the path used for the full 2.2M load. {@link #load()} collects
+ * into a list (bounded by the cap) and is only appropriate for small windows.
  */
 @Slf4j
 public class RecipeNlgCsvSource implements RecipeSource {
@@ -58,16 +58,24 @@ public class RecipeNlgCsvSource implements RecipeSource {
 
     @Override
     public List<ParsedRecipe> load() {
+        // Collects the (capped) window into a list. Only safe for small caps — the full-set
+        // path uses stream(...) to avoid materializing millions of records.
         List<ParsedRecipe> recipes = new ArrayList<>();
+        stream(recipes::add);
+        return recipes;
+    }
+
+    @Override
+    public void stream(Consumer<ParsedRecipe> consumer) {
         // Header column indices resolved from the first row; -1 until then.
         int[] idx = {-1, -1, -1, -1, -1}; // title, ingredients, directions, link, source
         boolean[] headerSeen = {false};
-        boolean[] headerValid = {true};
         long[] dataRowsSeen = {0}; // data rows encountered (for the skip offset)
+        long[] emitted = {0};      // recipes pushed to the consumer (for the cap)
 
         try (Reader reader = Files.newBufferedReader(csvFile, StandardCharsets.UTF_8)) {
-            // Stream row-by-row and stop once the cap is reached, so the full ~2.2M-row
-            // file is never materialized in memory just to discard most of it.
+            // Stream row-by-row; never accumulate. Each parsed recipe is handed to the consumer
+            // and released, so the full ~2.2M-row file processes in bounded memory.
             CsvReader.stream(reader, row -> {
                 if (!headerSeen[0]) {
                     headerSeen[0] = true;
@@ -78,7 +86,6 @@ public class RecipeNlgCsvSource implements RecipeSource {
                     idx[4] = row.indexOf("source");
                     if (idx[0] < 0 || idx[1] < 0 || idx[2] < 0) {
                         log.warn("{}: unexpected header {}", SOURCE_NAME, row);
-                        headerValid[0] = false;
                         return false; // stop
                     }
                     return true; // continue to data rows
@@ -100,7 +107,7 @@ public class RecipeNlgCsvSource implements RecipeSource {
                     String origin = get(row, idx[4]);
                     String sourceId = SOURCE_NAME + ":" + (link != null && !link.isBlank() ? link : title);
 
-                    recipes.add(new ParsedRecipe(
+                    consumer.accept(new ParsedRecipe(
                             sourceId,
                             title,
                             origin != null && !origin.isBlank() ? "Source: " + origin : null,
@@ -112,19 +119,16 @@ public class RecipeNlgCsvSource implements RecipeSource {
                             SOURCE_LICENSE,
                             null
                     ));
+                    emitted[0]++;
                 }
                 // Stop reading once the cap is reached (enforced DURING the scan).
-                return recipes.size() < maxRecords;
+                return emitted[0] < maxRecords;
             });
         } catch (Exception e) {
             log.warn("Failed to read {}: {}", csvFile, e.getMessage());
         }
-        if (!headerValid[0]) {
-            return new ArrayList<>();
-        }
-        log.info("{}: parsed {} recipes (skip {}, cap {})",
-                SOURCE_NAME, recipes.size(), skipRecords, maxRecords);
-        return recipes;
+        log.info("{}: streamed {} recipes (skip {}, cap {})",
+                SOURCE_NAME, emitted[0], skipRecords, maxRecords);
     }
 
     private String get(List<String> row, int idx) {

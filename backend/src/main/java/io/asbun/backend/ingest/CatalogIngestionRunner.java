@@ -163,65 +163,63 @@ public class CatalogIngestionRunner implements CommandLineRunner {
     }
 
     /**
-     * Batch path for the full 2.2M load. Processes recipes in bounded chunks: each chunk is
-     * embedded in one Bedrock Batch Inference job and persisted before the next chunk is built,
-     * so at most {@code catalog.ingest.batch-chunk-size} texts + their vectors are held in
-     * memory at once (rather than all 2.2M vectors ≈ 9 GB). Idempotent — already-embedded
-     * recipes are skipped, so a re-run only embeds the remainder and chunk boundaries do not
-     * matter.
-     *
-     * <p>Note: {@code source.load()} still returns the parsed recipe list for a source in memory
-     * (text only, no vectors). For the very largest sources a fully streaming parser API would
-     * reduce that further; the dominant memory cost (the vectors) is already chunked here.
+     * Batch path for the full 2.2M load. STREAMS recipes from each source (never materializing
+     * the dataset) into bounded chunks; each full chunk is embedded via a Bedrock batch job and
+     * persisted before the next chunk accumulates. Peak memory is one chunk of texts + their
+     * vectors ({@code catalog.ingest.batch-chunk-size} records), not the whole dataset.
+     * Idempotent — already-embedded recipes are skipped, so a re-run only embeds the remainder.
      */
     private void runBatch(List<RecipeSource> sources) {
-        int seen = 0;
-        int skipped = 0;
-        int persisted = 0;
-        int missing = 0;
-
-        Map<String, String> chunkToEmbed = new LinkedHashMap<>();   // catalogId -> embedding text
-        Map<String, ParsedRecipe> chunkById = new LinkedHashMap<>(); // catalogId -> parsed recipe
+        BatchState state = new BatchState();
 
         for (RecipeSource source : sources) {
-            List<ParsedRecipe> parsed;
+            log.info("Streaming recipes from {} for batch embedding", source.name());
             try {
-                parsed = source.load();
-            } catch (Exception e) {
-                log.error("Source {} failed to load: {}", source.name(), e.getMessage());
-                continue;
-            }
-            log.info("Preparing {} recipes from {} for batch embedding", parsed.size(), source.name());
-            for (ParsedRecipe p : parsed) {
-                seen++;
-                String catalogId = deterministicId(p.sourceId());
-                var existing = repository.findById(catalogId);
-                if (existing.isPresent() && existing.get().getEmbedding() != null
-                        && !existing.get().getEmbedding().isEmpty()) {
-                    skipped++;
-                    continue;
-                }
-                chunkToEmbed.put(catalogId, embeddingInput(p));
-                chunkById.put(catalogId, p);
+                source.stream(p -> {
+                    state.seen++;
+                    String catalogId = deterministicId(p.sourceId());
+                    var existing = repository.findById(catalogId);
+                    if (existing.isPresent() && existing.get().getEmbedding() != null
+                            && !existing.get().getEmbedding().isEmpty()) {
+                        state.skipped++;
+                        return;
+                    }
+                    state.chunkToEmbed.put(catalogId, embeddingInput(p));
+                    state.chunkById.put(catalogId, p);
 
-                if (chunkToEmbed.size() >= batchChunkSize) {
-                    int[] r = embedAndPersistChunk(chunkToEmbed, chunkById);
-                    persisted += r[0];
-                    missing += r[1];
-                    chunkToEmbed.clear();
-                    chunkById.clear();
-                }
+                    if (state.chunkToEmbed.size() >= batchChunkSize) {
+                        flushChunk(state);
+                    }
+                });
+            } catch (Exception e) {
+                log.error("Source {} failed to stream: {}", source.name(), e.getMessage());
             }
         }
         // Final partial chunk.
-        if (!chunkToEmbed.isEmpty()) {
-            int[] r = embedAndPersistChunk(chunkToEmbed, chunkById);
-            persisted += r[0];
-            missing += r[1];
+        if (!state.chunkToEmbed.isEmpty()) {
+            flushChunk(state);
         }
 
         log.info("Batch ingestion complete: {} seen, {} skipped, {} persisted, {} missing-vector",
-                seen, skipped, persisted, missing);
+                state.seen, state.skipped, state.persisted, state.missing);
+    }
+
+    /** Mutable accumulator for the streaming batch path (lambdas can't reassign locals). */
+    private static final class BatchState {
+        long seen;
+        long skipped;
+        long persisted;
+        long missing;
+        final Map<String, String> chunkToEmbed = new LinkedHashMap<>();
+        final Map<String, ParsedRecipe> chunkById = new LinkedHashMap<>();
+    }
+
+    private void flushChunk(BatchState state) {
+        int[] r = embedAndPersistChunk(state.chunkToEmbed, state.chunkById);
+        state.persisted += r[0];
+        state.missing += r[1];
+        state.chunkToEmbed.clear();
+        state.chunkById.clear();
     }
 
     /** Embeds one chunk via a batch job and persists each recipe with its vector. */
