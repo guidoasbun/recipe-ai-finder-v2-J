@@ -166,6 +166,25 @@ class OpenSearchCatalogSearchServiceTest {
         BoolQuery bool = capturedBool(client);
         assertThat(bool.should()).anySatisfy(s -> assertThat(s.isKnn()).isTrue());
         assertThat(bool.should()).noneSatisfy(s -> assertThat(s.isMultiMatch()).isTrue());
+
+        // knn clause applies the in-app 0.35 min-score threshold (not "always match top-k").
+        bool.should().stream().filter(Query::isKnn).findFirst().ifPresent(s ->
+                assertThat(s.knn().minScore()).isEqualTo(0.35f));
+    }
+
+    @Test
+    void semanticMode_knnK_coversRequestedPage() throws Exception {
+        OpenSearchClient client = clientReturningHits();
+        EmbeddingService embed = mock(EmbeddingService.class);
+        when(embed.embed(any())).thenReturn(List.of(0.1, 0.2, 0.3));
+        var svc = service(client, embed, true, "semantic");
+
+        // page 3, size 20 => needs k >= 80 (from+size), not a fixed 100 that would exclude deep pages.
+        svc.search(new CatalogSearchQuery("stew", List.of(), 3, 20));
+
+        BoolQuery bool = capturedBool(client);
+        int k = bool.should().stream().filter(Query::isKnn).findFirst().orElseThrow().knn().k();
+        assertThat(k).isGreaterThanOrEqualTo(80);
     }
 
     // --- Hybrid mode ---

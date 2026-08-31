@@ -37,7 +37,7 @@ public class OpenSearchProperties {
         /** k-NN {@code ef_search} at query time; higher = better recall, slower. */
         private int efSearch = 100;
 
-        /** Vector quantization: {@code none} | {@code fp16} | {@code byte}. See design.md §3. */
+        /** Vector quantization: {@code none} | {@code fp16}. See design.md §3. */
         private String quantization = "none";
     }
 }

@@ -9,6 +9,7 @@ import org.opensearch.client.opensearch.OpenSearchClient;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -96,8 +97,17 @@ class OpenSearchIndexProvisionerTest {
     }
 
     @Test
-    void quantizationByte_setsByteDataType() throws Exception {
-        JsonNode embedding = mappingProps(provisioner("byte", "aoss")).path("embedding");
-        assertThat(embedding.path("data_type").asText()).isEqualTo("byte");
+    void quantizationByte_isRejected() {
+        // A true byte-vector path would need float->byte quantization of both persisted vectors
+        // and queries; unsupported, so 'byte' must fail loudly rather than produce a broken index.
+        assertThatThrownBy(() -> provisioner("byte", "aoss").buildMappingJson())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("byte");
+    }
+
+    @Test
+    void quantizationUnknown_isRejected() {
+        assertThatThrownBy(() -> provisioner("int8", "aoss").buildMappingJson())
+                .isInstanceOf(IllegalStateException.class);
     }
 }

@@ -84,9 +84,20 @@ public class CatalogReindexRunner implements CommandLineRunner {
 
         log.info("Reindex complete: {} seen, {} indexed, {} skipped, {} failed",
                 counters.seen, counters.indexed, counters.skipped, counters.failed);
+
+        // Fail the command on any failures so automation does not treat a partial index as a
+        // successful reindex and proceed to cutover. The run is idempotent, so a rerun is safe.
+        if (counters.failed > 0) {
+            throw new IllegalStateException("Reindex had " + counters.failed
+                    + " failed item(s); index may be partial. Fix the cause and re-run (idempotent).");
+        }
     }
 
     private BulkOperation indexOp(String index, CatalogRecipe recipe) {
+        // Index only the mapped fields. Clear searchText (a pre-concatenated duplicate of
+        // title/description/ingredients that the OpenSearch document intentionally excludes —
+        // design §3) so dynamic mapping does not index it across the whole catalog.
+        recipe.setSearchText(null);
         return BulkOperation.of(op -> op.index(idx -> idx
                 .index(index)
                 .id(recipe.getCatalogRecipeId())

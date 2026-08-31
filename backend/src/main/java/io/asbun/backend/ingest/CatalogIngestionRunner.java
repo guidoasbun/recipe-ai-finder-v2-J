@@ -40,6 +40,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
     private final String strategyName;
     private final String recipeNlgFile;
     private final int recipeNlgMaxRecords;
+    private final int batchChunkSize;
 
     public CatalogIngestionRunner(CatalogRecipeRepository repository,
                                   DietaryTagger dietaryTagger,
@@ -49,7 +50,8 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                                   @Value("${dynamodb.catalog-full-table:${dynamodb.catalog-table}}") String targetTable,
                                   @Value("${catalog.ingest.embedding-strategy:sync}") String strategyName,
                                   @Value("${catalog.ingest.recipenlg-file:}") String recipeNlgFile,
-                                  @Value("${catalog.ingest.recipenlg-max-records:0}") int recipeNlgMaxRecords) {
+                                  @Value("${catalog.ingest.recipenlg-max-records:0}") int recipeNlgMaxRecords,
+                                  @Value("${catalog.ingest.batch-chunk-size:50000}") int batchChunkSize) {
         // Target the configured catalog table. Defaults to the small in-app table, so existing
         // ingestion is unchanged; set dynamodb.catalog-full-table to load the full dataset into
         // the separate table without touching the in-app table (rollback preservation).
@@ -61,10 +63,17 @@ public class CatalogIngestionRunner implements CommandLineRunner {
         this.strategyName = strategyName;
         this.recipeNlgFile = recipeNlgFile;
         this.recipeNlgMaxRecords = recipeNlgMaxRecords;
+        this.batchChunkSize = Math.max(1, batchChunkSize);
     }
 
     @Override
     public void run(String... args) {
+        // Reject unknown strategy values up front: a typo like "batc" must not silently fall
+        // through to synchronous embedding (millions of on-demand Bedrock calls on the 2.2M run).
+        if (!"sync".equalsIgnoreCase(strategyName) && !"batch".equalsIgnoreCase(strategyName)) {
+            throw new IllegalStateException(
+                    "Invalid catalog.ingest.embedding-strategy=" + strategyName + " (use sync | batch)");
+        }
         log.info("Catalog ingestion target table: {}, embedding-strategy: {}",
                 repository.tableName(), strategyName);
         List<RecipeSource> sources = new ArrayList<>();
@@ -151,15 +160,25 @@ public class CatalogIngestionRunner implements CommandLineRunner {
     }
 
     /**
-     * Batch path for the full 2.2M load: collect all not-yet-embedded recipes, embed them in one
-     * Bedrock Batch Inference job, then persist each with its returned vector. Idempotent —
-     * already-embedded recipes are skipped, so a re-run only embeds the remainder.
+     * Batch path for the full 2.2M load. Processes recipes in bounded chunks: each chunk is
+     * embedded in one Bedrock Batch Inference job and persisted before the next chunk is built,
+     * so at most {@code catalog.ingest.batch-chunk-size} texts + their vectors are held in
+     * memory at once (rather than all 2.2M vectors ≈ 9 GB). Idempotent — already-embedded
+     * recipes are skipped, so a re-run only embeds the remainder and chunk boundaries do not
+     * matter.
+     *
+     * <p>Note: {@code source.load()} still returns the parsed recipe list for a source in memory
+     * (text only, no vectors). For the very largest sources a fully streaming parser API would
+     * reduce that further; the dominant memory cost (the vectors) is already chunked here.
      */
     private void runBatch(List<RecipeSource> sources) {
-        Map<String, String> toEmbed = new LinkedHashMap<>();       // catalogId -> embedding input text
-        Map<String, ParsedRecipe> byId = new LinkedHashMap<>();     // catalogId -> parsed recipe
         int seen = 0;
         int skipped = 0;
+        int persisted = 0;
+        int missing = 0;
+
+        Map<String, String> chunkToEmbed = new LinkedHashMap<>();   // catalogId -> embedding text
+        Map<String, ParsedRecipe> chunkById = new LinkedHashMap<>(); // catalogId -> parsed recipe
 
         for (RecipeSource source : sources) {
             List<ParsedRecipe> parsed;
@@ -179,17 +198,32 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                     skipped++;
                     continue;
                 }
-                toEmbed.put(catalogId, embeddingInput(p));
-                byId.put(catalogId, p);
+                chunkToEmbed.put(catalogId, embeddingInput(p));
+                chunkById.put(catalogId, p);
+
+                if (chunkToEmbed.size() >= batchChunkSize) {
+                    int[] r = embedAndPersistChunk(chunkToEmbed, chunkById);
+                    persisted += r[0];
+                    missing += r[1];
+                    chunkToEmbed.clear();
+                    chunkById.clear();
+                }
             }
         }
-
-        log.info("Batch embedding {} recipes ({} already embedded, skipped)", toEmbed.size(), skipped);
-        if (toEmbed.isEmpty()) {
-            log.info("Nothing to embed; batch ingestion complete.");
-            return;
+        // Final partial chunk.
+        if (!chunkToEmbed.isEmpty()) {
+            int[] r = embedAndPersistChunk(chunkToEmbed, chunkById);
+            persisted += r[0];
+            missing += r[1];
         }
 
+        log.info("Batch ingestion complete: {} seen, {} skipped, {} persisted, {} missing-vector",
+                seen, skipped, persisted, missing);
+    }
+
+    /** Embeds one chunk via a batch job and persists each recipe with its vector. */
+    private int[] embedAndPersistChunk(Map<String, String> toEmbed, Map<String, ParsedRecipe> byId) {
+        log.info("Embedding chunk of {} recipes via batch inference", toEmbed.size());
         Map<String, List<Double>> vectors = batchStrategy.embedAll(toEmbed);
 
         int persisted = 0;
@@ -202,7 +236,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                 missing++;
                 continue;
             }
-            CatalogRecipe recipe = CatalogRecipe.builder()
+            repository.save(CatalogRecipe.builder()
                     .catalogRecipeId(catalogId)
                     .title(p.title())
                     .description(p.description())
@@ -217,16 +251,11 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                     .sourceLicense(p.sourceLicense())
                     .sourceCountry(p.sourceCountry())
                     .ingestedAt(Instant.now())
-                    .build();
-            repository.save(recipe);
+                    .build());
             persisted++;
-            if (persisted % 1000 == 0) {
-                log.info("Persisted {} / {} embedded recipes", persisted, vectors.size());
-            }
         }
-
-        log.info("Batch ingestion complete: {} seen, {} skipped, {} persisted, {} missing-vector",
-                seen, skipped, persisted, missing);
+        log.info("Chunk persisted: {} saved, {} missing-vector", persisted, missing);
+        return new int[]{persisted, missing};
     }
 
     private String embeddingInput(ParsedRecipe p) {

@@ -52,8 +52,11 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
     private final boolean semanticEnabled;
     private final String mode; // keyword | semantic | hybrid
 
-    /** Number of nearest neighbors to request from the knn clause. */
-    private static final int KNN_K = 100;
+    /** Upper bound on knn {@code k} so deep pagination is reachable without unbounded fan-out. */
+    private static final int MAX_KNN_K = 1000;
+
+    /** Minimum cosine similarity for a semantic match, mirroring the in-app threshold. */
+    private static final double SEMANTIC_MATCH_THRESHOLD = 0.35;
 
     public OpenSearchCatalogSearchService(
             OpenSearchClient client,
@@ -74,14 +77,28 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
         int page = Math.max(0, query.page());
         long from = (long) page * pageSize;
 
-        Query osQuery = buildQuery(query);
+        boolean hasText = query.text() != null && !query.text().isBlank();
+        Query osQuery = buildQuery(query, hasText, (int) Math.min(from + pageSize, Integer.MAX_VALUE));
 
-        SearchRequest request = new SearchRequest.Builder()
+        SearchRequest.Builder builder = new SearchRequest.Builder()
                 .index(properties.getIndex())
                 .query(osQuery)
                 .from((int) Math.min(from, Integer.MAX_VALUE))
                 .size(pageSize)
-                .build();
+                // Exact total-hit tracking: without this OpenSearch caps hits.total at 10,000,
+                // which would understate totalMatches on the large catalog.
+                .trackTotalHits(t -> t.enabled(true));
+
+        // Deterministic tie-breaker so pagination is stable across shards/replicas. For text
+        // queries this sorts by relevance first, then id; for browse it sorts purely by id.
+        if (hasText) {
+            builder.sort(s -> s.score(sc -> sc.order(org.opensearch.client.opensearch._types.SortOrder.Desc)));
+        }
+        builder.sort(s -> s.field(f -> f
+                .field("catalogRecipeId")
+                .order(org.opensearch.client.opensearch._types.SortOrder.Asc)));
+
+        SearchRequest request = builder.build();
 
         try {
             SearchResponse<CatalogRecipeDto> response =
@@ -108,8 +125,11 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
     /**
      * Builds the OpenSearch query mirroring in-app semantics. Dietary tags are always a filter;
      * text drives keyword and/or knn clauses depending on mode + semantic-enabled.
+     *
+     * @param candidateDepth number of neighbors the knn clause must cover (from + pageSize) so
+     *                       deep pages are reachable; bounded by {@link #MAX_KNN_K}.
      */
-    private Query buildQuery(CatalogSearchQuery query) {
+    private Query buildQuery(CatalogSearchQuery query, boolean hasText, int candidateDepth) {
         BoolQuery.Builder bool = new BoolQuery.Builder();
 
         // Dietary filter (AND): one term filter per required tag.
@@ -122,7 +142,6 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
             }
         }
 
-        boolean hasText = query.text() != null && !query.text().isBlank();
         if (!hasText) {
             // Browse: match_all + dietary filter.
             bool.must(m -> m.matchAll(ma -> ma));
@@ -149,7 +168,7 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
 
         // Vector clause (semantic or hybrid mode, when embedding succeeded).
         if (useSemantic && queryVector != null) {
-            bool.should(knnClause(queryVector));
+            bool.should(knnClause(queryVector, candidateDepth));
             addedTextClause = true;
         }
 
@@ -168,15 +187,20 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
                 .fields("title^3", "description", "ingredients")));
     }
 
-    private Query knnClause(float[] vector) {
+    private Query knnClause(float[] vector, int candidateDepth) {
         List<Float> vec = new ArrayList<>(vector.length);
         for (float v : vector) {
             vec.add(v);
         }
-        return Query.of(q -> q.knn(k -> k
+        // k must cover the requested page (from + pageSize), bounded by MAX_KNN_K, so a deep page
+        // is reachable rather than capped at a fixed 100. minScore mirrors the in-app 0.35 cosine
+        // threshold so the knn clause filters by similarity instead of always matching top-k.
+        int k = Math.max(1, Math.min(candidateDepth, MAX_KNN_K));
+        return Query.of(q -> q.knn(kn -> kn
                 .field("embedding")
                 .vector(vec)
-                .k(KNN_K)));
+                .k(k)
+                .minScore((float) SEMANTIC_MATCH_THRESHOLD)));
     }
 
     /** Embeds the query text, returning null (not throwing) so search can fall back to keyword. */

@@ -71,13 +71,17 @@ public class OpenSearchIndexProvisioner {
 
     /**
      * Serverless (aoss) manages k-NN implicitly and rejects the explicit {@code index.knn}
-     * setting, so it is only set for the managed-domain ("es") signing service.
+     * setting, so it (and the {@code ef_search} algo param) is only set for the managed-domain
+     * ("es") signing service.
      */
     private IndexSettings buildSettings() {
         boolean managedDomain = "es".equalsIgnoreCase(properties.getSigningService());
         IndexSettings.Builder builder = new IndexSettings.Builder();
         if (managedDomain) {
             builder.knn(true);
+            // Wire the configured ef_search (query-time recall/latency) into the index setting.
+            builder.customSettings("index.knn.algo_param.ef_search",
+                    org.opensearch.client.json.JsonData.of(properties.getKnn().getEfSearch()));
         }
         return builder.build();
     }
@@ -138,8 +142,12 @@ public class OpenSearchIndexProvisioner {
         methodParams.put("ef_construction", 128);
         methodParams.put("m", 16);
 
-        // Quantization knob (design §3): fp16 = Faiss scalar (fp16) encoder; byte handled via
-        // data_type; none = full-precision float (default).
+        // Quantization knob (design §3): fp16 = Faiss scalar (fp16) encoder, halves memory while
+        // still storing/querying float vectors; none = full-precision float (default).
+        // NOTE: a true byte-vector path is intentionally NOT offered — it would require
+        // float->byte quantization of both the persisted List<Double> embeddings and every query
+        // vector; without that, an OpenSearch byte mapping rejects the decimal vectors. fp16 gives
+        // most of the memory benefit with no lossy conversion in our code.
         String quantization = properties.getKnn().getQuantization();
         ObjectNode field = objectMapper.createObjectNode();
         field.put("type", "knn_vector");
@@ -152,8 +160,9 @@ public class OpenSearchIndexProvisioner {
             encoderParams.put("type", "fp16");
             encoder.set("parameters", encoderParams);
             methodParams.set("encoder", encoder);
-        } else if ("byte".equalsIgnoreCase(quantization)) {
-            field.put("data_type", "byte");
+        } else if (!"none".equalsIgnoreCase(quantization)) {
+            throw new IllegalStateException(
+                    "Unsupported opensearch.knn.quantization=" + quantization + " (use none | fp16)");
         }
 
         method.set("parameters", methodParams);

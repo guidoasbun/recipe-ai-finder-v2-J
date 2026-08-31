@@ -119,26 +119,41 @@ public class BatchEmbeddingStrategy implements EmbeddingStrategy {
     }
 
     private void uploadInputJsonl(Map<String, String> inputs, String key) {
-        StringBuilder jsonl = new StringBuilder();
-        for (Map.Entry<String, String> e : inputs.entrySet()) {
-            try {
-                ObjectNode modelInput = objectMapper.createObjectNode();
-                modelInput.put("inputText", e.getValue());
-                modelInput.put("normalize", true);
+        // Stream JSONL to a temp file and upload from disk rather than holding the whole payload
+        // (and a second String/byte copy) in the heap — matters at chunk sizes in the tens of
+        // thousands of records.
+        java.nio.file.Path tmp = null;
+        try {
+            tmp = java.nio.file.Files.createTempFile("batch-embed-", ".jsonl");
+            try (java.io.BufferedWriter w = java.nio.file.Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
+                for (Map.Entry<String, String> e : inputs.entrySet()) {
+                    ObjectNode modelInput = objectMapper.createObjectNode();
+                    modelInput.put("inputText", e.getValue());
+                    modelInput.put("normalize", true);
 
-                ObjectNode record = objectMapper.createObjectNode();
-                record.put("recordId", e.getKey());
-                record.set("modelInput", modelInput);
+                    ObjectNode record = objectMapper.createObjectNode();
+                    record.put("recordId", e.getKey());
+                    record.set("modelInput", modelInput);
 
-                jsonl.append(objectMapper.writeValueAsString(record)).append('\n');
-            } catch (Exception ex) {
-                throw new RuntimeException("Failed to build batch input for " + e.getKey(), ex);
+                    w.write(objectMapper.writeValueAsString(record));
+                    w.write('\n');
+                }
+            }
+            s3Client.putObject(
+                    PutObjectRequest.builder().bucket(inputBucket).key(key).contentType("application/jsonl").build(),
+                    RequestBody.fromFile(tmp));
+            log.info("Uploaded {} batch input records to s3://{}/{}", inputs.size(), inputBucket, key);
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to build/upload batch input", ex);
+        } finally {
+            if (tmp != null) {
+                try {
+                    java.nio.file.Files.deleteIfExists(tmp);
+                } catch (Exception ignore) {
+                    // best-effort temp cleanup
+                }
             }
         }
-        s3Client.putObject(
-                PutObjectRequest.builder().bucket(inputBucket).key(key).contentType("application/jsonl").build(),
-                RequestBody.fromString(jsonl.toString(), StandardCharsets.UTF_8));
-        log.info("Uploaded {} batch input records to s3://{}/{}", inputs.size(), inputBucket, key);
     }
 
     private String submitJob(String jobStamp, String inputKey, String outputPrefix) {

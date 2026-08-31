@@ -40,3 +40,13 @@ output "waf_web_acl_arn" {
   value       = module.waf.web_acl_arn
   description = "ARN of the WAF Web ACL"
 }
+
+output "opensearch_collection_endpoint" {
+  description = "OpenSearch Serverless collection endpoint (empty when disabled)."
+  value       = module.opensearch.collection_endpoint
+}
+
+output "opensearch_ocu_cap_cli_command" {
+  description = "Run once to enforce the OCU cost ceiling (see RUNBOOK §3.2)."
+  value       = module.opensearch.ocu_cap_cli_command
+}

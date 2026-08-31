@@ -12,14 +12,24 @@ locals {
   collection_name = var.collection_name != "" ? var.collection_name : "${var.project_name}-${var.environment}-catalog"
 }
 
+# Requirement 7.6: enabling OpenSearch must provision a cost alarm. AWS Budgets notifications
+# require a subscriber, so enabling OpenSearch requires a budget notification email — enforced
+# here so an enabled deployment cannot ship without the cost guardrail.
+resource "terraform_data" "require_budget_email_when_enabled" {
+  count = local.enabled ? 1 : 0
+  lifecycle {
+    precondition {
+      condition     = var.budget_notification_email != ""
+      error_message = "enable_opensearch=true requires opensearch_budget_notification_email to be set (Requirement 7.6: the cost alarm must be provisioned)."
+    }
+  }
+}
+
 # NOTE: account-level OCU capacity limits (the cost ceiling) are NOT settable via the
-# Terraform AWS provider yet (hashicorp/terraform-provider-aws issue #41245). Set them once
-# out-of-band with the CLI, using var.max_search_ocu / var.max_indexing_ocu as the values:
-#
-#   aws opensearchserverless update-account-settings \
-#     --capacity-limits maxIndexingCapacityInOCU=<max_indexing_ocu>,maxSearchCapacityInOCU=<max_search_ocu>
-#
-# The billing budget below is the Terraform-managed guardrail; the CLI cap is the hard ceiling.
+# Terraform AWS provider yet (hashicorp/terraform-provider-aws issue #41245). The exact CLI
+# command — built from var.max_search_ocu / var.max_indexing_ocu — is emitted as the
+# `ocu_cap_cli_command` output; run it once after enabling OpenSearch. The billing budget below
+# is the Terraform-managed guardrail; the CLI cap is the hard ceiling.
 
 resource "aws_opensearchserverless_access_policy" "data" {
   count = local.enabled ? 1 : 0

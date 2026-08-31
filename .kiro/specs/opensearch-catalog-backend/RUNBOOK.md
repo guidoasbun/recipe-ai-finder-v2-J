@@ -80,11 +80,14 @@ collection endpoint from the `opensearch` module output.
 
 Account-level OCU limits are not settable via the Terraform AWS provider yet
 (hashicorp/terraform-provider-aws #41245), so set them once with the CLI **before** any
-reindex runs, using the same values as the Terraform variables:
+reindex runs. Terraform emits the exact command (with your configured
+`opensearch_max_*_ocu` values) as the `ocu_cap_cli_command` output — run it:
 
 ```
-aws opensearchserverless update-account-settings \
-  --capacity-limits maxIndexingCapacityInOCU=8,maxSearchCapacityInOCU=8
+terraform output -raw opensearch_ocu_cap_cli_command | bash
+# or copy/run it manually, e.g.:
+# aws opensearchserverless update-account-settings \
+#   --capacity-limits maxIndexingCapacityInOCU=8,maxSearchCapacityInOCU=8
 ```
 
 This bounds the maximum spend; scale-to-zero handles the idle minimum (0 OCU). The budget
@@ -145,13 +148,22 @@ the in-app ceiling (~50K).
 ### 4.2 Rebuild rollback (minutes)
 
 If the small table is ever lost or stale, re-ingest a bounded ~50K catalog from the local
-RecipeNLG dataset, then flip to in-app. See §7 for registering `RecipeNlgCsvSource`; run with a
-50K cap targeting the **small** table (leave `dynamodb.catalog-full-table` at default):
+RecipeNLG dataset (synchronous, paced), then flip to in-app. This selects `RecipeNlgCsvSource`
+with a 50K cap and targets the **small** table explicitly:
 
 ```
 ./mvnw spring-boot:run -pl backend \
-  -Dspring-boot.run.arguments="--catalog.ingest.enabled=true --catalog.ingest.rpm-limit=600"
+  -Dspring-boot.run.arguments="\
+    --catalog.ingest.enabled=true \
+    --catalog.ingest.embedding-strategy=sync \
+    --catalog.ingest.recipenlg-file=data/recipeNGL/RecipeNLG_dataset.csv \
+    --catalog.ingest.recipenlg-max-records=50000 \
+    --dynamodb.catalog-full-table=recipe-ai-<env>-catalog \
+    --catalog.ingest.rpm-limit=600"
 ```
+
+(Setting `dynamodb.catalog-full-table` to the small table name makes the ingestion runner
+target it. Leaving it at the default also targets the small table.)
 
 Idempotent, so re-running never duplicates. A working subset — not necessarily identical to a
 prior catalog.
