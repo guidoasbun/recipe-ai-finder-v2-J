@@ -188,19 +188,34 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
   - [x] 10.1 `CatalogIngestionRunner` now loads `RecipeNlgCsvSource` when
         `catalog.ingest.recipenlg-file` is set, with `catalog.ingest.recipenlg-max-records=0`
         meaning no cap (full set), targeting the `catalog-full` table (Task 5 mechanism).
-  - [x] 10.2 Finished `BatchEmbeddingStrategy` (real Bedrock Batch Inference): `embedAll(map)`
-        writes JSONL to S3, submits `CreateModelInvocationJob`, polls to completion, and parses
-        the S3 output JSONL back into vectors by `recordId` (dropping error records). Added the
-        `bedrock` control-plane SDK dep + `BedrockClient` bean + batch config properties. The
-        runner branches to a batch path on `catalog.ingest.embedding-strategy=batch`. Tests:
-        `BatchEmbeddingStrategyTest` (4) — upload/submit/poll/parse, job-failed, missing-config,
-        unsupported single embed. All catalog/ingest/embedding tests still green.
-  - [ ] 10.3 (operator, AWS cost ~$8–15 one-time) Run ingestion in batch mode → `catalog-full`
-        populated with 2.2M recipes + embeddings. Documented in RUNBOOK §7. NOT run here.
-  - [ ] 10.4 (operator) Set `opensearch.knn.quantization=fp16`/`byte`, run the reindex against
-        `catalog-full`. Documented in RUNBOOK §7.
-  - [ ] 10.5 (operator) Re-verify parity + performance at 2.2M; tune `ef-search`/OCU cap; confirm
-        budget threshold. Documented in RUNBOOK §5–6.
+  - [x] 10.2 Finished `BatchEmbeddingStrategy` (real Bedrock Batch Inference): writes JSONL to
+        S3, submits `CreateModelInvocationJob`, polls to completion, then STREAMS the S3 output
+        back via a per-record callback (`embedAll(inputs, BiConsumer)`) so the ~4.4 GB output per
+        100K chunk is never held in memory. Splits input into sub-jobs respecting the Bedrock
+        limits (100K records / 1 GB input file). Added the `bedrock` control-plane SDK dep +
+        `BedrockClient` bean + batch config. `BatchEmbeddingStrategyTest` (5) covers
+        upload/submit/poll/stream-parse, job-failed, missing-config, unsupported single embed,
+        and job-splitting >100K.
+        Real-world hardening discovered running the full load: (a) `RecipeNlgCsvSource.stream()`
+        made truly streaming — `runBatch` consumes it and flushes bounded chunks (fixed an OOM
+        where `load()` materialized all 2.23M `ParsedRecipe`); verified streaming 2.23M in a
+        256 MB heap. (b) DynamoDB persist switched to `saveAll` (`BatchWriteItem`, 25/call) —
+        per-item `putItem` was ~141 writes/sec. (c) per-record dedup made optional/off by default
+        (`catalog.ingest.batch-dedup`) — it was a DynamoDB read per recipe. (d) `recipenlg-skip-records`
+        offset added for cross-run resume. (e) `scripts/run-full-catalog-ingest.sh` — self-
+        caffeinating, always-rebuild, prereq checks, logged.
+  - [x] 10.3 (DONE — full load run) Ran `run-full-catalog-ingest.sh` (batch mode) → `catalog-full`
+        populated with the entire dataset: **2,231,142 seen, 0 skipped, 2,231,142 persisted,
+        0 missing-vector** across 23 sequential Bedrock jobs (~17.5h wall clock; per-job time is
+        Bedrock-queue-dependent, 7–30 min observed). Every recipe embedded (Titan V2, 1024-dim)
+        and stored. Cost ~$8–15 one-time as estimated.
+  - [~] 10.4 (IN PROGRESS) Reindex `catalog-full` → OpenSearch with `opensearch.knn.quantization=fp16`
+        and `catalog.reindex.recreate-index=true` (drops the old small validation index, recreates
+        with the fp16 mapping). Added `deleteIndexIfExists()` to the provisioner and the
+        `catalog.reindex.recreate-index` flag to the runner.
+  - [ ] 10.5 Re-verify parity + performance at 2.2M (keyword/semantic/dietary/pagination via the
+        verify runner); tune `ef-search`/OCU cap; confirm budget threshold; then cut over
+        (`catalog.search.backend=opensearch`) and remove the temporary CLI data-access principal.
   - _Requirements: 3.4, 4.1, 5.1, 7.2, 7.6_
 
 ## Notes

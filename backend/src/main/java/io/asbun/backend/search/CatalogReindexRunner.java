@@ -41,13 +41,15 @@ public class CatalogReindexRunner implements CommandLineRunner {
     private final OpenSearchProperties properties;
     private final int batchSize;
     private final boolean serverless;
+    private final boolean recreateIndex;
 
     public CatalogReindexRunner(CatalogRecipeRepository repository,
                                 OpenSearchClient client,
                                 OpenSearchIndexProvisioner provisioner,
                                 OpenSearchProperties properties,
                                 @Value("${catalog.reindex.batch-size:500}") int batchSize,
-                                @Value("${dynamodb.catalog-full-table:${dynamodb.catalog-table}}") String sourceTable) {
+                                @Value("${dynamodb.catalog-full-table:${dynamodb.catalog-table}}") String sourceTable,
+                                @Value("${catalog.reindex.recreate-index:false}") boolean recreateIndex) {
         // Read from the configured catalog table (full table when set, small table otherwise).
         this.repository = repository.forTable(sourceTable);
         this.client = client;
@@ -55,14 +57,20 @@ public class CatalogReindexRunner implements CommandLineRunner {
         this.properties = properties;
         this.batchSize = Math.max(1, batchSize);
         this.serverless = !"es".equalsIgnoreCase(properties.getSigningService());
+        this.recreateIndex = recreateIndex;
     }
 
     @Override
     public void run(String... args) {
         String index = properties.getIndex();
-        log.info("Reindex starting: source table={}, index={}, batchSize={}",
-                repository.tableName(), index, batchSize);
+        log.info("Reindex starting: source table={}, index={}, batchSize={}, recreateIndex={}",
+                repository.tableName(), index, batchSize, recreateIndex);
 
+        // Recreate when the mapping must change (e.g. enabling fp16 quantization on a fresh
+        // full-scale index). Drops the existing index and its data first.
+        if (recreateIndex) {
+            provisioner.deleteIndexIfExists();
+        }
         provisioner.ensureIndex();
 
         Counters counters = new Counters();

@@ -42,6 +42,25 @@ public class OpenSearchIndexProvisioner {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
+     * Deletes the configured index if it exists. Used before a full reindex when the mapping
+     * must change (e.g. enabling fp16 quantization, which is fixed at index-creation time).
+     */
+    public void deleteIndexIfExists() {
+        String index = properties.getIndex();
+        try {
+            boolean exists = client.indices().exists(e -> e.index(index)).value();
+            if (!exists) {
+                log.info("OpenSearch index '{}' does not exist; nothing to delete.", index);
+                return;
+            }
+            client.indices().delete(d -> d.index(index));
+            log.info("Deleted OpenSearch index '{}'.", index);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to delete OpenSearch index '" + index + "'", e);
+        }
+    }
+
+    /**
      * Creates the configured index with the catalog mapping if it is absent. Returns
      * {@code true} if the index was created, {@code false} if it already existed.
      */
