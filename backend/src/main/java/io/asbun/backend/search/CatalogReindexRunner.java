@@ -42,6 +42,7 @@ public class CatalogReindexRunner implements CommandLineRunner {
     private final int batchSize;
     private final boolean serverless;
     private final boolean recreateIndex;
+    private final int concurrency;
 
     public CatalogReindexRunner(CatalogRecipeRepository repository,
                                 OpenSearchClient client,
@@ -49,7 +50,8 @@ public class CatalogReindexRunner implements CommandLineRunner {
                                 OpenSearchProperties properties,
                                 @Value("${catalog.reindex.batch-size:500}") int batchSize,
                                 @Value("${dynamodb.catalog-full-table:${dynamodb.catalog-table}}") String sourceTable,
-                                @Value("${catalog.reindex.recreate-index:false}") boolean recreateIndex) {
+                                @Value("${catalog.reindex.recreate-index:false}") boolean recreateIndex,
+                                @Value("${catalog.reindex.concurrency:8}") int concurrency) {
         // Read from the configured catalog table (full table when set, small table otherwise).
         this.repository = repository.forTable(sourceTable);
         this.client = client;
@@ -58,6 +60,7 @@ public class CatalogReindexRunner implements CommandLineRunner {
         this.batchSize = Math.max(1, batchSize);
         this.serverless = !"es".equalsIgnoreCase(properties.getSigningService());
         this.recreateIndex = recreateIndex;
+        this.concurrency = Math.max(1, concurrency);
     }
 
     @Override
@@ -76,31 +79,77 @@ public class CatalogReindexRunner implements CommandLineRunner {
         Counters counters = new Counters();
         List<BulkOperation> buffer = new ArrayList<>(batchSize);
 
-        repository.scanInPages(page -> {
-            for (CatalogRecipe recipe : page) {
-                counters.seen++;
-                if (recipe.getCatalogRecipeId() == null || recipe.getCatalogRecipeId().isBlank()) {
-                    counters.skipped++;
-                    continue;
+        // Parallelize bulk writes: a single-threaded flush waits on each ~1-2s round-trip
+        // (~50 docs/sec). Submitting up to `concurrency` bulk requests in flight overlaps that
+        // latency and multiplies throughput. A semaphore bounds in-flight work so the scan does
+        // not race ahead and buffer the whole table in memory.
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(concurrency);
+        java.util.concurrent.Semaphore inFlight = new java.util.concurrent.Semaphore(concurrency);
+        List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+
+        try {
+            repository.scanInPages(page -> {
+                for (CatalogRecipe recipe : page) {
+                    counters.seen++;
+                    if (recipe.getCatalogRecipeId() == null || recipe.getCatalogRecipeId().isBlank()) {
+                        counters.skipped++;
+                        continue;
+                    }
+                    buffer.add(indexOp(index, recipe));
+                    if (buffer.size() >= batchSize) {
+                        submitFlush(pool, inFlight, futures, buffer, counters);
+                        buffer.clear();
+                    }
                 }
-                buffer.add(indexOp(index, recipe));
-                if (buffer.size() >= batchSize) {
-                    flush(buffer, counters);
+            });
+            // Submit the remainder, then wait for all in-flight bulk requests.
+            if (!buffer.isEmpty()) {
+                submitFlush(pool, inFlight, futures, new ArrayList<>(buffer), counters);
+                buffer.clear();
+            }
+            for (java.util.concurrent.Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (Exception e) {
+                    log.warn("Bulk task failed: {}", e.getMessage());
                 }
             }
-        });
-        // Flush any remainder.
-        flush(buffer, counters);
+        } finally {
+            pool.shutdown();
+        }
 
         log.info("Reindex complete: {} seen, {} indexed, {} skipped, {} failed",
-                counters.seen, counters.indexed, counters.skipped, counters.failed);
+                counters.seen, counters.indexed.get(), counters.skipped, counters.failed.get());
 
         // Fail the command on any failures so automation does not treat a partial index as a
         // successful reindex and proceed to cutover. The run is idempotent, so a rerun is safe.
-        if (counters.failed > 0) {
-            throw new IllegalStateException("Reindex had " + counters.failed
+        if (counters.failed.get() > 0) {
+            throw new IllegalStateException("Reindex had " + counters.failed.get()
                     + " failed item(s); index may be partial. Fix the cause and re-run (idempotent).");
         }
+    }
+
+    /** Submits a copy of the buffer as a bulk request on the pool, bounded by the semaphore. */
+    private void submitFlush(java.util.concurrent.ExecutorService pool,
+                             java.util.concurrent.Semaphore inFlight,
+                             List<java.util.concurrent.Future<?>> futures,
+                             List<BulkOperation> buffer,
+                             Counters counters) {
+        List<BulkOperation> batch = new ArrayList<>(buffer);
+        try {
+            inFlight.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted acquiring reindex permit", e);
+        }
+        futures.add(pool.submit(() -> {
+            try {
+                flushBatch(batch, counters);
+            } finally {
+                inFlight.release();
+            }
+        }));
     }
 
     private BulkOperation indexOp(String index, CatalogRecipe recipe) {
@@ -120,44 +169,50 @@ public class CatalogReindexRunner implements CommandLineRunner {
                 .document(recipe)));
     }
 
-    private void flush(List<BulkOperation> buffer, Counters counters) {
-        if (buffer.isEmpty()) {
+    /** Runs one bulk request (called concurrently from the pool); counters are thread-safe. */
+    private void flushBatch(List<BulkOperation> batch, Counters counters) {
+        if (batch.isEmpty()) {
             return;
         }
-        int attempted = buffer.size();
+        int attempted = batch.size();
         try {
-            BulkRequest request = new BulkRequest.Builder().operations(new ArrayList<>(buffer)).build();
+            BulkRequest request = new BulkRequest.Builder().operations(batch).build();
             BulkResponse response = client.bulk(request);
             if (response.errors()) {
-                long errors = response.items().stream()
-                        .filter(i -> i.error() != null)
-                        .count();
-                counters.indexed += attempted - errors;
-                counters.failed += errors;
+                long errors = response.items().stream().filter(i -> i.error() != null).count();
+                counters.addIndexed(attempted - errors);
+                counters.addFailed(errors);
                 response.items().stream()
                         .filter(i -> i.error() != null)
                         .findFirst()
                         .ifPresent(i -> log.warn("Bulk item error (first of {}): {}",
                                 errors, i.error() != null ? i.error().reason() : "unknown"));
             } else {
-                counters.indexed += attempted;
+                counters.addIndexed(attempted);
             }
-            if (counters.indexed % (batchSize * 10) < batchSize) {
+            long done = counters.indexed.get();
+            if (done % (batchSize * 10L) < batchSize) {
                 log.info("Reindex progress: {} indexed, {} failed (of {} seen)",
-                        counters.indexed, counters.failed, counters.seen);
+                        done, counters.failed.get(), counters.seen);
             }
         } catch (IOException e) {
-            counters.failed += attempted;
+            counters.addFailed(attempted);
             log.warn("Bulk request of {} items failed: {}", attempted, e.getMessage());
-        } finally {
-            buffer.clear();
         }
     }
 
     private static final class Counters {
-        long seen;
-        long indexed;
+        long seen; // only touched on the scan (main) thread
+        final java.util.concurrent.atomic.AtomicLong indexed = new java.util.concurrent.atomic.AtomicLong();
+        final java.util.concurrent.atomic.AtomicLong failed = new java.util.concurrent.atomic.AtomicLong();
         long skipped;
-        long failed;
+
+        void addIndexed(long n) {
+            indexed.addAndGet(n);
+        }
+
+        void addFailed(long n) {
+            failed.addAndGet(n);
+        }
     }
 }

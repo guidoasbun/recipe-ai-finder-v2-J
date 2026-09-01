@@ -76,7 +76,7 @@ class CatalogReindexRunnerTest {
 
         // Managed domain (es) can set a custom _id.
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 500, "catalog-full", false);
+                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2);
 
         runner.run();
 
@@ -100,7 +100,7 @@ class CatalogReindexRunnerTest {
 
         // Serverless (aoss) rejects a custom _id, so it must be omitted (auto-generated).
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("aoss"), 500, "catalog-full", false);
+                repo, client, provisioner, props("aoss"), 500, "catalog-full", false, 2);
 
         runner.run();
 
@@ -118,7 +118,7 @@ class CatalogReindexRunnerTest {
         OpenSearchIndexProvisioner provisioner = mock(OpenSearchIndexProvisioner.class);
 
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 500, "catalog-full", false);
+                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2);
 
         runner.run();
 
@@ -137,7 +137,7 @@ class CatalogReindexRunnerTest {
 
         // batchSize 2 over 5 recipes => flushes of 2, 2, then remainder 1 = 3 bulk calls.
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 2, "catalog-full", false);
+                repo, client, provisioner, props("es"), 2, "catalog-full", false, 2);
 
         runner.run();
 
