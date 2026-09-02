@@ -76,7 +76,7 @@ class CatalogReindexRunnerTest {
 
         // Managed domain (es) can set a custom _id.
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2);
+                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2, false, "", "");
 
         runner.run();
 
@@ -100,7 +100,7 @@ class CatalogReindexRunnerTest {
 
         // Serverless (aoss) rejects a custom _id, so it must be omitted (auto-generated).
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("aoss"), 500, "catalog-full", false, 2);
+                repo, client, provisioner, props("aoss"), 500, "catalog-full", false, 2, false, "", "");
 
         runner.run();
 
@@ -118,7 +118,7 @@ class CatalogReindexRunnerTest {
         OpenSearchIndexProvisioner provisioner = mock(OpenSearchIndexProvisioner.class);
 
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2);
+                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2, false, "", "");
 
         runner.run();
 
@@ -137,10 +137,75 @@ class CatalogReindexRunnerTest {
 
         // batchSize 2 over 5 recipes => flushes of 2, 2, then remainder 1 = 3 bulk calls.
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 2, "catalog-full", false, 2);
+                repo, client, provisioner, props("es"), 2, "catalog-full", false, 2, false, "", "");
 
         runner.run();
 
         verify(client, org.mockito.Mockito.times(3)).bulk(any(BulkRequest.class));
+    }
+
+    @Test
+    void writesFailedIdsToFileAndThrows(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp)
+            throws Exception {
+        // One recipe whose bulk item comes back with an error => it must be recorded as failed.
+        CatalogRecipeRepository repo = repoReturning(List.of(recipe("bad-1")));
+        OpenSearchClient client = mock(OpenSearchClient.class);
+        BulkResponse response = mock(BulkResponse.class);
+        when(response.errors()).thenReturn(true);
+        var item = mock(org.opensearch.client.opensearch.core.bulk.BulkResponseItem.class);
+        var err = mock(org.opensearch.client.opensearch._types.ErrorCause.class);
+        when(err.reason()).thenReturn("rejected execution ... [throttled]");
+        when(item.error()).thenReturn(err);
+        when(response.items()).thenReturn(List.of(item));
+        when(client.bulk(any(BulkRequest.class))).thenReturn(response);
+        OpenSearchIndexProvisioner provisioner = mock(OpenSearchIndexProvisioner.class);
+
+        java.nio.file.Path failedFile = tmp.resolve("failed-ids.txt");
+        // maxAttempts is fixed at 6 in full-reindex flush; batchSize 1, concurrency 1.
+        CatalogReindexRunner runner = new CatalogReindexRunner(
+                repo, client, provisioner, props("aoss"), 1, "catalog-full", false, 1,
+                false, "", failedFile.toString());
+
+        assertThat(org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class, runner::run))
+                .hasMessageContaining("failed item");
+
+        assertThat(java.nio.file.Files.readAllLines(failedFile))
+                .containsExactly("bad-1");
+    }
+
+    @Test
+    void backfillFromIdsFile_indexesOnlyThoseRecipes(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp)
+            throws Exception {
+        // Backfill must NOT scan the table; it loads each id via findById and indexes only those.
+        CatalogRecipeRepository repo = mock(CatalogRecipeRepository.class);
+        when(repo.forTable(any())).thenReturn(repo);
+        when(repo.tableName()).thenReturn("catalog-full");
+        when(repo.findById("miss-1")).thenReturn(java.util.Optional.of(recipe("miss-1")));
+        when(repo.findById("miss-2")).thenReturn(java.util.Optional.of(recipe("miss-2")));
+
+        OpenSearchClient client = clientNoErrors();
+        OpenSearchIndexProvisioner provisioner = mock(OpenSearchIndexProvisioner.class);
+
+        java.nio.file.Path idsFile = tmp.resolve("ids.txt");
+        java.nio.file.Files.write(idsFile, List.of("miss-1", "miss-2"));
+
+        CatalogReindexRunner runner = new CatalogReindexRunner(
+                repo, client, provisioner, props("aoss"), 500, "catalog-full", false, 4,
+                true, idsFile.toString(), "");
+
+        runner.run();
+
+        // ensureIndex is called, but the index is never recreated during backfill.
+        verify(provisioner).ensureIndex();
+        verify(provisioner, never()).deleteIndexIfExists();
+        // Never scans the whole table in backfill mode.
+        verify(repo, never()).scanInPages(any());
+        verify(repo).findById("miss-1");
+        verify(repo).findById("miss-2");
+
+        ArgumentCaptor<BulkRequest> captor = ArgumentCaptor.forClass(BulkRequest.class);
+        verify(client).bulk(captor.capture());
+        assertThat(captor.getValue().operations()).hasSize(2);
     }
 }

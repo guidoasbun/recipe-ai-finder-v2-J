@@ -31,6 +31,9 @@ JAR="$BACKEND_DIR/target/backend-0.0.1-SNAPSHOT.jar"
 LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="$LOG_DIR/full-catalog-reindex-$TIMESTAMP.log"
+# Any recipe that can't be indexed after retries has its catalogRecipeId appended here, so a
+# targeted backfill can replay exactly those (see scripts/run-catalog-backfill.sh).
+FAILED_IDS_FILE="$LOG_DIR/reindex-failed-ids-$TIMESTAMP.txt"
 
 # ── Configuration ────────────────────────────────────────────────────────────
 AWS_REGION="us-east-1"
@@ -84,6 +87,7 @@ java -jar "$JAR" \
   --catalog.reindex.recreate-index=true \
   --catalog.reindex.batch-size=$BATCH_SIZE \
   --catalog.reindex.concurrency=$CONCURRENCY \
+  --catalog.reindex.failed-ids-file="$FAILED_IDS_FILE" \
   --dynamodb.catalog-full-table="$CATALOG_FULL_TABLE" \
   2>&1 | tee "$LOG_FILE"
 
@@ -95,5 +99,10 @@ if [[ $EXIT_CODE -eq 0 ]]; then
 else
   echo "⚠️  Reindex exited with code $EXIT_CODE at $(date). Check: $LOG_FILE"
   echo "   Re-running is safe (recreate-index rebuilds from scratch)."
+  if [[ -s "$FAILED_IDS_FILE" ]]; then
+    echo "   Failed ids captured: $FAILED_IDS_FILE ($(wc -l < "$FAILED_IDS_FILE" | tr -d ' ') id(s))."
+    echo "   Backfill just those without a full rerun:"
+    echo "     ./scripts/run-catalog-backfill.sh \"$FAILED_IDS_FILE\""
+  fi
 fi
 exit $EXIT_CODE
