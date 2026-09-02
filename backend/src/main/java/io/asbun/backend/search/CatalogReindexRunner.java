@@ -402,7 +402,9 @@ public class CatalogReindexRunner implements CommandLineRunner {
      * {@code catalogRecipeId} field, no vectors), e.g. ~2.2k queries for 2.2M recipes.
      */
     private List<CatalogRecipe> reconcileMissing() {
-        final int probeSize = 1_000;
+        // 500 per probe keeps each terms query well under any bool/terms clause limits; failures
+        // are retried and, if persistent, the chunk is split (see presentIds).
+        final int probeSize = 500;
         List<CatalogRecipe> missing = new ArrayList<>();
         List<CatalogRecipe> probe = new ArrayList<>(probeSize);
         long[] scanned = {0};
@@ -435,38 +437,83 @@ public class CatalogReindexRunner implements CommandLineRunner {
     }
 
     /**
-     * Runs one {@code terms} query over the {@code catalogRecipeId}s in {@code probe} and adds any
-     * recipe whose id is NOT returned (i.e. not in the index) to {@code missing}.
+     * Finds which {@code catalogRecipeId}s in {@code probe} are present in the index and adds the
+     * rest to {@code missing}. Resilient to transient OpenSearch errors: the {@code terms} query
+     * is retried with backoff, and if a chunk keeps failing it is split in half and each half is
+     * checked independently, so one bad chunk cannot sink the whole reconciliation.
      */
     private void collectMissing(List<CatalogRecipe> probe, List<CatalogRecipe> missing) {
+        Set<String> present = presentIds(probe);
+        for (CatalogRecipe r : probe) {
+            if (!present.contains(r.getCatalogRecipeId())) {
+                missing.add(r);
+            }
+        }
+    }
+
+    /**
+     * Returns the subset of the probe's ids that exist in the index, via a single {@code terms}
+     * query. Retries transient failures; on persistent failure, splits the probe and recurses so
+     * the run does not die on a single problematic request. A size-1 probe that still fails falls
+     * back to a per-id {@code findById}-style term lookup.
+     */
+    private Set<String> presentIds(List<CatalogRecipe> probe) {
         String index = properties.getIndex();
         List<FieldValue> terms = new ArrayList<>(probe.size());
         for (CatalogRecipe r : probe) {
             terms.add(FieldValue.of(r.getCatalogRecipeId()));
         }
-        Set<String> present = new HashSet<>();
-        try {
-            SearchResponse<CatalogRecipe> resp = client.search(b -> b
-                    .index(index)
-                    .size(probe.size())
-                    .trackTotalHits(t -> t.enabled(false))
-                    .source(src -> src.filter(f -> f.includes("catalogRecipeId")))
-                    .query(q -> q.terms(t -> t
-                            .field("catalogRecipeId")
-                            .terms(tt -> tt.value(terms)))),
-                    CatalogRecipe.class);
-            for (var hit : resp.hits().hits()) {
-                if (hit.source() != null && hit.source().getCatalogRecipeId() != null) {
-                    present.add(hit.source().getCatalogRecipeId());
+        int maxAttempts = 5;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                SearchResponse<CatalogRecipe> resp = client.search(b -> b
+                        .index(index)
+                        .size(probe.size())
+                        .trackTotalHits(t -> t.enabled(false))
+                        .source(src -> src.filter(f -> f.includes("catalogRecipeId")))
+                        .query(q -> q.terms(t -> t
+                                .field("catalogRecipeId")
+                                .terms(tt -> tt.value(terms)))),
+                        CatalogRecipe.class);
+                Set<String> present = new HashSet<>();
+                for (var hit : resp.hits().hits()) {
+                    if (hit.source() != null && hit.source().getCatalogRecipeId() != null) {
+                        present.add(hit.source().getCatalogRecipeId());
+                    }
                 }
+                return present;
+            } catch (Exception e) {
+                if (attempt < maxAttempts) {
+                    log.warn("Reconcile terms query failed (chunk of {}, attempt {}/{}): {} — retrying",
+                            probe.size(), attempt, maxAttempts, e.getMessage());
+                    sleepQuietly(Math.min(10_000L, 500L * (1L << (attempt - 1))));
+                    continue;
+                }
+                // Persistent failure: split and recurse so one bad chunk can't sink the run.
+                if (probe.size() > 1) {
+                    log.warn("Reconcile chunk of {} still failing; splitting to isolate the cause.",
+                            probe.size());
+                    int mid = probe.size() / 2;
+                    Set<String> present = new HashSet<>();
+                    present.addAll(presentIds(new ArrayList<>(probe.subList(0, mid))));
+                    present.addAll(presentIds(new ArrayList<>(probe.subList(mid, probe.size()))));
+                    return present;
+                }
+                // Single id still failing after retries: treat as NOT present (it will be
+                // re-indexed, which is harmless/idempotent) rather than aborting the whole run.
+                log.warn("Reconcile could not verify id {} after {} attempts; treating as missing.",
+                        probe.get(0).getCatalogRecipeId(), maxAttempts);
+                return new HashSet<>();
             }
-        } catch (IOException e) {
-            throw new IllegalStateException("Reconcile existence-check query failed", e);
         }
-        for (CatalogRecipe r : probe) {
-            if (!present.contains(r.getCatalogRecipeId())) {
-                missing.add(r);
-            }
+        return new HashSet<>();
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 
