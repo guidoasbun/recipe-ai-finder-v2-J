@@ -68,6 +68,7 @@ public class CatalogReindexRunner implements CommandLineRunner {
     private final boolean backfill;
     private final String backfillIdsFile;
     private final String failedIdsFile;
+    private final boolean pitProbe;
 
     public CatalogReindexRunner(CatalogRecipeRepository repository,
                                 OpenSearchClient client,
@@ -79,7 +80,8 @@ public class CatalogReindexRunner implements CommandLineRunner {
                                 @Value("${catalog.reindex.concurrency:8}") int concurrency,
                                 @Value("${catalog.reindex.backfill:false}") boolean backfill,
                                 @Value("${catalog.reindex.backfill-ids-file:}") String backfillIdsFile,
-                                @Value("${catalog.reindex.failed-ids-file:}") String failedIdsFile) {
+                                @Value("${catalog.reindex.failed-ids-file:}") String failedIdsFile,
+                                @Value("${catalog.reindex.pit-probe:false}") boolean pitProbe) {
         // Read from the configured catalog table (full table when set, small table otherwise).
         this.repository = repository.forTable(sourceTable);
         this.client = client;
@@ -92,14 +94,50 @@ public class CatalogReindexRunner implements CommandLineRunner {
         this.backfill = backfill;
         this.backfillIdsFile = backfillIdsFile == null ? "" : backfillIdsFile.trim();
         this.failedIdsFile = failedIdsFile == null ? "" : failedIdsFile.trim();
+        this.pitProbe = pitProbe;
     }
 
     @Override
     public void run(String... args) {
-        if (backfill) {
+        if (pitProbe) {
+            runPitProbe();
+        } else if (backfill) {
             runBackfill();
         } else {
             runFullReindex();
+        }
+    }
+
+    /**
+     * Cheap yes/no check that a point-in-time can be created + a first page read on this
+     * collection, without scanning DynamoDB. Run with {@code catalog.reindex.pit-probe=true}
+     * before committing to a full reconciliation. Throws with the recreate-fallback hint if PIT
+     * is unavailable.
+     */
+    private void runPitProbe() {
+        log.info("PIT probe: attempting to create a point-in-time on index '{}'...", properties.getIndex());
+        String pitId = createPit();
+        try {
+            org.opensearch.client.opensearch.core.search.Pit pit =
+                    new org.opensearch.client.opensearch.core.search.Pit.Builder()
+                            .id(pitId).keepAlive("1m").build();
+            SearchResponse<CatalogRecipe> resp = client.search(b -> b
+                    .size(1)
+                    .pit(pit)
+                    .trackTotalHits(t -> t.enabled(false))
+                    .source(src -> src.filter(f -> f.includes("catalogRecipeId")))
+                    .query(q -> q.matchAll(m -> m))
+                    .sort(so -> so.field(f -> f.field("catalogRecipeId").order(
+                            org.opensearch.client.opensearch._types.SortOrder.Asc))),
+                    CatalogRecipe.class);
+            int got = resp.hits().hits().size();
+            log.info("PIT probe SUCCEEDED: PIT create + search_after page returned {} hit(s). "
+                    + "Reconciliation backfill is safe to run.", got);
+        } catch (IOException e) {
+            throw new IllegalStateException("PIT probe: create succeeded but paged search failed: "
+                    + e.getMessage(), e);
+        } finally {
+            deletePitQuietly(pitId);
         }
     }
 
@@ -392,121 +430,163 @@ public class CatalogReindexRunner implements CommandLineRunner {
     }
 
     /**
-     * Derives the missing set with a reverse existence check that uses only the plain
-     * {@code search} API (the pagination-free primitive this serverless collection supports —
-     * scroll and point-in-time both 404 here). It scans DynamoDB in chunks of {@code probeSize}
-     * ids and, for each chunk, runs a single {@code terms} query asking which of those ids are
-     * present in the index. Any id in the chunk that does not come back is missing.
+     * Derives the missing set by pulling every {@code catalogRecipeId} already in the index into
+     * a set (via a point-in-time + {@code search_after}, the deep-pagination primitive AWS lists
+     * as supported for serverless), then scanning DynamoDB and keeping any recipe whose id is not
+     * in that set. Only the {@code catalogRecipeId} field is fetched (no vectors), so each page
+     * is cheap.
      *
-     * <p>Cost: ~{@code ceil(total / probeSize)} cheap queries (each returns only the
-     * {@code catalogRecipeId} field, no vectors), e.g. ~2.2k queries for 2.2M recipes.
+     * <p>If PIT is unavailable on this collection, this throws with a clear message pointing at
+     * the recreate-reindex fallback ({@code scripts/run-full-catalog-reindex.sh}), rather than
+     * silently degrading.
      */
     private List<CatalogRecipe> reconcileMissing() {
-        // 500 per probe keeps each terms query well under any bool/terms clause limits; failures
-        // are retried and, if persistent, the chunk is split (see presentIds).
-        final int probeSize = 500;
-        List<CatalogRecipe> missing = new ArrayList<>();
-        List<CatalogRecipe> probe = new ArrayList<>(probeSize);
-        long[] scanned = {0};
-        long[] checked = {0};
+        Set<String> indexed = fetchIndexedIds();
+        log.info("Backfill reconcile: {} catalogRecipeId(s) currently in the index.", indexed.size());
 
+        List<CatalogRecipe> missing = new ArrayList<>();
+        long[] scanned = {0};
         repository.scanInPages(page -> {
             for (CatalogRecipe r : page) {
                 scanned[0]++;
-                if (r.getCatalogRecipeId() == null || r.getCatalogRecipeId().isBlank()) {
+                String id = r.getCatalogRecipeId();
+                if (id == null || id.isBlank()) {
                     continue;
                 }
-                probe.add(r);
-                if (probe.size() >= probeSize) {
-                    collectMissing(probe, missing);
-                    checked[0] += probe.size();
-                    probe.clear();
-                    if (checked[0] % 100_000 < probeSize) {
-                        log.info("Backfill reconcile: checked {} recipe(s), {} missing so far...",
-                                checked[0], missing.size());
-                    }
+                if (!indexed.contains(id)) {
+                    missing.add(r);
                 }
             }
         });
-        if (!probe.isEmpty()) {
-            collectMissing(probe, missing);
-        }
         log.info("Backfill reconcile: scanned {} recipe(s) in DynamoDB, {} missing from the index.",
                 scanned[0], missing.size());
         return missing;
     }
 
     /**
-     * Finds which {@code catalogRecipeId}s in {@code probe} are present in the index and adds the
-     * rest to {@code missing}. Resilient to transient OpenSearch errors: the {@code terms} query
-     * is retried with backoff, and if a chunk keeps failing it is split in half and each half is
-     * checked independently, so one bad chunk cannot sink the whole reconciliation.
+     * Pulls every {@code catalogRecipeId} in the index into a set, paginating with a
+     * point-in-time (PIT) + {@code search_after}. Sorted by {@code catalogRecipeId} (unique
+     * keyword) so {@code search_after} advances deterministically. Retries transient page errors.
      */
-    private void collectMissing(List<CatalogRecipe> probe, List<CatalogRecipe> missing) {
-        Set<String> present = presentIds(probe);
-        for (CatalogRecipe r : probe) {
-            if (!present.contains(r.getCatalogRecipeId())) {
-                missing.add(r);
+    private Set<String> fetchIndexedIds() {
+        int pageSize = 2_000;
+        Set<String> ids = new HashSet<>();
+        String pitId = createPit();
+        try {
+            List<FieldValue> searchAfter = null;
+            int emptyOrErr = 0;
+            while (true) {
+                final List<FieldValue> after = searchAfter;
+                org.opensearch.client.opensearch.core.search.Pit pit =
+                        new org.opensearch.client.opensearch.core.search.Pit.Builder()
+                                .id(pitId).keepAlive("5m").build();
+                SearchResponse<CatalogRecipe> resp;
+                try {
+                    resp = client.search(b -> {
+                        b.size(pageSize)
+                                // With a PIT the index is implied by the PIT; do NOT set .index().
+                                .pit(pit)
+                                .trackTotalHits(t -> t.enabled(false))
+                                .source(src -> src.filter(f -> f.includes("catalogRecipeId")))
+                                .query(q -> q.matchAll(m -> m))
+                                .sort(so -> so.field(f -> f.field("catalogRecipeId").order(
+                                        org.opensearch.client.opensearch._types.SortOrder.Asc)));
+                        if (after != null) {
+                            b.searchAfter(after);
+                        }
+                        return b;
+                    }, CatalogRecipe.class);
+                    emptyOrErr = 0;
+                } catch (Exception e) {
+                    if (++emptyOrErr >= 5) {
+                        throw new IllegalStateException(
+                                "PIT paging failed repeatedly while pulling indexed ids: " + e.getMessage(), e);
+                    }
+                    log.warn("PIT page failed (attempt {}/5): {} — retrying", emptyOrErr, e.getMessage());
+                    sleepQuietly(Math.min(10_000L, 500L * (1L << (emptyOrErr - 1))));
+                    continue;
+                }
+
+                var hits = resp.hits().hits();
+                if (hits.isEmpty()) {
+                    break;
+                }
+                for (var hit : hits) {
+                    if (hit.source() != null && hit.source().getCatalogRecipeId() != null) {
+                        ids.add(hit.source().getCatalogRecipeId());
+                    }
+                }
+                searchAfter = hits.get(hits.size() - 1).sort();
+                if (searchAfter == null || searchAfter.isEmpty()) {
+                    break;
+                }
+                if (ids.size() % 100_000 < pageSize) {
+                    log.info("Backfill reconcile: pulled {} indexed ids so far...", ids.size());
+                }
             }
+        } finally {
+            deletePitQuietly(pitId);
         }
+        return ids;
     }
 
     /**
-     * Returns the subset of the probe's ids that exist in the index, via a single {@code terms}
-     * query. Retries transient failures; on persistent failure, splits the probe and recurses so
-     * the run does not die on a single problematic request. A size-1 probe that still fails falls
-     * back to a per-id {@code findById}-style term lookup.
+     * Creates a point-in-time via the generic (raw) client, trying both endpoint forms because
+     * the exact path differs by deployment: open-source OpenSearch uses
+     * {@code POST /{index}/_search/point_in_time}; AWS serverless lists {@code POST
+     * /_search/point_in_time}. Returns the {@code pit_id}. Throws (pointing at the recreate
+     * fallback) if neither form works, so we do not silently proceed on a broken reconciliation.
      */
-    private Set<String> presentIds(List<CatalogRecipe> probe) {
+    private String createPit() {
         String index = properties.getIndex();
-        List<FieldValue> terms = new ArrayList<>(probe.size());
-        for (CatalogRecipe r : probe) {
-            terms.add(FieldValue.of(r.getCatalogRecipeId()));
-        }
-        int maxAttempts = 5;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                SearchResponse<CatalogRecipe> resp = client.search(b -> b
-                        .index(index)
-                        .size(probe.size())
-                        .trackTotalHits(t -> t.enabled(false))
-                        .source(src -> src.filter(f -> f.includes("catalogRecipeId")))
-                        .query(q -> q.terms(t -> t
-                                .field("catalogRecipeId")
-                                .terms(tt -> tt.value(terms)))),
-                        CatalogRecipe.class);
-                Set<String> present = new HashSet<>();
-                for (var hit : resp.hits().hits()) {
-                    if (hit.source() != null && hit.source().getCatalogRecipeId() != null) {
-                        present.add(hit.source().getCatalogRecipeId());
-                    }
-                }
-                return present;
-            } catch (Exception e) {
-                if (attempt < maxAttempts) {
-                    log.warn("Reconcile terms query failed (chunk of {}, attempt {}/{}): {} — retrying",
-                            probe.size(), attempt, maxAttempts, e.getMessage());
-                    sleepQuietly(Math.min(10_000L, 500L * (1L << (attempt - 1))));
+        String[] endpoints = {
+                "/" + index + "/_search/point_in_time",
+                "/_search/point_in_time"
+        };
+        RuntimeException last = null;
+        for (String endpoint : endpoints) {
+            try (var resp = client.generic().execute(
+                    org.opensearch.client.opensearch.generic.Requests.builder()
+                            .method("POST")
+                            .endpoint(endpoint)
+                            .query(java.util.Map.of("keep_alive", "5m"))
+                            .build())) {
+                if (resp.getStatus() / 100 != 2) {
+                    last = new IllegalStateException("PIT create " + endpoint + " -> HTTP "
+                            + resp.getStatus() + " " + resp.getReason());
                     continue;
                 }
-                // Persistent failure: split and recurse so one bad chunk can't sink the run.
-                if (probe.size() > 1) {
-                    log.warn("Reconcile chunk of {} still failing; splitting to isolate the cause.",
-                            probe.size());
-                    int mid = probe.size() / 2;
-                    Set<String> present = new HashSet<>();
-                    present.addAll(presentIds(new ArrayList<>(probe.subList(0, mid))));
-                    present.addAll(presentIds(new ArrayList<>(probe.subList(mid, probe.size()))));
-                    return present;
+                String body = resp.getBody().map(b -> b.bodyAsString()).orElse("");
+                java.util.regex.Matcher m =
+                        java.util.regex.Pattern.compile("\"pit_id\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
+                if (m.find()) {
+                    log.info("PIT created via {}.", endpoint);
+                    return m.group(1);
                 }
-                // Single id still failing after retries: treat as NOT present (it will be
-                // re-indexed, which is harmless/idempotent) rather than aborting the whole run.
-                log.warn("Reconcile could not verify id {} after {} attempts; treating as missing.",
-                        probe.get(0).getCatalogRecipeId(), maxAttempts);
-                return new HashSet<>();
+                last = new IllegalStateException("PIT create " + endpoint + " returned no pit_id: " + body);
+            } catch (IOException e) {
+                last = new IllegalStateException("PIT create " + endpoint + " request failed", e);
             }
         }
-        return new HashSet<>();
+        throw new IllegalStateException(
+                "Could not create a point-in-time on this collection (tried both endpoint forms). "
+                + "Reconciliation cannot proceed. Use the clean recreate reindex instead: "
+                + "scripts/run-full-catalog-reindex.sh (it captures failed ids for a targeted backfill). "
+                + "Last error: " + (last == null ? "unknown" : last.getMessage()), last);
+    }
+
+    /** Best-effort PIT delete; the PIT also expires on its keep-alive if this fails. */
+    private void deletePitQuietly(String pitId) {
+        try (var resp = client.generic().execute(
+                org.opensearch.client.opensearch.generic.Requests.builder()
+                        .method("DELETE")
+                        .endpoint("/_search/point_in_time")
+                        .json("{\"pit_id\":[\"" + pitId + "\"]}")
+                        .build())) {
+            resp.getStatus(); // ignore; best-effort
+        } catch (IOException ignored) {
+            // PIT expires on keep-alive
+        }
     }
 
     private static void sleepQuietly(long millis) {

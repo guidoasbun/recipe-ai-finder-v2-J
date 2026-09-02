@@ -76,7 +76,7 @@ class CatalogReindexRunnerTest {
 
         // Managed domain (es) can set a custom _id.
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2, false, "", "");
+                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2, false, "", "", false);
 
         runner.run();
 
@@ -100,7 +100,7 @@ class CatalogReindexRunnerTest {
 
         // Serverless (aoss) rejects a custom _id, so it must be omitted (auto-generated).
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("aoss"), 500, "catalog-full", false, 2, false, "", "");
+                repo, client, provisioner, props("aoss"), 500, "catalog-full", false, 2, false, "", "", false);
 
         runner.run();
 
@@ -118,7 +118,7 @@ class CatalogReindexRunnerTest {
         OpenSearchIndexProvisioner provisioner = mock(OpenSearchIndexProvisioner.class);
 
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2, false, "", "");
+                repo, client, provisioner, props("es"), 500, "catalog-full", false, 2, false, "", "", false);
 
         runner.run();
 
@@ -137,7 +137,7 @@ class CatalogReindexRunnerTest {
 
         // batchSize 2 over 5 recipes => flushes of 2, 2, then remainder 1 = 3 bulk calls.
         CatalogReindexRunner runner = new CatalogReindexRunner(
-                repo, client, provisioner, props("es"), 2, "catalog-full", false, 2, false, "", "");
+                repo, client, provisioner, props("es"), 2, "catalog-full", false, 2, false, "", "", false);
 
         runner.run();
 
@@ -164,7 +164,7 @@ class CatalogReindexRunnerTest {
         // maxAttempts is fixed at 6 in full-reindex flush; batchSize 1, concurrency 1.
         CatalogReindexRunner runner = new CatalogReindexRunner(
                 repo, client, provisioner, props("aoss"), 1, "catalog-full", false, 1,
-                false, "", failedFile.toString());
+                false, "", failedFile.toString(), false);
 
         assertThat(org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalStateException.class, runner::run))
@@ -192,7 +192,7 @@ class CatalogReindexRunnerTest {
 
         CatalogReindexRunner runner = new CatalogReindexRunner(
                 repo, client, provisioner, props("aoss"), 500, "catalog-full", false, 4,
-                true, idsFile.toString(), "");
+                true, idsFile.toString(), "", false);
 
         runner.run();
 
