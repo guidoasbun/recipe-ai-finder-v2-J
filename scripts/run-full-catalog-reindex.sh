@@ -39,7 +39,10 @@ OPENSEARCH_ENDPOINT="https://o2dmi7wacuk8u8y9pbm6.us-east-1.aoss.amazonaws.com"
 CATALOG_FULL_TABLE="recipe-ai-dev-catalog-full"
 QUANTIZATION="fp16"
 BATCH_SIZE=1000
-CONCURRENCY=8
+# Concurrency 4 (not 8): 8 triggered OpenSearch Serverless indexing throttling ("[throttled]")
+# at ~1.06M docs on the prior run. The run is often DynamoDB-scan-bound, so 4 costs little
+# throughput while staying under the serverless indexing OCU ceiling and avoiding throttle storms.
+CONCURRENCY=4
 
 # ── Prerequisite checks ─────────────────────────────────────────────────────
 echo "🔍 Checking prerequisites..."

@@ -209,13 +209,29 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         0 missing-vector** across 23 sequential Bedrock jobs (~17.5h wall clock; per-job time is
         Bedrock-queue-dependent, 7–30 min observed). Every recipe embedded (Titan V2, 1024-dim)
         and stored. Cost ~$8–15 one-time as estimated.
-  - [~] 10.4 (IN PROGRESS) Reindex `catalog-full` → OpenSearch with `opensearch.knn.quantization=fp16`
-        and `catalog.reindex.recreate-index=true` (drops the old small validation index, recreates
-        with the fp16 mapping). Added `deleteIndexIfExists()` to the provisioner and the
-        `catalog.reindex.recreate-index` flag to the runner.
-  - [ ] 10.5 Re-verify parity + performance at 2.2M (keyword/semantic/dietary/pagination via the
-        verify runner); tune `ef-search`/OCU cap; confirm budget threshold; then cut over
-        (`catalog.search.backend=opensearch`) and remove the temporary CLI data-access principal.
+  - [~] 10.4 (IN PROGRESS — clean rerun running) Reindex `catalog-full` → OpenSearch with
+        `opensearch.knn.quantization=fp16` and `catalog.reindex.recreate-index=true` (drops the
+        old small validation index, recreates with the fp16 mapping). Added `deleteIndexIfExists()`
+        to the provisioner and the `catalog.reindex.recreate-index` flag. Perf: the serial bulk
+        loop was ~55 docs/sec (round-trip-latency bound); added `catalog.reindex.concurrency`
+        (bounded thread pool + semaphore) → ~100 docs/sec (partly DynamoDB-scan-bound), ~6h for 2.2M.
+        Throttle hardening discovered mid-run: at concurrency=8 OpenSearch Serverless briefly
+        throttled indexing at ~1.06M docs (`rejected execution of primary operation [throttled]`
+        while it auto-scaled indexing OCUs); the first full run finished 2,225,142/2,231,142 with
+        6,000 items dropped (0.27%) because `flushBatch` had no retry, so the completeness guard
+        threw as designed (refuses cutover on a partial index). Fixes: (a) `flushBatch` now retries
+        server-rejected sub-operations (re-collected by position) with exponential backoff
+        (6 attempts, 100ms→3s cap) so transient throttling self-heals to 0 failed; (b) lowered the
+        reindex script concurrency 8→4 to stay under the serverless indexing-OCU ceiling and avoid
+        throttle storms (little throughput cost — the run is often scan-bound). `CatalogReindexRunnerTest`
+        green. Clean rerun (recreate-index rebuilds all 2.23M from scratch; serverless auto-IDs mean
+        recreate is the only dup-free path) in progress — target 2,231,142 indexed, 0 failed.
+  - [ ] 10.5 After the reindex finishes 0-failed (verify doc count ≈ 2,231,142): re-verify parity +
+        performance at 2.2M (keyword/semantic/dietary/pagination via `CatalogSearchVerifyRunner`,
+        `--catalog.verify.enabled=true`); tune `ef-search`/OCU cap if needed; confirm the budget
+        threshold; cut over (`catalog.search.backend=opensearch` in ECS/Terraform); remove the
+        temporary CLI data-access principal (`arn:aws:iam::412381751532:user/rodrigo-cli`) from the
+        `recipe-ai-dev-catalog-data` access policy; final `tasks.md` + `RUNBOOK.md` update.
   - _Requirements: 3.4, 4.1, 5.1, 7.2, 7.6_
 
 ## Notes

@@ -169,35 +169,74 @@ public class CatalogReindexRunner implements CommandLineRunner {
                 .document(recipe)));
     }
 
-    /** Runs one bulk request (called concurrently from the pool); counters are thread-safe. */
+    /**
+     * Runs one bulk request (called concurrently from the pool); counters are thread-safe.
+     * Retries items the server rejected (e.g. OpenSearch Serverless "[throttled]" while it
+     * auto-scales indexing capacity) with exponential backoff, so transient throttling does not
+     * leave gaps in the index. Only genuinely stuck items after all retries count as failed.
+     */
     private void flushBatch(List<BulkOperation> batch, Counters counters) {
         if (batch.isEmpty()) {
             return;
         }
         int attempted = batch.size();
-        try {
-            BulkRequest request = new BulkRequest.Builder().operations(batch).build();
-            BulkResponse response = client.bulk(request);
-            if (response.errors()) {
-                long errors = response.items().stream().filter(i -> i.error() != null).count();
-                counters.addIndexed(attempted - errors);
-                counters.addFailed(errors);
-                response.items().stream()
-                        .filter(i -> i.error() != null)
-                        .findFirst()
-                        .ifPresent(i -> log.warn("Bulk item error (first of {}): {}",
-                                errors, i.error() != null ? i.error().reason() : "unknown"));
-            } else {
-                counters.addIndexed(attempted);
+        List<BulkOperation> pending = batch;
+        int maxAttempts = 6;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            List<BulkOperation> retry = new ArrayList<>();
+            try {
+                BulkResponse response = client.bulk(new BulkRequest.Builder().operations(pending).build());
+                if (!response.errors()) {
+                    counters.addIndexed(pending.size());
+                    break;
+                }
+                // Re-collect the failed sub-operations (by position) for retry.
+                var items = response.items();
+                long okThisPass = 0;
+                for (int i = 0; i < items.size(); i++) {
+                    if (items.get(i).error() == null) {
+                        okThisPass++;
+                    } else {
+                        retry.add(pending.get(i));
+                    }
+                }
+                counters.addIndexed(okThisPass);
+                if (retry.isEmpty()) {
+                    break;
+                }
+                if (attempt == maxAttempts) {
+                    counters.addFailed(retry.size());
+                    log.warn("{} items still failing after {} attempts (first: {})", retry.size(),
+                            maxAttempts, items.stream().filter(x -> x.error() != null).findFirst()
+                                    .map(x -> x.error().reason()).orElse("unknown"));
+                    break;
+                }
+                log.info("Retrying {} throttled/failed items (attempt {}/{})", retry.size(), attempt + 1, maxAttempts);
+            } catch (IOException e) {
+                if (attempt == maxAttempts) {
+                    counters.addFailed(pending.size());
+                    log.warn("Bulk request of {} items failed after {} attempts: {}",
+                            pending.size(), maxAttempts, e.getMessage());
+                    break;
+                }
+                retry = pending; // whole request failed; retry all
             }
-            long done = counters.indexed.get();
-            if (done % (batchSize * 10L) < batchSize) {
-                log.info("Reindex progress: {} indexed, {} failed (of {} seen)",
-                        done, counters.failed.get(), counters.seen);
+            // Backoff before the next attempt (100ms, 200, 400, 800, 1600, capped 3s).
+            try {
+                Thread.sleep(Math.min(3000L, 100L * (1L << (attempt - 1))));
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                counters.addFailed(retry.size());
+                return;
             }
-        } catch (IOException e) {
-            counters.addFailed(attempted);
-            log.warn("Bulk request of {} items failed: {}", attempted, e.getMessage());
+            pending = retry;
+        }
+
+        long done = counters.indexed.get();
+        if (done % (batchSize * 10L) < batchSize) {
+            log.info("Reindex progress: {} indexed, {} failed (of {} seen)",
+                    done, counters.failed.get(), counters.seen);
         }
     }
 
