@@ -150,4 +150,49 @@ public class CatalogRecipeRepository {
                 .stream()
                 .forEach(page -> pageConsumer.accept(page.items()));
     }
+
+    /**
+     * Parallel, id-only table scan: splits the table into {@code segments} and scans them
+     * concurrently, projecting only {@code catalogRecipeId}. A single-threaded scan of a 2.2M-row
+     * table is bound by DynamoDB returning ~1 MB pages one at a time (many minutes); N parallel
+     * segments cut that by roughly N. {@code pageConsumer} is called from multiple threads, so it
+     * MUST be thread-safe. Each returned {@link CatalogRecipe} has only its id populated.
+     */
+    public void scanIdsInPagesParallel(int segments,
+                                        java.util.function.Consumer<List<CatalogRecipe>> pageConsumer) {
+        int total = Math.max(1, segments);
+        if (total == 1) {
+            scanIdsInPages(pageConsumer);
+            return;
+        }
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(total);
+        try {
+            List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+            for (int seg = 0; seg < total; seg++) {
+                final int segment = seg;
+                futures.add(pool.submit(() -> {
+                    table.scan(software.amazon.awssdk.enhanced.dynamodb.model.ScanEnhancedRequest.builder()
+                                    .attributesToProject("catalogRecipeId")
+                                    .segment(segment)
+                                    .totalSegments(total)
+                                    .build())
+                            .stream()
+                            .forEach(page -> pageConsumer.accept(page.items()));
+                }));
+            }
+            for (java.util.concurrent.Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted during parallel scan", e);
+                } catch (java.util.concurrent.ExecutionException e) {
+                    throw new IllegalStateException("Parallel scan segment failed", e.getCause());
+                }
+            }
+        } finally {
+            pool.shutdown();
+        }
+    }
 }

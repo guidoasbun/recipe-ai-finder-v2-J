@@ -451,24 +451,29 @@ public class CatalogReindexRunner implements CommandLineRunner {
         Set<String> indexed = fetchIndexedIds();
         log.info("Backfill reconcile: {} catalogRecipeId(s) currently in the index.", indexed.size());
 
-        // Cheap id-only scan (projects catalogRecipeId, NOT the ~13 KB embedding) to find which
-        // ids are missing. Transfers ~tens of MB instead of the table's ~29 GB.
-        List<String> missingIds = new ArrayList<>();
-        long[] scanned = {0};
-        repository.scanIdsInPages(page -> {
+        // Cheap, PARALLEL id-only scan (projects catalogRecipeId, NOT the ~13 KB embedding) to
+        // find which ids are missing. A single-threaded scan of 2.2M rows is bound by DynamoDB
+        // returning ~1 MB pages serially (many minutes); parallel segments cut that down. The
+        // page consumer runs on multiple threads, so accumulation is synchronized and progress is
+        // logged periodically (so the phase is never a silent black box).
+        List<String> missingIds = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicLong scanned = new java.util.concurrent.atomic.AtomicLong();
+        int segments = 8;
+        repository.scanIdsInPagesParallel(segments, page -> {
             for (CatalogRecipe r : page) {
-                scanned[0]++;
+                long n = scanned.incrementAndGet();
                 String id = r.getCatalogRecipeId();
-                if (id == null || id.isBlank()) {
-                    continue;
-                }
-                if (!indexed.contains(id)) {
+                if (id != null && !id.isBlank() && !indexed.contains(id)) {
                     missingIds.add(id);
+                }
+                if (n % 200_000 == 0) {
+                    log.info("Backfill reconcile: scanned {} recipe(s) so far, {} missing...",
+                            n, missingIds.size());
                 }
             }
         });
         log.info("Backfill reconcile: scanned {} recipe(s) in DynamoDB, {} missing from the index.",
-                scanned[0], missingIds.size());
+                scanned.get(), missingIds.size());
 
         // Now fetch the FULL recipe (with embedding) only for the missing ids — a point read
         // each, so we pay the big-item cost only for what we actually need to index.
