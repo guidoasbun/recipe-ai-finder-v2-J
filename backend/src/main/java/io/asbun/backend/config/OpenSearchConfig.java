@@ -65,8 +65,15 @@ public class OpenSearchConfig {
                 .findAndRegisterModules()
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
+        // Bounded connection timeouts so a stuck/half-open TCP connection cannot wedge a PIT
+        // page or a bulk request forever (a hung bulk would also hold its reindex semaphore
+        // permit indefinitely and eventually deadlock the whole run). connectionMaxIdleTime
+        // reaps stale pooled connections instead of reusing a dead one.
         OpenSearchTransport transport = new AwsSdk2Transport(
-                AwsCrtHttpClient.builder().build(),
+                AwsCrtHttpClient.builder()
+                        .connectionTimeout(java.time.Duration.ofSeconds(10))
+                        .connectionMaxIdleTime(java.time.Duration.ofSeconds(30))
+                        .build(),
                 host,
                 signingService,
                 region,

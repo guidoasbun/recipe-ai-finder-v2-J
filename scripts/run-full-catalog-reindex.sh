@@ -91,7 +91,7 @@ echo ""
 set +e
 AWS_REGION="$AWS_REGION" \
 COGNITO_ISSUER_URI="$COGNITO_ISSUER_URI" \
-java -Xmx2g -jar "$JAR" \
+java -Xmx3g -jar "$JAR" \
   --server.port=0 \
   --catalog.search.backend=opensearch \
   --opensearch.endpoint="$OPENSEARCH_ENDPOINT" \
@@ -135,7 +135,7 @@ while [[ -s "$CURRENT_FAILED" ]]; do
   set +e
   AWS_REGION="$AWS_REGION" \
   COGNITO_ISSUER_URI="$COGNITO_ISSUER_URI" \
-  java -Xmx2g -jar "$JAR" \
+  java -Xmx3g -jar "$JAR" \
     --server.port=0 \
     --catalog.search.backend=opensearch \
     --opensearch.endpoint="$OPENSEARCH_ENDPOINT" \
@@ -167,7 +167,27 @@ while [[ -s "$CURRENT_FAILED" ]]; do
 done
 
 echo ""
-echo "✅ Catalog fully indexed at $(date) — no failed ids remaining."
+echo "🔎 Verifying index completeness (OpenSearch _count vs DynamoDB count)..."
+set +e
+AWS_REGION="$AWS_REGION" \
+COGNITO_ISSUER_URI="$COGNITO_ISSUER_URI" \
+java -Xmx3g -jar "$JAR" \
+  --server.port=0 \
+  --catalog.search.backend=opensearch \
+  --opensearch.endpoint="$OPENSEARCH_ENDPOINT" \
+  --catalog.reindex.enabled=true \
+  --catalog.reindex.verify-count=true \
+  --dynamodb.catalog-full-table="$CATALOG_FULL_TABLE" 2>&1 | tee -a "$LOG_FILE" | grep -E "Verify"
+VERIFY_EXIT=${pipestatus[1]}
+set -e
+
+echo ""
+if [[ $VERIFY_EXIT -eq 0 ]]; then
+  echo "✅ Catalog fully indexed and VERIFIED complete at $(date)."
+else
+  echo "❌ Verification FAILED at $(date) — the index is short. See $LOG_FILE."
+  echo "   Run the reconciliation backfill: ./scripts/run-catalog-backfill.sh"
+  exit 1
+fi
 echo "   Reindex log:  $LOG_FILE"
-echo "   Verify count next (should be ~2,231,142)."
 exit 0

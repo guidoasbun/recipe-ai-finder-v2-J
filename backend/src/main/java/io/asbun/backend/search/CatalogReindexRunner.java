@@ -69,6 +69,7 @@ public class CatalogReindexRunner implements CommandLineRunner {
     private final String backfillIdsFile;
     private final String failedIdsFile;
     private final boolean pitProbe;
+    private final boolean verifyCount;
 
     public CatalogReindexRunner(CatalogRecipeRepository repository,
                                 OpenSearchClient client,
@@ -81,7 +82,8 @@ public class CatalogReindexRunner implements CommandLineRunner {
                                 @Value("${catalog.reindex.backfill:false}") boolean backfill,
                                 @Value("${catalog.reindex.backfill-ids-file:}") String backfillIdsFile,
                                 @Value("${catalog.reindex.failed-ids-file:}") String failedIdsFile,
-                                @Value("${catalog.reindex.pit-probe:false}") boolean pitProbe) {
+                                @Value("${catalog.reindex.pit-probe:false}") boolean pitProbe,
+                                @Value("${catalog.reindex.verify-count:false}") boolean verifyCount) {
         // Read from the configured catalog table (full table when set, small table otherwise).
         this.repository = repository.forTable(sourceTable);
         this.client = client;
@@ -95,16 +97,68 @@ public class CatalogReindexRunner implements CommandLineRunner {
         this.backfillIdsFile = backfillIdsFile == null ? "" : backfillIdsFile.trim();
         this.failedIdsFile = failedIdsFile == null ? "" : failedIdsFile.trim();
         this.pitProbe = pitProbe;
+        this.verifyCount = verifyCount;
     }
 
     @Override
     public void run(String... args) {
-        if (pitProbe) {
+        if (verifyCount) {
+            runVerifyCount();
+        } else if (pitProbe) {
             runPitProbe();
         } else if (backfill) {
             runBackfill();
         } else {
             runFullReindex();
+        }
+    }
+
+    /**
+     * Completeness check: compares the OpenSearch document count (_count, a confirmed
+     * serverless-supported op) against the DynamoDB item count (id-only scan). Throws (non-zero
+     * exit) on any shortfall, so automation cannot declare success while the index is short.
+     */
+    private void runVerifyCount() {
+        long dynamo = countDynamo();
+        long indexCount = countIndex();
+        log.info("Verify: OpenSearch index has {} doc(s); DynamoDB has {} recipe(s).",
+                indexCount, dynamo);
+        if (indexCount < dynamo) {
+            throw new IllegalStateException("Index is SHORT: " + indexCount + " indexed < "
+                    + dynamo + " in DynamoDB (" + (dynamo - indexCount) + " missing). Run the "
+                    + "reconciliation backfill: ./scripts/run-catalog-backfill.sh");
+        }
+        if (indexCount > dynamo) {
+            log.warn("Index has MORE docs ({}) than DynamoDB ({}) — possible duplicates.",
+                    indexCount, dynamo);
+        }
+        log.info("Verify PASSED: index count {} >= DynamoDB count {}.", indexCount, dynamo);
+    }
+
+    /** DynamoDB item count via a projected (id-only) parallel scan. */
+    private long countDynamo() {
+        java.util.concurrent.atomic.AtomicLong n = new java.util.concurrent.atomic.AtomicLong();
+        repository.scanIdsInPagesParallel(8, page -> n.addAndGet(page.size()));
+        return n.get();
+    }
+
+    /** OpenSearch document count via the _count API (raw generic client). */
+    private long countIndex() {
+        try (var resp = client.generic().execute(
+                org.opensearch.client.opensearch.generic.Requests.builder()
+                        .method("GET")
+                        .endpoint("/" + properties.getIndex() + "/_count")
+                        .build())) {
+            String body = resp.getBody().map(b -> b.bodyAsString()).orElse("");
+            java.util.regex.Matcher m =
+                    java.util.regex.Pattern.compile("\"count\"\\s*:\\s*(\\d+)").matcher(body);
+            if (m.find()) {
+                return Long.parseLong(m.group(1));
+            }
+            throw new IllegalStateException("_count returned no count: HTTP " + resp.getStatus()
+                    + " body=" + body);
+        } catch (IOException e) {
+            throw new IllegalStateException("_count request failed", e);
         }
     }
 
@@ -476,17 +530,42 @@ public class CatalogReindexRunner implements CommandLineRunner {
                 scanned.get(), missingIds.size());
 
         // Now fetch the FULL recipe (with embedding) only for the missing ids — a point read
-        // each, so we pay the big-item cost only for what we actually need to index.
-        List<CatalogRecipe> missing = new ArrayList<>(missingIds.size());
-        long loaded = 0;
-        for (String id : missingIds) {
-            repository.findById(id).ifPresent(missing::add);
-            if (++loaded % 10_000 == 0) {
-                log.info("Backfill reconcile: loaded {}/{} missing recipes from DynamoDB...",
-                        loaded, missingIds.size());
+        // each, so we pay the big-item cost only for what we actually need to index. Parallelized
+        // (the DynamoDB client now has per-attempt timeouts + retries, so a stuck read fails fast
+        // instead of hanging) and thread-safe accumulation.
+        List<CatalogRecipe> missing = java.util.Collections.synchronizedList(
+                new ArrayList<>(missingIds.size()));
+        java.util.concurrent.atomic.AtomicLong loaded = new java.util.concurrent.atomic.AtomicLong();
+        int loaderThreads = 16;
+        java.util.concurrent.ExecutorService loaders =
+                java.util.concurrent.Executors.newFixedThreadPool(loaderThreads);
+        try {
+            List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+            for (String id : missingIds) {
+                futures.add(loaders.submit(() -> {
+                    repository.findById(id).ifPresent(missing::add);
+                    long n = loaded.incrementAndGet();
+                    if (n % 10_000 == 0) {
+                        log.info("Backfill reconcile: loaded {}/{} missing recipes from DynamoDB...",
+                                n, missingIds.size());
+                    }
+                }));
             }
+            for (java.util.concurrent.Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted loading missing recipes", e);
+                } catch (java.util.concurrent.ExecutionException e) {
+                    throw new IllegalStateException("Failed loading a missing recipe", e.getCause());
+                }
+            }
+        } finally {
+            loaders.shutdown();
         }
-        return missing;
+        // Return a plain list (indexing reads it single-threaded).
+        return new ArrayList<>(missing);
     }
 
     /**
@@ -503,9 +582,10 @@ public class CatalogReindexRunner implements CommandLineRunner {
             int emptyOrErr = 0;
             while (true) {
                 final List<FieldValue> after = searchAfter;
+                final String currentPit = pitId;
                 org.opensearch.client.opensearch.core.search.Pit pit =
                         new org.opensearch.client.opensearch.core.search.Pit.Builder()
-                                .id(pitId).keepAlive("5m").build();
+                                .id(currentPit).keepAlive("5m").build();
                 SearchResponse<CatalogRecipe> resp;
                 try {
                     resp = client.search(b -> {
@@ -515,7 +595,14 @@ public class CatalogReindexRunner implements CommandLineRunner {
                                 .trackTotalHits(t -> t.enabled(false))
                                 .source(src -> src.filter(f -> f.includes("catalogRecipeId")))
                                 .query(q -> q.matchAll(m -> m))
+                                // Sort by the unique keyword, with _id as a tiebreaker so
+                                // search_after is a STRICT total order. Without a tiebreaker, any
+                                // duplicate/blank catalogRecipeId could make paging skip or repeat
+                                // a boundary, and skipped ids would look "missing" and get
+                                // re-indexed (a duplicate, since serverless cannot upsert).
                                 .sort(so -> so.field(f -> f.field("catalogRecipeId").order(
+                                        org.opensearch.client.opensearch._types.SortOrder.Asc)))
+                                .sort(so -> so.field(f -> f.field("_id").order(
                                         org.opensearch.client.opensearch._types.SortOrder.Asc)));
                         if (after != null) {
                             b.searchAfter(after);
@@ -530,6 +617,17 @@ public class CatalogReindexRunner implements CommandLineRunner {
                     }
                     log.warn("PIT page failed (attempt {}/5): {} — retrying", emptyOrErr, e.getMessage());
                     sleepQuietly(Math.min(10_000L, 500L * (1L << (emptyOrErr - 1))));
+                    // The PIT may have expired (keep-alive lapsed during a long stall). Recreate
+                    // it and resume from the current search_after cursor — resuming is safe and
+                    // idempotent because ids collect into a Set (a few re-seen ids just no-op).
+                    try {
+                        deletePitQuietly(currentPit);
+                        pitId = createPit();
+                        log.info("Recreated PIT after page failure; resuming from cursor.");
+                    } catch (Exception recreateErr) {
+                        log.warn("PIT recreate failed: {} — will retry with existing pit.",
+                                recreateErr.getMessage());
+                    }
                     continue;
                 }
 
