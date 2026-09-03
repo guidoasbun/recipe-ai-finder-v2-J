@@ -94,7 +94,7 @@ echo ""
 # small ids-file path too.
 AWS_REGION="$AWS_REGION" \
 COGNITO_ISSUER_URI="$COGNITO_ISSUER_URI" \
-java -Xmx2g -jar "$JAR" \
+java -Xmx3g -jar "$JAR" \
   --server.port=0 \
   --catalog.search.backend=opensearch \
   --opensearch.endpoint="$OPENSEARCH_ENDPOINT" \
