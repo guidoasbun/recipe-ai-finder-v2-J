@@ -122,3 +122,83 @@ variable "waf_budget_notification_email" {
   default     = ""
   description = "Email for budget alerts (empty = no budget resource created)"
 }
+
+# --- OpenSearch catalog backend (opt-in) ---
+
+variable "enable_opensearch" {
+  type        = bool
+  default     = false
+  description = "Provision OpenSearch Serverless (NextGen) for catalog search. Off by default (no extra cost)."
+}
+
+variable "enable_catalog_full" {
+  type        = bool
+  default     = false
+  description = "Create the full 2.2M catalog DynamoDB table used by the OpenSearch backend."
+}
+
+variable "enable_batch_embedding" {
+  type        = bool
+  default     = false
+  description = "Provision S3 buckets + Bedrock batch service role for the full 2.2M batch embedding load (Task 10.3). Not needed for the small-catalog reindex validation."
+}
+
+variable "catalog_search_backend" {
+  type        = string
+  default     = "inapp"
+  description = "Catalog search backend the backend service uses: inapp | opensearch."
+}
+
+variable "catalog_search_mode" {
+  type        = string
+  default     = "hybrid"
+  description = "Catalog search mode: keyword | semantic | hybrid."
+}
+
+variable "catalog_semantic_enabled" {
+  type        = bool
+  default     = true
+  description = "Embed queries for semantic (k-NN) ranking."
+}
+
+variable "opensearch_knn_ef_search" {
+  type        = number
+  default     = 100
+  description = "k-NN ef_search: recall/latency tuning for OpenSearch semantic queries. Raise for better recall at higher latency."
+}
+
+variable "opensearch_knn_quantization" {
+  type        = string
+  default     = "none"
+  description = "OpenSearch vector quantization: none | fp16 | byte. Must match the quantization the reindex built the index with (fp16 for the full 2.2M load)."
+}
+
+variable "opensearch_admin_principals" {
+  type        = list(string)
+  default     = []
+  description = "Extra IAM principal ARNs granted ad-hoc data access to the OpenSearch collection (e.g. a personal CLI user for reindex/backfill/debugging). Empty by default (least-privilege). Set in a tfvars file to re-grant CLI access as a version-controlled change instead of manual policy drift."
+}
+
+variable "opensearch_max_search_ocu" {
+  type        = number
+  default     = 8
+  description = "Max search OCUs (cost ceiling). Scale-to-zero keeps the idle minimum at 0."
+}
+
+variable "opensearch_max_indexing_ocu" {
+  type        = number
+  default     = 8
+  description = "Max indexing OCUs (used during reindex). Scale-to-zero keeps the idle minimum at 0."
+}
+
+variable "opensearch_budget_limit_amount" {
+  type        = string
+  default     = "30"
+  description = "Monthly budget (USD) for the OpenSearch/Bedrock billing alarm (~$15 expected)."
+}
+
+variable "opensearch_budget_notification_email" {
+  type        = string
+  default     = ""
+  description = "Email for the OpenSearch budget alert. Empty = no budget resource created."
+}

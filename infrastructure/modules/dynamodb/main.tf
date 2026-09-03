@@ -55,6 +55,25 @@ resource "aws_dynamodb_table" "catalog" {
   }
 }
 
+# Full 2.2M catalog table for the OpenSearch backend (rollback preservation, design §6.0).
+# Opt-in: only created when enable_catalog_full=true, so the standard deployment is unchanged.
+resource "aws_dynamodb_table" "catalog_full" {
+  count        = var.enable_catalog_full ? 1 : 0
+  name         = "${var.project_name}-${var.environment}-catalog-full"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "catalogRecipeId"
+
+  attribute {
+    name = "catalogRecipeId"
+    type = "S"
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-catalog-full"
+    Environment = var.environment
+  }
+}
+
 resource "aws_dynamodb_table" "consent" {
   name         = "${var.project_name}-${var.environment}-consent"
   billing_mode = "PAY_PER_REQUEST"

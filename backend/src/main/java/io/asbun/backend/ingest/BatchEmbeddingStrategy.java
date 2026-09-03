@@ -1,44 +1,314 @@
 package io.asbun.backend.ingest;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.bedrock.BedrockClient;
+import software.amazon.awssdk.services.bedrock.model.CreateModelInvocationJobRequest;
+import software.amazon.awssdk.services.bedrock.model.GetModelInvocationJobRequest;
+import software.amazon.awssdk.services.bedrock.model.GetModelInvocationJobResponse;
+import software.amazon.awssdk.services.bedrock.model.ModelInvocationJobInputDataConfig;
+import software.amazon.awssdk.services.bedrock.model.ModelInvocationJobOutputDataConfig;
+import software.amazon.awssdk.services.bedrock.model.ModelInvocationJobS3InputDataConfig;
+import software.amazon.awssdk.services.bedrock.model.ModelInvocationJobS3OutputDataConfig;
+import software.amazon.awssdk.services.bedrock.model.ModelInvocationJobStatus;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * FUTURE (Phase 2, ~2.2M recipes): embed via Amazon Bedrock <b>Batch Inference</b> instead
- * of the synchronous per-request loop.
+ * Full-dataset embedding via Amazon Bedrock <b>Batch Inference</b>, for the ~2.2M RecipeNLG
+ * load where the synchronous per-request loop ({@link SynchronousEmbeddingStrategy}) would be
+ * RPM-bound and take many hours. Batch inference processes a whole input file asynchronously at
+ * ~50% of on-demand cost.
  *
- * <p>Rationale: at 2.2M recipes the synchronous {@link SynchronousEmbeddingStrategy} is
- * RPM-bound and would take many hours. Batch inference processes a whole input file
- * asynchronously at ~50% of on-demand cost and without per-request rate-limit babysitting.
+ * <p>Lifecycle ({@link #embedAll}): write inputs as JSONL to S3 → submit a
+ * {@code CreateModelInvocationJob} → poll to completion → read the S3 output JSONL and map each
+ * {@code recordId} back to its embedding vector.
  *
- * <p>Intended flow (NOT implemented here — deliberately a scaffold):
- * <ol>
- *   <li>Write all inputs as JSONL to S3, one record per recipe:
- *       {@code {"recordId":"<catalogRecipeId>","modelInput":{"inputText":"<text>"}}}.</li>
- *   <li>Submit a Bedrock {@code CreateModelInvocationJob} pointing at the S3 input/output.</li>
- *   <li>Poll the job until complete.</li>
- *   <li>Read the S3 output JSONL and map each {@code recordId} back to its embedding vector.</li>
- * </ol>
+ * <p>The per-text {@link #embed(String)} contract is intentionally unsupported here: batch
+ * inference is whole-file/async, the wrong granularity for a single call. Ingestion uses
+ * {@link #embedAll} on the batch path; the synchronous strategy remains for catalogs ≤ ~50K.
  *
- * <p>This class is intentionally NOT a Spring {@code @Component}, so it is never selected as
- * the active ingestion strategy in Phase 1. Wire it (and an S3 client + job config) when the
- * full dataset is adopted. See design.md §5.1 and §12.
+ * <p>Only active when {@code catalog.ingest.embedding-strategy=batch}.
  */
 @Slf4j
+@Component
 public class BatchEmbeddingStrategy implements EmbeddingStrategy {
 
-    /**
-     * The synchronous {@link EmbeddingStrategy} contract embeds one text at a time, which is
-     * the wrong granularity for batch inference (whole-file, async). A real batch
-     * implementation would expose a file-oriented API (submit → poll → collect) rather than
-     * per-text {@code embed}. This method is left unimplemented on purpose.
-     */
+    // Bedrock Titan V2 batch quotas (us-east-1): max 100,000 records/job and 1 GB input file.
+    // A single job must respect BOTH; embedAll splits its input into sub-jobs accordingly.
+    private static final int MAX_RECORDS_PER_JOB = 100_000;
+    private static final long MAX_INPUT_BYTES = 950L * 1024 * 1024; // ~950 MB safety margin under 1 GB
+
+    private final S3Client s3Client;
+    private final BedrockClient bedrockClient;
+    private final String modelId;
+    private final String inputBucket;
+    private final String outputBucket;
+    private final String roleArn;
+    private final long pollSeconds;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public BatchEmbeddingStrategy(S3Client s3Client,
+                                  BedrockClient bedrockClient,
+                                  @Value("${bedrock.embedding.model-id}") String modelId,
+                                  @Value("${bedrock.batch.input-bucket:}") String inputBucket,
+                                  @Value("${bedrock.batch.output-bucket:}") String outputBucket,
+                                  @Value("${bedrock.batch.role-arn:}") String roleArn,
+                                  @Value("${bedrock.batch.poll-seconds:60}") long pollSeconds) {
+        this.s3Client = s3Client;
+        this.bedrockClient = bedrockClient;
+        this.modelId = modelId;
+        this.inputBucket = inputBucket;
+        this.outputBucket = outputBucket;
+        this.roleArn = roleArn;
+        this.pollSeconds = pollSeconds;
+    }
+
     @Override
     public List<Double> embed(String text) {
         throw new UnsupportedOperationException(
-                "BatchEmbeddingStrategy is a Phase 2 scaffold for Bedrock Batch Inference. "
-                        + "Use SynchronousEmbeddingStrategy for catalogs up to ~50K. "
-                        + "See design.md §5.1.");
+                "BatchEmbeddingStrategy is whole-file/async; use embedAll(...) for the batch path. "
+                        + "For single-text/query embedding use EmbeddingService, and for catalogs "
+                        + "<= ~50K use SynchronousEmbeddingStrategy.");
+    }
+
+    /**
+     * Embeds all inputs via one or more Bedrock batch jobs, invoking {@code onVector} for each
+     * (recordId, vector) as the output is STREAMED from S3 — vectors are never all held in
+     * memory at once (the batch output is ~4.4 GB per 100K records). Splits into sub-jobs that
+     * each respect the Bedrock limits ({@value #MAX_RECORDS_PER_JOB} records and ~1 GB input
+     * file). A recordId is simply not emitted if the model returned an error for it.
+     *
+     * @param inputs   recordId (deterministic catalogRecipeId) -> text to embed
+     * @param onVector callback per successfully embedded record; must not retain the vector
+     * @return number of vectors emitted
+     */
+    public long embedAll(Map<String, String> inputs, java.util.function.BiConsumer<String, List<Double>> onVector) {
+        requireConfig();
+        long[] emitted = {0};
+
+        List<Map<String, String>> jobs = splitIntoJobs(inputs);
+        log.info("Batch embedding {} records across {} job(s)", inputs.size(), jobs.size());
+
+        int jobNum = 0;
+        for (Map<String, String> jobInputs : jobs) {
+            jobNum++;
+            String jobStamp = Instant.now().toEpochMilli() + "-" + jobNum;
+            String inputKey = "batch-embed/" + jobStamp + "/input.jsonl";
+            String outputPrefix = "batch-embed/" + jobStamp + "/out/";
+
+            uploadInputJsonl(jobInputs, inputKey);
+            String jobArn = submitJob(jobStamp, inputKey, outputPrefix);
+            log.info("Submitted batch job {}/{} ({} records): {}", jobNum, jobs.size(), jobInputs.size(), jobArn);
+
+            waitForCompletion(jobArn);
+            long jobEmitted = collectOutput(outputPrefix, onVector);
+            emitted[0] += jobEmitted;
+            log.info("Job {}/{} produced {} vectors", jobNum, jobs.size(), jobEmitted);
+        }
+
+        log.info("Batch embedding produced {} vectors for {} inputs", emitted[0], inputs.size());
+        return emitted[0];
+    }
+
+    /**
+     * Splits inputs into sub-jobs each within the record-count and input-file-size limits. The
+     * per-record JSONL size is estimated as the record text plus a small fixed overhead for the
+     * JSON envelope.
+     */
+    private List<Map<String, String>> splitIntoJobs(Map<String, String> inputs) {
+        List<Map<String, String>> jobs = new ArrayList<>();
+        Map<String, String> current = new LinkedHashMap<>();
+        long currentBytes = 0;
+
+        for (Map.Entry<String, String> e : inputs.entrySet()) {
+            // Envelope: {"recordId":"...","modelInput":{"inputText":"...","normalize":true}}\n
+            long recordBytes = estimateRecordBytes(e.getKey(), e.getValue());
+            boolean wouldExceed = current.size() >= MAX_RECORDS_PER_JOB
+                    || (currentBytes + recordBytes) > MAX_INPUT_BYTES;
+            if (wouldExceed && !current.isEmpty()) {
+                jobs.add(current);
+                current = new LinkedHashMap<>();
+                currentBytes = 0;
+            }
+            current.put(e.getKey(), e.getValue());
+            currentBytes += recordBytes;
+        }
+        if (!current.isEmpty()) {
+            jobs.add(current);
+        }
+        return jobs;
+    }
+
+    private long estimateRecordBytes(String recordId, String text) {
+        // ~60 bytes of JSON envelope + UTF-8 length of id and text (UTF-8 worst case ~ chars).
+        return 60L + recordId.length()
+                + text.getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    private void requireConfig() {
+        if (inputBucket.isBlank() || outputBucket.isBlank() || roleArn.isBlank()) {
+            throw new IllegalStateException(
+                    "Batch embedding requires bedrock.batch.input-bucket, output-bucket, and role-arn.");
+        }
+    }
+
+    private void uploadInputJsonl(Map<String, String> inputs, String key) {
+        // Stream JSONL to a temp file and upload from disk rather than holding the whole payload
+        // (and a second String/byte copy) in the heap — matters at chunk sizes in the tens of
+        // thousands of records.
+        java.nio.file.Path tmp = null;
+        try {
+            tmp = java.nio.file.Files.createTempFile("batch-embed-", ".jsonl");
+            try (java.io.BufferedWriter w = java.nio.file.Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
+                for (Map.Entry<String, String> e : inputs.entrySet()) {
+                    ObjectNode modelInput = objectMapper.createObjectNode();
+                    modelInput.put("inputText", e.getValue());
+                    modelInput.put("normalize", true);
+
+                    ObjectNode record = objectMapper.createObjectNode();
+                    record.put("recordId", e.getKey());
+                    record.set("modelInput", modelInput);
+
+                    w.write(objectMapper.writeValueAsString(record));
+                    w.write('\n');
+                }
+            }
+            s3Client.putObject(
+                    PutObjectRequest.builder().bucket(inputBucket).key(key).contentType("application/jsonl").build(),
+                    RequestBody.fromFile(tmp));
+            log.info("Uploaded {} batch input records to s3://{}/{}", inputs.size(), inputBucket, key);
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to build/upload batch input", ex);
+        } finally {
+            if (tmp != null) {
+                try {
+                    java.nio.file.Files.deleteIfExists(tmp);
+                } catch (Exception ignore) {
+                    // best-effort temp cleanup
+                }
+            }
+        }
+    }
+
+    private String submitJob(String jobStamp, String inputKey, String outputPrefix) {
+        CreateModelInvocationJobRequest request = CreateModelInvocationJobRequest.builder()
+                .jobName("catalog-embed-" + jobStamp)
+                .modelId(modelId)
+                .roleArn(roleArn)
+                .inputDataConfig(ModelInvocationJobInputDataConfig.builder()
+                        .s3InputDataConfig(ModelInvocationJobS3InputDataConfig.builder()
+                                .s3Uri("s3://" + inputBucket + "/" + inputKey)
+                                .build())
+                        .build())
+                .outputDataConfig(ModelInvocationJobOutputDataConfig.builder()
+                        .s3OutputDataConfig(ModelInvocationJobS3OutputDataConfig.builder()
+                                .s3Uri("s3://" + outputBucket + "/" + outputPrefix)
+                                .build())
+                        .build())
+                .build();
+        return bedrockClient.createModelInvocationJob(request).jobArn();
+    }
+
+    private void waitForCompletion(String jobArn) {
+        while (true) {
+            GetModelInvocationJobResponse job = bedrockClient.getModelInvocationJob(
+                    GetModelInvocationJobRequest.builder().jobIdentifier(jobArn).build());
+            ModelInvocationJobStatus status = job.status();
+            log.info("Batch job status: {}", status);
+            if (status == ModelInvocationJobStatus.COMPLETED) {
+                return;
+            }
+            if (status == ModelInvocationJobStatus.FAILED
+                    || status == ModelInvocationJobStatus.STOPPED
+                    || status == ModelInvocationJobStatus.EXPIRED) {
+                throw new IllegalStateException("Batch job did not complete: " + status
+                        + (job.message() != null ? " (" + job.message() + ")" : ""));
+            }
+            sleep();
+        }
+    }
+
+    private long collectOutput(String outputPrefix, java.util.function.BiConsumer<String, List<Double>> onVector) {
+        long emitted = 0;
+        String continuationToken = null;
+        do {
+            ListObjectsV2Response listing = s3Client.listObjectsV2(ListObjectsV2Request.builder()
+                    .bucket(outputBucket)
+                    .prefix(outputPrefix)
+                    .continuationToken(continuationToken)
+                    .build());
+            for (S3Object obj : listing.contents()) {
+                if (obj.key().endsWith(".jsonl.out") || obj.key().endsWith(".jsonl")) {
+                    emitted += readOutputFile(obj.key(), onVector);
+                }
+            }
+            continuationToken = Boolean.TRUE.equals(listing.isTruncated()) ? listing.nextContinuationToken() : null;
+        } while (continuationToken != null);
+        return emitted;
+    }
+
+    /**
+     * Streams one output file, invoking {@code onVector} per record. The parsed vector is handed
+     * off and released immediately — never accumulated — so a multi-GB output file processes in
+     * flat memory. Returns the number of vectors emitted.
+     */
+    private long readOutputFile(String key, java.util.function.BiConsumer<String, List<Double>> onVector) {
+        long emitted = 0;
+        GetObjectRequest get = GetObjectRequest.builder().bucket(outputBucket).key(key).build();
+        try (ResponseInputStream<?> in = s3Client.getObject(get);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                JsonNode root = objectMapper.readTree(line);
+                String recordId = root.path("recordId").asText(null);
+                if (recordId == null) {
+                    continue;
+                }
+                JsonNode embedding = root.path("modelOutput").path("embedding");
+                if (embedding.isArray() && embedding.size() > 0) {
+                    List<Double> vector = new ArrayList<>(embedding.size());
+                    embedding.forEach(v -> vector.add(v.asDouble()));
+                    onVector.accept(recordId, vector);
+                    emitted++;
+                } else {
+                    log.warn("No embedding for recordId {} (error or empty output)", recordId);
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to read batch output " + key, e);
+        }
+        return emitted;
+    }
+
+    private void sleep() {
+        try {
+            Thread.sleep(pollSeconds * 1000L);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while polling batch job", e);
+        }
     }
 }

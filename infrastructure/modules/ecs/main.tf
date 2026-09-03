@@ -46,11 +46,19 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "DYNAMODB_USERS_TABLE", value = var.dynamodb_users_table },
       { name = "DYNAMODB_RECIPES_TABLE", value = var.dynamodb_recipes_table },
       { name = "DYNAMODB_CATALOG_TABLE", value = var.dynamodb_catalog_table },
+      { name = "DYNAMODB_CATALOG_FULL_TABLE", value = var.dynamodb_catalog_full_table != "" ? var.dynamodb_catalog_full_table : var.dynamodb_catalog_table },
       { name = "DYNAMODB_CONSENT_TABLE", value = var.dynamodb_consent_table },
       { name = "DYNAMODB_AUDIT_TABLE", value = var.dynamodb_audit_table },
       { name = "COGNITO_USER_POOL_ID", value = var.cognito_user_pool_id },
       { name = "S3_BUCKET", value = var.s3_bucket },
-      { name = "CORS_ALLOWED_ORIGINS", value = "https://${var.domain_name}" }
+      { name = "CORS_ALLOWED_ORIGINS", value = "https://${var.domain_name}" },
+      { name = "CATALOG_SEARCH_BACKEND", value = var.catalog_search_backend },
+      { name = "CATALOG_SEARCH_MODE", value = var.catalog_search_mode },
+      { name = "CATALOG_SEMANTIC", value = tostring(var.catalog_semantic_enabled) },
+      { name = "OPENSEARCH_ENDPOINT", value = var.opensearch_endpoint },
+      { name = "OPENSEARCH_INDEX", value = var.opensearch_index },
+      { name = "OPENSEARCH_KNN_EF_SEARCH", value = tostring(var.opensearch_knn_ef_search) },
+      { name = "OPENSEARCH_KNN_QUANTIZATION", value = var.opensearch_knn_quantization }
     ]
 
     secrets = [

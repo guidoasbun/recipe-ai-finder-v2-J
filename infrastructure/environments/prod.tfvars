@@ -26,3 +26,8 @@ waf_alarm_sns_topic_arn              = ""
 waf_blocked_requests_alarm_threshold = 1000
 waf_budget_limit_amount              = "50"
 waf_budget_notification_email        = ""
+
+# NOTE: OpenSearch catalog search is NOT enabled for prod. It was built, loaded (2.2M), and
+# cut over in DEV only (see environments/dev.tfvars). Enabling it here would provision an EMPTY
+# prod collection and flip prod search to it — do NOT set enable_opensearch/catalog_search_backend
+# for prod until a full prod load + reindex + parity verification has been run.
