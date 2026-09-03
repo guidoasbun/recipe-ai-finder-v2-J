@@ -309,13 +309,20 @@ public class CatalogReindexRunner implements CommandLineRunner {
                     break;
                 }
                 log.info("Retrying {} throttled/failed items (attempt {}/{})", retry.size(), attempt + 1, maxAttempts);
-            } catch (IOException e) {
+            } catch (Exception e) {
+                // Catches BOTH IOException AND OpenSearchException — crucially the latter carries
+                // whole-request throttling as HTTP 429 (and the serverless "[throttled]" 503).
+                // Without this, a 429 on the entire bulk request would escape flushBatch entirely:
+                // it would neither be retried NOR have its ids recorded to the failed-ids file,
+                // so the backfill could never recover those documents.
                 if (attempt == maxAttempts) {
                     recordFailed(pending, counters, failedIds);
                     log.warn("Bulk request of {} items failed after {} attempts: {}",
                             pending.size(), maxAttempts, e.getMessage());
                     break;
                 }
+                log.warn("Bulk request of {} items failed (attempt {}/{}): {} — retrying",
+                        pending.size(), attempt, maxAttempts, e.getMessage());
                 retry = pending; // whole request failed; retry all
             }
             // Backoff before the next attempt: exponential, capped. A larger cap (backfill) lets
