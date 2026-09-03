@@ -457,3 +457,297 @@ Other durable lessons:
 > **Outstanding (Task 10.5):** search parity/perf verification at 2.2M, `ef-search`/OCU tuning,
 > the production cutover (`catalog.search.backend=opensearch`), removing the temporary CLI
 > data‑access principal, and the final RUNBOOK update. The index itself is complete and verified.
+
+---
+
+## 9. The cutover session — completing Task 10.5
+
+This section records the full dev cutover session (2026-09-03): finishing task 10.5, every issue
+encountered, and how each was resolved. The index was already built and verified (§5); this was
+about making the live service actually use it.
+
+### 9.1 IaC gap: search-tuning knobs not injectable via Terraform
+
+**Problem:** the four search-tuning knobs — `catalog.search.mode`, `catalog.search.semantic-enabled`,
+`opensearch.knn.ef-search`, and `opensearch.knn.quantization` — had env-var overrides in
+`application.properties` but were **not plumbed through the ECS task definition**. Only
+`CATALOG_SEARCH_BACKEND`, `OPENSEARCH_ENDPOINT`, and `OPENSEARCH_INDEX` were injected. That meant
+a production cutover couldn't pin `fp16` quantization (which must match the index) or tune
+`ef-search` — the values would be stuck at their `application.properties` defaults.
+
+**Fix:** wired all four through: `modules/ecs/variables.tf` (new variables),
+`modules/ecs/main.tf` (new env vars `CATALOG_SEARCH_MODE`, `CATALOG_SEMANTIC`,
+`OPENSEARCH_KNN_EF_SEARCH`, `OPENSEARCH_KNN_QUANTIZATION`), `infrastructure/variables.tf`
+(root vars), `infrastructure/main.tf` (module wiring). `terraform validate` / `fmt` clean,
+backend `./mvnw compile` clean.
+
+### 9.2 Parity re-verification at 2.2M (the verifier run)
+
+Ran `CatalogSearchVerifyRunner` against the live 2.2M OpenSearch index to confirm parity before
+the cutover:
+
+```
+java -jar target/backend-0.0.1-SNAPSHOT.jar \
+  --spring.profiles.active=local --server.port=0 \
+  --catalog.search.backend=opensearch \
+  --opensearch.endpoint=https://o2dmi7wacuk8u8y9pbm6.us-east-1.aoss.amazonaws.com \
+  --opensearch.knn.quantization=fp16 \
+  --dynamodb.catalog-full-table=recipe-ai-dev-catalog-full \
+  --catalog.verify.enabled=true
+```
+
+**Issue — app fails to start: `Could not resolve placeholder 'COGNITO_ISSUER_URI'`.** The
+full Spring context (including the OAuth2 security layer) boots even for the verifier. Locally,
+`COGNITO_ISSUER_URI` isn't in the environment (it's set by ECS or the `local` profile).
+
+**Fix:** add `--spring.profiles.active=local` to the command — the `application-local.properties`
+provides `COGNITO_ISSUER_URI` and dev-table config.
+
+**Issue — `./mvnw -pl backend package` fails.** The user ran the command from inside `backend/`
+and passed `-pl backend`, but `-pl` selects a reactor module — when you're already inside the
+module directory, there's no `backend` submodule in the reactor.
+
+**Fix:** from inside `backend/`, drop the `-pl` flag: `./mvnw clean package -DskipTests`. Or
+run from the repo root with `-pl backend`.
+
+**Verifier results (all passed):**
+- browse total = **2,231,142** (exact match to DynamoDB)
+- keyword 'chicken' = 305,634
+- semantic "warm and comforting for a cold night" → top hits: "Beef Stew For A Cold, Cold Night",
+  "Pumpkin Laksa for a Cold Night", etc.
+- VEGAN filter = 370,699, `allTaggedVegan=true`
+- pagination: pages non-overlapping
+- findById: present returns recipe, missing returns empty
+- latency: sub-second (collection was warm)
+
+### 9.3 Terraform cutover — issues and resolution
+
+#### 9.3.1 `dev.tfvars` vs `prod.tfvars` discovery
+
+**Problem:** the project uses per-environment tfvars files (`infrastructure/environments/dev.tfvars`
+and `prod.tfvars`), not ad-hoc `-var` flags. The RUNBOOK's cutover commands used `-var` flags,
+which would be overridden by a subsequent `apply -var-file=` that didn't include them — silently
+reverting the cutover. Neither tfvars file had any of the OpenSearch cutover variables set.
+
+**Fix:** added the cutover block to `dev.tfvars`:
+```hcl
+enable_opensearch       = true
+enable_catalog_full     = true
+enable_batch_embedding  = true
+catalog_search_backend  = "opensearch"
+opensearch_knn_quantization  = "fp16"
+opensearch_knn_ef_search     = 100
+opensearch_budget_notification_email = "guido@asbun.io"
+```
+
+#### 9.3.2 `prod.tfvars` had the cutover block too — dangerous
+
+**Problem:** someone (a prior session or copy-paste) had added the full OpenSearch cutover block
+to `prod.tfvars`. Since there is **no prod OpenSearch index** (everything was built in dev), a
+`terraform apply -var-file=prod.tfvars` would provision an empty prod collection and flip the prod
+backend to `opensearch` against that empty index — broken prod search, silent.
+
+**Fix:** removed the cutover block from `prod.tfvars` and added a guard comment:
+```
+# NOTE: OpenSearch catalog search is NOT enabled for prod. Enabling it here would provision
+# an EMPTY prod collection — do NOT set enable_opensearch/catalog_search_backend for prod
+# until a full prod load + reindex + parity verification has been run.
+```
+
+#### 9.3.3 Terraform state lock
+
+**Problem:** `terraform plan` errored with `Error acquiring the state lock`. A prior `terraform
+plan` process had been **suspended** (Ctrl-Z, state `T` in `ps`) and still held the DynamoDB lock.
+
+**Fix:**
+1. `kill 43085` (SIGTERM) — did not work; a suspended process can't receive SIGTERM.
+2. `kill -9 43085` (SIGKILL) — killed the process, but SIGKILL skips Terraform's cleanup handler
+   so the DynamoDB lock row remained.
+3. `terraform force-unlock 495efa1c-a8bd-6b95-d912-237db1437c99` — released the stale lock.
+
+**Lesson:** always `kill -9` a stopped (state `T`) terraform process, then follow with
+`force-unlock` because the cleanup handler never ran.
+
+#### 9.3.4 Unscoped plan brings unwanted drift
+
+**Problem:** a plain `terraform plan -var-file=dev.tfvars` included:
+- The intended cutover (ECS env vars, data-access policy).
+- **7 destroys** of the Bedrock batch embedding infra (S3 buckets, IAM role) because
+  `enable_batch_embedding` wasn't set in `dev.tfvars`.
+- A `CHANGE_ME@example.com` placeholder clobbering the live budget email (`guido@asbun.io`).
+- Unrelated **Cognito** drift (Google `token_url` changed out of band) and **WAF** drift
+  (bot-control `enable_machine_learning` false→true, rules recreated).
+
+**Fix (multi-part):**
+1. Set `enable_batch_embedding = true` in `dev.tfvars` (keeps the near-zero-cost batch infra).
+2. Set `opensearch_budget_notification_email = "guido@asbun.io"` (matches live).
+3. Used a **scoped saved plan** (`-target=...ecs_task_definition.backend -target=...ecs_service.backend
+   -target=...access_policy.data -target=...budgets_budget.opensearch -out=cutover.tfplan`)
+   to exclude the WAF/Cognito drift.
+
+#### 9.3.5 `-target` couldn't separate the policy change from the ECS cutover
+
+**Problem:** tried to exclude the data-access-policy target (to keep `rodrigo-cli`'s collection
+access until after the smoke test) but `-target` includes **dependencies** — the data policy was
+in the dependency closure of the ECS targets, so it appeared in the plan regardless.
+
+**Resolution:** accepted the policy change in the same apply. `rodrigo-cli` removal was the
+correct end state anyway (least-privilege). Mitigated the "no CLI access for post-cutover debug"
+concern by building a **codified re-grant path**: `admin_principals` variable (see §9.4).
+
+### 9.4 Codified `admin_principals` for ad-hoc CLI access
+
+**Context:** removing `rodrigo-cli` from the data-access policy was correct (least-privilege,
+Requirement 7.5), but it also removed the ability to run local scripts or the verifier against
+the collection. The prior approach (manual CLI policy edits) was undocumented drift — the exact
+thing that caused confusion during the reindex (§4 Mistake #5).
+
+**Solution:** added an `admin_principals` variable to the `opensearch` module:
+- `modules/opensearch/variables.tf`: `variable "admin_principals" { type = list(string), default = [] }`
+- `modules/opensearch/main.tf`: data policy `Principal = concat([var.task_role_arn], var.admin_principals)`
+- Root `variables.tf` + `main.tf`: `opensearch_admin_principals` wired through.
+- `dev.tfvars`: commented-out example showing how to re-grant:
+  ```hcl
+  # opensearch_admin_principals = ["arn:aws:iam::412381751532:user/rodrigo-cli"]
+  ```
+
+With `admin_principals = []` (default), only the ECS task role has access — the secure state.
+Re-granting is a one-line, version-controlled config change + apply, not manual policy drift.
+
+### 9.5 The apply
+
+Applied the scoped saved plan:
+```
+terraform apply "cutover.tfplan"
+```
+Result: `Apply complete! Resources: 1 added, 2 changed, 1 destroyed.`
+- ECS task def `:8` created with `CATALOG_SEARCH_BACKEND=opensearch` + tuning env vars.
+- ECS service updated to `:8`.
+- Data-access policy updated: `rodrigo-cli` removed.
+- Rollout: `COMPLETED`, `runningCount=1`, `desiredCount=1`, `failedTasks=0`.
+
+### 9.6 The stale-image discovery — why the first smoke test returned 64 results
+
+**Problem:** after the terraform cutover, the `/browse` "chicken" search returned **64 results**
+(same as the small in-app catalog), not the expected 305,634+. The cutover appeared broken.
+
+**Investigation:** the ECS task log revealed the root cause:
+```
+WARN CatalogSearchConfig : catalog.search.backend=opensearch requested but no OpenSearch
+backend is implemented yet; falling back to in-app search.
+INFO InAppCatalogSearchService : Loaded 1261 catalog recipes into in-app search cache
+```
+
+That `"no OpenSearch backend is implemented yet; falling back to in-app"` message was the
+**old stubbed `CatalogSearchConfig`** — the warn-and-fallback stub from before the OpenSearch
+feature was built (replaced by Task 4.1 on the `OpenSearch` branch). The env var was correctly
+set to `opensearch`, but the **running Docker image** was built from `main` before the branch
+was merged — it didn't contain `OpenSearchCatalogSearchService` or the real `CatalogSearchConfig`.
+It could only fall back to in-app.
+
+**Resolution:** this is not an infra or config problem — the image was stale. **Merging the
+`OpenSearch` branch to `main`** triggered the deploy workflow, which built a fresh image from the
+merged code containing the real OpenSearch implementation. After the deploy rolled:
+```
+INFO OpenSearchConfig    : Configuring OpenSearch client: host=o2dmi7wacuk8u8y9pbm6...
+INFO CatalogSearchConfig : Using OpenSearch catalog search backend.
+```
+
+No more fallback stub. The "chicken" search then returned **1,185,230 results** (hybrid mode:
+keyword + semantic, which returns more than keyword-only's 305,634).
+
+**Lesson:** the Terraform cutover (env vars) and the code deploy (Docker image) are **two
+separate steps** in this architecture. The cutover sets `CATALOG_SEARCH_BACKEND=opensearch` on
+the task def, but the running image must contain the code that honors it. When the code is on a
+feature branch and the running image was built from `main`, the env var has no effect until the
+branch is merged and deployed. The correct sequence is: cutover the config → merge the code →
+confirm the deployed image logs the real backend selection.
+
+### 9.7 `.gitignore` inconsistency
+
+**Problem:** `infrastructure/environments/*.tfvars` was in `.gitignore`, but both `dev.tfvars`
+and `prod.tfvars` were **already tracked** (committed earlier in the branch). `.gitignore` only
+prevents tracking of *new* files — once a file is committed, the ignore rule has no effect.
+This created a false sense that tfvars were protected; someone could drop a raw secret into a
+tracked tfvars file and it would be committed normally.
+
+**Fix:** removed the misleading `infrastructure/environments/*.tfvars` line from `.gitignore`
+and replaced it with a comment explaining the files are intentionally tracked and must contain
+only non-secret values (Secrets Manager ARNs, SSM paths). Also added `*.tfplan` to `.gitignore`
+(the saved plan file was untracked but would have been committed on a broad `git add`).
+
+### 9.8 Secret hygiene audit before merge
+
+Ran a full check before pushing:
+- `.env*`, `*.pem`, `*credentials*`, `**/*secret*`, `.aws/`, `application-local.properties` — all
+  gitignored.
+- `application-local.properties` (contains real Cognito issuer) — confirmed **not tracked**.
+- The pending diff scanned for raw key patterns (AKIA..., sk-..., AIza..., PEM blocks, inline
+  passwords) — `NO_RAW_SECRETS_FOUND`.
+- tfvars files contain only ARNs, SSM paths, and non-secret config.
+- Pre-commit secret-scanning hook exists in `.githooks/`.
+
+### 9.9 The merge and deploy
+
+- PR #41 ("OpenSearch catalog search backend + dev cutover") — 36 commits, base `main`.
+- Updated title and description via `gh pr edit` with the full feature summary.
+- Merged to `main` → GitHub Actions deploy workflow built/pushed fresh backend + frontend images
+  and ran `force-new-deployment` on ECS.
+- Deploy workflow does **not** run `terraform apply` — it ships code/images only. The Terraform
+  cutover (env vars, policies) was already applied manually and persists in the task def.
+- Confirmed: new task `16fc2c95...` started at 18:48 UTC, logs
+  `Using OpenSearch catalog search backend` — the real code, not the fallback stub.
+- Rollout completed: single `PRIMARY` deployment, `runningCount=1`, 0 failed.
+
+### 9.10 End-to-end smoke test — confirmed
+
+Logged into `https://recipe-ai-finder.com`, opened `/browse`, searched "chicken" →
+**1,185,230 results** returned through the full path:
+```
+browser → Next.js proxy (attaches JWT) → rewrite (BACKEND_URL=https://recipe-ai-finder.com)
+  → ALB → ECS backend :8 (CATALOG_SEARCH_BACKEND=opensearch)
+  → CatalogController → OpenSearchCatalogSearchService → OpenSearch (2.2M index)
+```
+
+The 1,185,230 vs the verifier's 305,634 is expected: the deployed app runs in **hybrid** mode
+(keyword + semantic k-NN, `minimum_should_match=1`), which returns any recipe matching either
+clause. The verifier ran each mode separately. Both numbers are correct for their mode.
+
+DNS confirmed: `recipe-ai-finder.com` resolves to the same IPs as the dev ALB
+(`recipe-ai-dev-alb-2025002285...`).
+
+### 9.11 Why OpenSearch doesn't work in local (post-cutover)
+
+Two reasons, both by design:
+
+1. **Config:** `catalog.search.backend` defaults to `inapp`; the `local` profile doesn't override
+   it. So a plain local run uses the in-app backend (small catalog).
+2. **Auth:** even if forced to `opensearch`, the local machine authenticates as `rodrigo-cli`,
+   which was **removed from the data-access policy** at cutover (least-privilege). The collection
+   rejects it with 403. Re-granting is a one-line `opensearch_admin_principals` change + apply
+   (§9.4), but this is intentional — local doesn't need standing collection access.
+
+The correct way to test the OpenSearch cutover is through the **deployed app** (which
+authenticates as the ECS task role, still in the policy), not locally.
+
+---
+
+## 10. Final state (post-cutover, 2026-09-03)
+
+| Component | State |
+|---|---|
+| OpenSearch index | `catalog-recipes`, 2,231,142 docs (== DynamoDB, verified) |
+| Quantization | `fp16` (Faiss scalar, ~half vector memory vs float) |
+| ECS task def | `:8`, `CATALOG_SEARCH_BACKEND=opensearch`, all tuning env vars injected |
+| ECS deployment | `COMPLETED`, 1/1 running, 0 failed |
+| Data-access policy | `[task_role_arn]` only (least-privilege); `admin_principals=[]` |
+| Budget alarm | `guido@asbun.io`, $30 limit, 80% actual / 100% forecast alerts |
+| OCU caps | indexing 8 / search 8 (CLI-set) |
+| `dev.tfvars` | OpenSearch enabled, `fp16`, batch infra kept, budget email set |
+| `prod.tfvars` | OpenSearch **not** enabled (guard note) |
+| Branch | `OpenSearch` merged to `main` (PR #41, 36 commits) |
+| Rollback | `catalog_search_backend=inapp` in `dev.tfvars` + apply (reads small table) |
+| CLI access | Removed; re-grantable via `opensearch_admin_principals` in tfvars |
+
+The OpenSearch catalog search migration is complete. 2.2M recipes are live and searchable via
+keyword, semantic, and dietary-filter search through the deployed app.
