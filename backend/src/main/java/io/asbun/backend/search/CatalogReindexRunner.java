@@ -451,9 +451,11 @@ public class CatalogReindexRunner implements CommandLineRunner {
         Set<String> indexed = fetchIndexedIds();
         log.info("Backfill reconcile: {} catalogRecipeId(s) currently in the index.", indexed.size());
 
-        List<CatalogRecipe> missing = new ArrayList<>();
+        // Cheap id-only scan (projects catalogRecipeId, NOT the ~13 KB embedding) to find which
+        // ids are missing. Transfers ~tens of MB instead of the table's ~29 GB.
+        List<String> missingIds = new ArrayList<>();
         long[] scanned = {0};
-        repository.scanInPages(page -> {
+        repository.scanIdsInPages(page -> {
             for (CatalogRecipe r : page) {
                 scanned[0]++;
                 String id = r.getCatalogRecipeId();
@@ -461,12 +463,24 @@ public class CatalogReindexRunner implements CommandLineRunner {
                     continue;
                 }
                 if (!indexed.contains(id)) {
-                    missing.add(r);
+                    missingIds.add(id);
                 }
             }
         });
         log.info("Backfill reconcile: scanned {} recipe(s) in DynamoDB, {} missing from the index.",
-                scanned[0], missing.size());
+                scanned[0], missingIds.size());
+
+        // Now fetch the FULL recipe (with embedding) only for the missing ids — a point read
+        // each, so we pay the big-item cost only for what we actually need to index.
+        List<CatalogRecipe> missing = new ArrayList<>(missingIds.size());
+        long loaded = 0;
+        for (String id : missingIds) {
+            repository.findById(id).ifPresent(missing::add);
+            if (++loaded % 10_000 == 0) {
+                log.info("Backfill reconcile: loaded {}/{} missing recipes from DynamoDB...",
+                        loaded, missingIds.size());
+            }
+        }
         return missing;
     }
 

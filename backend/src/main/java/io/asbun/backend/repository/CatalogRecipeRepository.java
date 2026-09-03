@@ -135,4 +135,19 @@ public class CatalogRecipeRepository {
     public void scanInPages(java.util.function.Consumer<List<CatalogRecipe>> pageConsumer) {
         table.scan().stream().forEach(page -> pageConsumer.accept(page.items()));
     }
+
+    /**
+     * Scans the table page-by-page but PROJECTS ONLY {@code catalogRecipeId}, so the large
+     * embedding attribute is never transferred. On the full catalog this is the difference
+     * between moving ~29 GB (whole items) and a few tens of MB (ids only) — essential for the
+     * reconciliation that just needs to know which ids exist. Each returned {@link CatalogRecipe}
+     * has only its id populated; all other fields are null.
+     */
+    public void scanIdsInPages(java.util.function.Consumer<List<CatalogRecipe>> pageConsumer) {
+        table.scan(software.amazon.awssdk.enhanced.dynamodb.model.ScanEnhancedRequest.builder()
+                        .attributesToProject("catalogRecipeId")
+                        .build())
+                .stream()
+                .forEach(page -> pageConsumer.accept(page.items()));
+    }
 }
