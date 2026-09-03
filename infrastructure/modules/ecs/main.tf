@@ -53,8 +53,12 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "S3_BUCKET", value = var.s3_bucket },
       { name = "CORS_ALLOWED_ORIGINS", value = "https://${var.domain_name}" },
       { name = "CATALOG_SEARCH_BACKEND", value = var.catalog_search_backend },
+      { name = "CATALOG_SEARCH_MODE", value = var.catalog_search_mode },
+      { name = "CATALOG_SEMANTIC", value = tostring(var.catalog_semantic_enabled) },
       { name = "OPENSEARCH_ENDPOINT", value = var.opensearch_endpoint },
-      { name = "OPENSEARCH_INDEX", value = var.opensearch_index }
+      { name = "OPENSEARCH_INDEX", value = var.opensearch_index },
+      { name = "OPENSEARCH_KNN_EF_SEARCH", value = tostring(var.opensearch_knn_ef_search) },
+      { name = "OPENSEARCH_KNN_QUANTIZATION", value = var.opensearch_knn_quantization }
     ]
 
     secrets = [

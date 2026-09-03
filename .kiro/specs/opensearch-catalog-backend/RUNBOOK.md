@@ -49,11 +49,21 @@ Terraform (`infrastructure/variables.tf`):
 |---|---|---|
 | `enable_opensearch` | `false` | Provision the serverless collection + policies |
 | `enable_catalog_full` | `false` | Create the full 2.2M DynamoDB table |
-| `catalog_search_backend` | `inapp` | Backend env var injected into ECS |
+| `catalog_search_backend` | `inapp` | Backend env var injected into ECS (`CATALOG_SEARCH_BACKEND`) |
+| `catalog_search_mode` | `hybrid` | Search mode injected into ECS (`CATALOG_SEARCH_MODE`): `keyword` \| `semantic` \| `hybrid` |
+| `catalog_semantic_enabled` | `true` | Embed queries for semantic ranking (`CATALOG_SEMANTIC`) |
+| `opensearch_knn_ef_search` | `100` | k-NN `ef_search` recall/latency tuning (`OPENSEARCH_KNN_EF_SEARCH`) |
+| `opensearch_knn_quantization` | `none` | Vector quantization (`OPENSEARCH_KNN_QUANTIZATION`): `none` \| `fp16` \| `byte`. **Must match the index the reindex built** (`fp16` for the full 2.2M load) |
 | `opensearch_max_search_ocu` | `8` | Max search OCUs (cost ceiling — applied via CLI, §3) |
 | `opensearch_max_indexing_ocu` | `8` | Max indexing OCUs (cost ceiling — applied via CLI) |
 | `opensearch_budget_limit_amount` | `30` | Monthly budget alarm limit (USD) |
 | `opensearch_budget_notification_email` | (blank) | Budget alert email (blank = no budget) |
+
+> **ECS now injects the search-tuning knobs.** `catalog_search_mode`, `catalog_semantic_enabled`,
+> `opensearch_knn_ef_search`, and `opensearch_knn_quantization` are wired through the ECS module
+> (Task 10.5), so tuning them is a `terraform apply` on the running service — no image rebuild.
+> `opensearch_knn_quantization` shapes the k-NN query encoder at serve time, so keep it equal to
+> the quantization the index was built with (`fp16` at 2.2M); a mismatch degrades recall.
 
 ---
 
@@ -118,16 +128,26 @@ Safe to re-run (idempotent upsert by `catalogRecipeId`).
 
 ### 3.5 Verify parity (§5), then cut over
 
-Once parity checks pass, flip the running service to the OpenSearch backend:
+Once parity checks pass, flip the running service to the OpenSearch backend. At full scale
+(2.2M) also pin the quantization to match the built index and set the desired `ef_search`:
 
 ```
 terraform apply -var 'enable_opensearch=true' -var 'enable_catalog_full=true' \
   -var 'catalog_search_backend=opensearch' \
+  -var 'opensearch_knn_quantization=fp16' \
+  -var 'opensearch_knn_ef_search=100' \
   -var 'opensearch_budget_notification_email=you@example.com'
 ```
 
-(ECS injects `CATALOG_SEARCH_BACKEND=opensearch` + `OPENSEARCH_ENDPOINT`.) The controller,
-DTOs, and frontend are unchanged — only the backend selection differs.
+(ECS injects `CATALOG_SEARCH_BACKEND=opensearch`, `OPENSEARCH_ENDPOINT`, `CATALOG_SEARCH_MODE`,
+`CATALOG_SEMANTIC`, `OPENSEARCH_KNN_EF_SEARCH`, and `OPENSEARCH_KNN_QUANTIZATION`.) The
+controller, DTOs, and frontend are unchanged — only the backend selection differs.
+
+**Tuning `ef_search`:** it trades recall for latency on semantic/hybrid queries. Start at `100`;
+raise (e.g. `200`, `500`) if semantic recall looks thin at 2.2M, lower if p95 latency is too
+high. It is a serve-time query parameter, so changing it is a `terraform apply` — no reindex.
+Confirm the OCU cap (search/indexing `8`/`8`, §3.2) and that observed spend stays under the
+budget threshold (§6) after cutover.
 
 ---
 
@@ -273,3 +293,79 @@ This migration does not change:
 
 The `CatalogSearchService` interface, `CatalogRecipeDto`, `CatalogController`, and the frontend
 are unchanged — switching backends is a configuration change only.
+
+---
+
+## 9. Full-scale cutover state (Task 10.5)
+
+The full 2.2M index is **built and verified**: OpenSearch `_count` = DynamoDB item count =
+**2,231,142** (exact, 0 missing / 0 duplicates), confirmed by `catalog.reindex.verify-count`.
+See the post-mortem in `documents/opensearch-implementation.md` for how the index was completed
+(serverless throttling, no-upsert reconciliation via PIT + `search_after`, client timeouts).
+
+Environment (dev): AWS account `412381751532`, `us-east-1`; collection index `catalog-recipes`,
+signing service `aoss`; source of truth `recipe-ai-dev-catalog-full`; OCU caps 8/8;
+embeddings Titan Text V2 (1024-dim, fp16 in the index).
+
+### 9.1 Status: DEV cut over to OpenSearch (done)
+
+- **Dev is live on OpenSearch.** `terraform apply` (scoped saved plan) flipped the dev ECS backend
+  to `CATALOG_SEARCH_BACKEND=opensearch` with the tuning env vars, and removed the temporary
+  `rodrigo-cli` data-access principal. Parity re-verified at 2.2M (browse total 2,231,142, keyword,
+  semantic, VEGAN filter, pagination, findById all good).
+- **Prod is intentionally NOT cut over** — the index + data live in dev only. `prod.tfvars` leaves
+  OpenSearch disabled (with a guard note); a prod cutover requires a full prod load + reindex +
+  verify first.
+- The search-tuning knobs (`catalog_search_mode`, `catalog_semantic_enabled`,
+  `opensearch_knn_ef_search`, `opensearch_knn_quantization`) are injected by the ECS module, so
+  tuning them is a `terraform apply` — no image rebuild (§2 table, §3.5).
+- CLI data access is codified via `opensearch_admin_principals` (empty = least-privilege).
+
+### 9.2 The cutover steps (performed for dev; the reference for a future prod cutover)
+
+Run these against the live account in order (require credentials + the running service):
+
+1. **Re-verify parity + performance at 2.2M.** Run the built-in verifier against the full index:
+   ```
+   java -jar backend/target/backend-0.0.1-SNAPSHOT.jar \
+     --catalog.search.backend=opensearch \
+     --opensearch.endpoint=<collection-endpoint> \
+     --opensearch.knn.quantization=fp16 \
+     --dynamodb.catalog-full-table=recipe-ai-dev-catalog-full \
+     --catalog.verify.enabled=true
+   ```
+   Confirm keyword, semantic (natural-language), dietary VEGAN filter, browse total ≈ 2,231,142,
+   pagination (no page overlap), and findById (present + missing). Note p95 latency for the first
+   (cold-start) query vs. warm.
+
+2. **Tune `ef_search` / confirm the OCU cap.** If semantic recall looks thin, raise
+   `opensearch_knn_ef_search` (200/500) via `terraform apply` and re-check; watch latency.
+   Confirm the account OCU cap is 8/8:
+   ```
+   aws opensearchserverless get-account-settings
+   ```
+   (re-apply the §3.2 command if it drifted).
+
+3. **Cut over.** `terraform apply` with `catalog_search_backend=opensearch` and the tuning vars
+   (§3.5). Smoke-test `/browse` in the app.
+
+4. **CLI data-access principal — now codified (DONE).** During the reindex/backfill a personal
+   CLI user (`rodrigo-cli`) was granted data-plane access out-of-band. The cutover apply removed
+   it, and the data-access policy is now `concat([var.task_role_arn], var.admin_principals)` with
+   `admin_principals=[]` — least-privilege, only the ECS task role has access (Requirement 7.5).
+
+   **To re-grant ad-hoc CLI/local access later** (reindex, backfill, debugging), do NOT edit the
+   policy by hand. Set the principal in a tfvars file and apply, so the grant is version-controlled:
+   ```hcl
+   # environments/dev.tfvars (example is commented there)
+   opensearch_admin_principals = ["arn:aws:iam::412381751532:user/rodrigo-cli"]
+   ```
+   ```
+   terraform apply -var-file=environments/dev.tfvars
+   ```
+   The principal also needs `aoss:APIAccessAll` on its IAM side. Remove it again by clearing the
+   list and re-applying. (aoss caps a data-access policy at 20 principals.)
+
+5. **Final verification after cutover.** Re-run the verifier (step 1) pointed at the deployed
+   service path, or exercise `/browse` manually; confirm the budget alarm email is active and
+   observed spend tracks the ~$15/mo estimate.

@@ -22,6 +22,12 @@ variable "task_role_name" {
   description = "ECS task role name, used in the data-access policy principal list."
 }
 
+variable "admin_principals" {
+  type        = list(string)
+  default     = []
+  description = "Extra IAM principal ARNs (e.g. a personal CLI user/role) granted data access to the collection for ad-hoc reindex/backfill/debugging. Empty by default (least-privilege: only the ECS task role has access). Add an ARN here to re-grant CLI access via a version-controlled change instead of manual drift; a principal also needs aoss:APIAccessAll on its IAM side. Note: aoss caps a data-access policy at 20 principals."
+}
+
 variable "collection_name" {
   type        = string
   default     = ""

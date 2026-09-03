@@ -184,7 +184,8 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         in-app backend remains selectable.
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 9.1, 9.2, 9.3_
 
-- [x] 10. Full 2.2M RecipeNLG load — CODE complete; the AWS run (10.3–10.5) is operator-invoked
+- [x] 10. Full 2.2M RecipeNLG load — CODE/IaC/DOC complete (incl. 10.5 tuning-knob wiring +
+      RUNBOOK); the remaining 10.5 boxes are operator-only AWS cutover actions (RUNBOOK §9.2)
   - [x] 10.1 `CatalogIngestionRunner` now loads `RecipeNlgCsvSource` when
         `catalog.ingest.recipenlg-file` is set, with `catalog.ingest.recipenlg-max-records=0`
         meaning no cap (full set), targeting the `catalog-full` table (Task 5 mechanism).
@@ -237,14 +238,39 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
           and a standalone reconciliation backfill (`run-catalog-backfill.sh`) that closed the final
           68,000-doc gap in one clean pass (68,000 indexed, 0 failed), then verify-count confirmed
           2,231,142.
-  - [ ] 10.5 Finish the cutover (index is complete + verified):
-        - [ ] Re-verify search parity + performance at 2.2M (keyword/semantic/dietary/pagination).
-        - [ ] Tune `ef-search` / confirm OCU cap (8/8) and the budget threshold.
-        - [ ] Cut over `catalog.search.backend=opensearch` in ECS/Terraform.
-        - [ ] Remove the temporary CLI data-access principal
-          (`arn:aws:iam::412381751532:user/rodrigo-cli`) from the `recipe-ai-dev-catalog-data`
-          access policy.
-        - [ ] Final `RUNBOOK.md` update.
+  - [x] 10.5 Finish the cutover (index complete + verified; dev cut over to OpenSearch). Steps
+        documented in `RUNBOOK.md` §9.2. Search-tuning knobs are ECS-injectable; CLI access is
+        codified via `admin_principals` (empty = least-privilege).
+        - [x] Made the search-tuning knobs deployable: wired `catalog_search_mode`,
+          `catalog_semantic_enabled`, `opensearch_knn_ef_search`, and `opensearch_knn_quantization`
+          through the ECS Terraform module (`modules/ecs` + root `variables.tf`/`main.tf`) as
+          `CATALOG_SEARCH_MODE`, `CATALOG_SEMANTIC`, `OPENSEARCH_KNN_EF_SEARCH`,
+          `OPENSEARCH_KNN_QUANTIZATION`. So the cutover can pin `fp16` + tune `ef-search` on the
+          running service via `terraform apply` (no image rebuild) instead of being stuck at the
+          `application.properties` defaults. `terraform validate`/`fmt` clean, backend compiles.
+        - [x] Final `RUNBOOK.md` update: new §9 (full-scale cutover state + env-var reference for
+          the tuning knobs), `ef-search` tuning guidance in §3.5, and §9.2 operator runbook for
+          the steps below.
+        - [x] (operator, DONE) Re-verified search parity + performance at 2.2M via the
+          `catalog.verify.enabled` runner against the live collection: browse total=2,231,142
+          (== DynamoDB), keyword 'chicken'=305,634, semantic top hits relevant, VEGAN filter
+          all-tagged (370,699), pagination non-overlapping, findById present+missing. Warm
+          latency sub-second (cold-start not hit in this run).
+        - [x] (operator, DONE) Confirmed OCU cap 8/8 (`get-account-settings`); `ef-search=100`
+          gives good recall so left as-is; budget alarm email `guido@asbun.io`.
+        - [x] (operator, DONE) Cut over `catalog.search.backend=opensearch` in dev via
+          `terraform apply` of a scoped saved plan (ECS task def + service + data policy + budget).
+          Applied: 1 added, 2 changed, 1 destroyed. ECS rolled onto the new task def with
+          `CATALOG_SEARCH_BACKEND=opensearch` + tuning env vars (mode/semantic/ef-search/fp16).
+        - [x] (operator, DONE) Removed the temporary CLI data-access principal
+          (`arn:aws:iam::412381751532:user/rodrigo-cli`) from `recipe-ai-dev-catalog-data` — now
+          codified: the data policy is `concat([task_role_arn], var.admin_principals)` with
+          `admin_principals=[]` (least-privilege, task role only). Re-granting CLI access later is
+          a one-line, version-controlled change via `opensearch_admin_principals` in a tfvars file
+          (example commented in `dev.tfvars`), not manual policy drift.
+        - NOTE: prod is intentionally NOT cut over — the index/data live in dev only. Enabling
+          OpenSearch in `prod.tfvars` would provision an empty prod collection; guarded with a
+          note in `prod.tfvars`.
   - _Requirements: 3.4, 4.1, 5.1, 7.2, 7.6_
 
 ## Notes

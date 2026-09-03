@@ -55,6 +55,7 @@ plan.md
 
 # ── Terraform ─────────────────────────────────────────────
 **/.terraform/
+*.tfplan
 *.tfstate
 *.tfstate.*
 *.tfstate.backup
@@ -64,7 +65,9 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
-infrastructure/environments/*.tfvars
+# NOTE: infrastructure/environments/*.tfvars are intentionally TRACKED (env config).
+# They must contain only non-secret values — Secrets Manager ARNs / SSM parameter paths,
+# never raw keys. The pre-commit secret guard (.githooks/) backstops this.
 
 # ── AWS / Secrets ─────────────────────────────────────────
 .aws/

@@ -83,6 +83,30 @@ variable "opensearch_index" {
   description = "OpenSearch index/collection index name."
 }
 
+variable "catalog_search_mode" {
+  type        = string
+  default     = "hybrid"
+  description = "Catalog search mode: keyword | semantic | hybrid. Applies to either backend."
+}
+
+variable "catalog_semantic_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether to embed queries for semantic (k-NN) ranking. Applies to either backend."
+}
+
+variable "opensearch_knn_ef_search" {
+  type        = number
+  default     = 100
+  description = "k-NN ef_search: recall/latency tuning for OpenSearch semantic queries."
+}
+
+variable "opensearch_knn_quantization" {
+  type        = string
+  default     = "none"
+  description = "OpenSearch vector quantization: none | fp16 | byte. Must match the index the reindex built."
+}
+
 variable "s3_bucket" {
   type = string
 }

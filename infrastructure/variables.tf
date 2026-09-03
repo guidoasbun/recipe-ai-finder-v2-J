@@ -149,6 +149,36 @@ variable "catalog_search_backend" {
   description = "Catalog search backend the backend service uses: inapp | opensearch."
 }
 
+variable "catalog_search_mode" {
+  type        = string
+  default     = "hybrid"
+  description = "Catalog search mode: keyword | semantic | hybrid."
+}
+
+variable "catalog_semantic_enabled" {
+  type        = bool
+  default     = true
+  description = "Embed queries for semantic (k-NN) ranking."
+}
+
+variable "opensearch_knn_ef_search" {
+  type        = number
+  default     = 100
+  description = "k-NN ef_search: recall/latency tuning for OpenSearch semantic queries. Raise for better recall at higher latency."
+}
+
+variable "opensearch_knn_quantization" {
+  type        = string
+  default     = "none"
+  description = "OpenSearch vector quantization: none | fp16 | byte. Must match the quantization the reindex built the index with (fp16 for the full 2.2M load)."
+}
+
+variable "opensearch_admin_principals" {
+  type        = list(string)
+  default     = []
+  description = "Extra IAM principal ARNs granted ad-hoc data access to the OpenSearch collection (e.g. a personal CLI user for reindex/backfill/debugging). Empty by default (least-privilege). Set in a tfvars file to re-grant CLI access as a version-controlled change instead of manual policy drift."
+}
+
 variable "opensearch_max_search_ocu" {
   type        = number
   default     = 8

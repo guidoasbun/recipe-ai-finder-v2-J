@@ -61,7 +61,10 @@ resource "aws_opensearchserverless_access_policy" "data" {
           ]
         }
       ]
-      Principal = [var.task_role_arn]
+      # Least-privilege: the ECS task role always, plus any opt-in admin principals (empty by
+      # default). Add ARNs via var.admin_principals to re-grant ad-hoc CLI access as a
+      # version-controlled change rather than manual policy drift.
+      Principal = concat([var.task_role_arn], var.admin_principals)
     }
   ])
 }

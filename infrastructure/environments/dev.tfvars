@@ -16,6 +16,25 @@ openai_api_key_arn    = "arn:aws:secretsmanager:us-east-1:412381751532:secret:re
 # Then paste the ARN printed by that command here
 google_api_key_arn = "arn:aws:secretsmanager:us-east-1:412381751532:secret:recipe-ai-dev-google-api-key-v5ciAl"
 
+# --- OpenSearch catalog search (cutover) ---
+# Enables the serverless VECTORSEARCH collection + the full 2.2M catalog table, and points the
+# backend at OpenSearch. Quantization must match the index the reindex built (fp16 at 2.2M).
+# NOTE: enable_opensearch=true REQUIRES opensearch_budget_notification_email (module precondition
+# enforces the cost alarm). enable_batch_embedding keeps the (near-zero-cost) Bedrock batch S3
+# buckets + IAM role so the full-load infra isn't torn down on this apply.
+enable_opensearch                    = true
+enable_catalog_full                  = true
+enable_batch_embedding               = true
+catalog_search_backend               = "opensearch"
+opensearch_knn_quantization          = "fp16"
+opensearch_knn_ef_search             = 100
+opensearch_budget_notification_email = "guido@asbun.io"
+
+# To re-grant ad-hoc CLI/local data access to the collection later (reindex/backfill/debug),
+# add the principal ARN here and apply. Leave empty for least-privilege (ECS task role only).
+# The principal also needs aoss:APIAccessAll on its IAM side.
+# opensearch_admin_principals = ["arn:aws:iam::412381751532:user/rodrigo-cli"]
+
 # --- WAF Configuration ---
 waf_allowed_ips                      = []
 waf_allowed_ips_v6                   = []

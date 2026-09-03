@@ -31,6 +31,7 @@ module "opensearch" {
   enable_batch_embedding = var.enable_batch_embedding
   task_role_arn          = module.iam.task_role_arn
   task_role_name         = module.iam.task_role_name
+  admin_principals       = var.opensearch_admin_principals
 
   max_search_ocu   = var.opensearch_max_search_ocu
   max_indexing_ocu = var.opensearch_max_indexing_ocu
@@ -85,18 +86,22 @@ module "ecs" {
   dynamodb_consent_table      = module.dynamodb.consent_table_name
   dynamodb_audit_table        = module.dynamodb.audit_log_table_name
 
-  catalog_search_backend = var.catalog_search_backend
-  opensearch_endpoint    = module.opensearch.collection_endpoint
-  s3_bucket              = module.s3.bucket_name
-  cognito_issuer_uri     = module.cognito.issuer_uri
-  cognito_domain         = module.cognito.cognito_domain
-  cognito_client_id      = module.cognito.client_id
-  cognito_user_pool_id   = module.cognito.user_pool_id
-  domain_name            = var.domain_name
-  ecs_security_group_id  = module.networking.ecs_security_group_id
-  stability_api_key_arn  = var.stability_api_key_arn
-  openai_api_key_arn     = var.openai_api_key_arn
-  google_api_key_arn     = var.google_api_key_arn
+  catalog_search_backend      = var.catalog_search_backend
+  catalog_search_mode         = var.catalog_search_mode
+  catalog_semantic_enabled    = var.catalog_semantic_enabled
+  opensearch_endpoint         = module.opensearch.collection_endpoint
+  opensearch_knn_ef_search    = var.opensearch_knn_ef_search
+  opensearch_knn_quantization = var.opensearch_knn_quantization
+  s3_bucket                   = module.s3.bucket_name
+  cognito_issuer_uri          = module.cognito.issuer_uri
+  cognito_domain              = module.cognito.cognito_domain
+  cognito_client_id           = module.cognito.client_id
+  cognito_user_pool_id        = module.cognito.user_pool_id
+  domain_name                 = var.domain_name
+  ecs_security_group_id       = module.networking.ecs_security_group_id
+  stability_api_key_arn       = var.stability_api_key_arn
+  openai_api_key_arn          = var.openai_api_key_arn
+  google_api_key_arn          = var.google_api_key_arn
 }
 
 module "waf" {
