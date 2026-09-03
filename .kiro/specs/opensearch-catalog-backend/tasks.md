@@ -209,29 +209,42 @@ config-selectable fallback. Nothing outside the catalog search backend changes.
         0 missing-vector** across 23 sequential Bedrock jobs (~17.5h wall clock; per-job time is
         Bedrock-queue-dependent, 7–30 min observed). Every recipe embedded (Titan V2, 1024-dim)
         and stored. Cost ~$8–15 one-time as estimated.
-  - [~] 10.4 (IN PROGRESS — clean rerun running) Reindex `catalog-full` → OpenSearch with
-        `opensearch.knn.quantization=fp16` and `catalog.reindex.recreate-index=true` (drops the
-        old small validation index, recreates with the fp16 mapping). Added `deleteIndexIfExists()`
-        to the provisioner and the `catalog.reindex.recreate-index` flag. Perf: the serial bulk
-        loop was ~55 docs/sec (round-trip-latency bound); added `catalog.reindex.concurrency`
-        (bounded thread pool + semaphore) → ~100 docs/sec (partly DynamoDB-scan-bound), ~6h for 2.2M.
-        Throttle hardening discovered mid-run: at concurrency=8 OpenSearch Serverless briefly
-        throttled indexing at ~1.06M docs (`rejected execution of primary operation [throttled]`
-        while it auto-scaled indexing OCUs); the first full run finished 2,225,142/2,231,142 with
-        6,000 items dropped (0.27%) because `flushBatch` had no retry, so the completeness guard
-        threw as designed (refuses cutover on a partial index). Fixes: (a) `flushBatch` now retries
-        server-rejected sub-operations (re-collected by position) with exponential backoff
-        (6 attempts, 100ms→3s cap) so transient throttling self-heals to 0 failed; (b) lowered the
-        reindex script concurrency 8→4 to stay under the serverless indexing-OCU ceiling and avoid
-        throttle storms (little throughput cost — the run is often scan-bound). `CatalogReindexRunnerTest`
-        green. Clean rerun (recreate-index rebuilds all 2.23M from scratch; serverless auto-IDs mean
-        recreate is the only dup-free path) in progress — target 2,231,142 indexed, 0 failed.
-  - [ ] 10.5 After the reindex finishes 0-failed (verify doc count ≈ 2,231,142): re-verify parity +
-        performance at 2.2M (keyword/semantic/dietary/pagination via `CatalogSearchVerifyRunner`,
-        `--catalog.verify.enabled=true`); tune `ef-search`/OCU cap if needed; confirm the budget
-        threshold; cut over (`catalog.search.backend=opensearch` in ECS/Terraform); remove the
-        temporary CLI data-access principal (`arn:aws:iam::412381751532:user/rodrigo-cli`) from the
-        `recipe-ai-dev-catalog-data` access policy; final `tasks.md` + `RUNBOOK.md` update.
+  - [x] 10.4 (DONE — VERIFIED COMPLETE) Reindexed `catalog-full` → OpenSearch with
+        `opensearch.knn.quantization=fp16`. **Final state: OpenSearch `_count` = 2,231,142 =
+        DynamoDB item count (exact match, 0 missing, 0 duplicates), confirmed by the
+        `catalog.reindex.verify-count` check.** This task was a multi-day ordeal against OpenSearch
+        Serverless quirks; the full post-mortem is in `documents/opensearch-implementation.md`.
+        Summary of what it took:
+        - **Throttling (HTTP 429 / "[throttled]" 503):** serverless auto-scales indexing OCUs; at
+          concurrency 8 it throttled at ~1.06M docs. Root fix was `flushBatch` catching
+          `Exception` (not just `IOException`) so whole-request 429s are retried + recorded; also
+          lowered concurrency 8→4.
+        - **Silent drops:** because 429s escaped as `OpenSearchException`, a run reported
+          "7,000 failed" while 68,000 were actually missing (61,000 unrecorded). Fixed by the
+          catch-widening above; discovered via `seen − indexed` arithmetic.
+        - **No upsert on serverless:** aoss auto-generates `_id` and rejects `_update/_id` /
+          `PUT _doc/_id` on VECTORSEARCH collections, so re-indexing duplicates. Recovery must only
+          index truly-absent docs → reconciliation.
+        - **Reconciliation:** scroll (404) and a large `terms` existence query (500) both fail on
+          this collection; **PIT + `search_after`** (endpoint `POST /{index}/_search/point_in_time`)
+          is the working deep-pagination path. Added `_id` sort tiebreaker + PIT-expiry recovery.
+        - **Slow/hung scans:** the DynamoDB reconcile scan pulled full ~13 KB items (incl. the
+          1024-dim embedding) → ~29 GB serial; fixed with an id-only projected + parallel (8-segment)
+          scan. Then it HUNG for ~50 min on a stuck socket because **neither AWS client had any
+          timeouts** — the real root cause. Added apiCall/attempt timeouts + retries to the
+          DynamoDB client and connection/idle timeouts to the OpenSearch client.
+        - **Completion path:** a self-healing reindex script (recreate → auto-backfill failed ids)
+          and a standalone reconciliation backfill (`run-catalog-backfill.sh`) that closed the final
+          68,000-doc gap in one clean pass (68,000 indexed, 0 failed), then verify-count confirmed
+          2,231,142.
+  - [ ] 10.5 Finish the cutover (index is complete + verified):
+        - [ ] Re-verify search parity + performance at 2.2M (keyword/semantic/dietary/pagination).
+        - [ ] Tune `ef-search` / confirm OCU cap (8/8) and the budget threshold.
+        - [ ] Cut over `catalog.search.backend=opensearch` in ECS/Terraform.
+        - [ ] Remove the temporary CLI data-access principal
+          (`arn:aws:iam::412381751532:user/rodrigo-cli`) from the `recipe-ai-dev-catalog-data`
+          access policy.
+        - [ ] Final `RUNBOOK.md` update.
   - _Requirements: 3.4, 4.1, 5.1, 7.2, 7.6_
 
 ## Notes
