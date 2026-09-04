@@ -16,16 +16,20 @@ openai_api_key_arn    = "arn:aws:secretsmanager:us-east-1:412381751532:secret:re
 # Then paste the ARN printed by that command here
 google_api_key_arn = "arn:aws:secretsmanager:us-east-1:412381751532:secret:recipe-ai-dev-google-api-key-v5ciAl"
 
-# --- OpenSearch catalog search (cutover) ---
-# Enables the serverless VECTORSEARCH collection + the full 2.2M catalog table, and points the
-# backend at OpenSearch. Quantization must match the index the reindex built (fp16 at 2.2M).
-# NOTE: enable_opensearch=true REQUIRES opensearch_budget_notification_email (module precondition
-# enforces the cost alarm). enable_batch_embedding keeps the (near-zero-cost) Bedrock batch S3
-# buckets + IAM role so the full-load infra isn't torn down on this apply.
-enable_opensearch                    = true
+# --- OpenSearch catalog search ---
+# DISABLED 2026-09-04: AWS OpenSearch Serverless kept ~6.5 OCU warm for the 2.2M vector index
+# even when idle (~$240/mo forecast), far over the ~$15 budget. The collection was deleted and
+# search moved off AWS. enable_opensearch=false ensures `terraform apply` does NOT recreate the
+# (expensive) serverless collection. The backend runs the in-app fallback until the off-AWS
+# OpenSearch (Oracle free tier) is stood up; then catalog_search_backend flips to "opensearch"
+# with a non-AWS endpoint + basic auth (see documents/opensearch-implementation.md).
+#
+# enable_catalog_full stays TRUE: the full 2.2M table (with embeddings) is the source of truth for
+# rebuilding the index anywhere — deleting it would force a ~17h re-embed. Storage only (~$7/mo).
+enable_opensearch                    = false
 enable_catalog_full                  = true
-enable_batch_embedding               = true
-catalog_search_backend               = "opensearch"
+enable_batch_embedding               = false
+catalog_search_backend               = "inapp"
 opensearch_knn_quantization          = "fp16"
 opensearch_knn_ef_search             = 100
 opensearch_budget_notification_email = "guido@asbun.io"
