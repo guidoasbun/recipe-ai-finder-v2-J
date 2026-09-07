@@ -95,7 +95,13 @@ terraform output -raw oci_opensearch_ssh_private_key_pem > ~/.ssh/oci_opensearch
 chmod 600 ~/.ssh/oci_opensearch
 ```
 
-cloud-init installs Docker and starts OpenSearch — allow **3–5 minutes** after apply. Verify:
+cloud-init installs Docker and starts OpenSearch — allow **3–5 minutes** after apply. It also runs
+`oci-growfs` to expand the root filesystem to the full 100 GB boot volume (Oracle Linux images
+only provision ~30 GB by default; without the expansion the reindex fills the disk and fails). If
+you ever rebuild the node from an older cloud-init that lacks this, expand manually:
+`ssh opc@<ip> 'sudo /usr/libexec/oci-growfs -y'` then confirm `df -h /` shows ~83 GB.
+
+Verify:
 
 ```bash
 ssh -i ~/.ssh/oci_opensearch opc@<public-ip> 'docker ps && docker logs --tail 20 opensearch'

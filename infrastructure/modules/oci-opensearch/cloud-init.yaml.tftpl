@@ -40,6 +40,12 @@ write_files:
             - "9200:9200"
 
 runcmd:
+  # --- Expand root FS to the full boot volume FIRST ---
+  # Oracle Linux images provision only ~30 GB to the root LV even on a 100 GB boot volume; the
+  # rest of the disk is unpartitioned. oci-growfs grows the last partition to the disk edge and
+  # extends the root LV + XFS filesystem online (non-destructive). Without this, the OpenSearch
+  # data dir fills the 30 GB root mid-reindex and the load fails. Run before anything writes data.
+  - /usr/libexec/oci-growfs -y || true
   # --- Kernel tuning OpenSearch requires ---
   - sysctl -w vm.max_map_count=262144
   - echo "vm.max_map_count=262144" > /etc/sysctl.d/99-opensearch.conf
