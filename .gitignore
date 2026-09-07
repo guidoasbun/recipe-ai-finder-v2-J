@@ -68,6 +68,9 @@ override.tf.json
 # NOTE: infrastructure/environments/*.tfvars are intentionally TRACKED (env config).
 # They must contain only non-secret values — Secrets Manager ARNs / SSM parameter paths,
 # never raw keys. The pre-commit secret guard (.githooks/) backstops this.
+# *.auto.tfvars is used for local secret-bearing OCI vars (e.g. the OpenSearch admin password)
+# and MUST NOT be committed.
+*.auto.tfvars
 
 # ── AWS / Secrets ─────────────────────────────────────────
 .aws/

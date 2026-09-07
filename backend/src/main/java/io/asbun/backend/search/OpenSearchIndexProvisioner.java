@@ -25,7 +25,9 @@ import java.nio.charset.StandardCharsets;
  * <p>The mapping uses a Faiss HNSW {@code knn_vector} of dimension 1024 with cosine space,
  * which aligns with what an Amazon OpenSearch Serverless NextGen vector search collection
  * supports. Vector quantization is controlled by {@code opensearch.knn.quantization}
- * ({@code none | fp16 | byte}); it stays {@code none} until the full 2.2M load.
+ * ({@code none | fp16 | byte}): {@code none}/{@code fp16} keep an in-memory Faiss HNSW graph
+ * (used on AWS), while {@code byte} switches to disk-based mode (on_disk, 16x compression) so
+ * the full 2.2M index fits in the self-hosted free-tier 12 GB box.
  *
  * <p>Only active when {@code catalog.search.backend=opensearch}.
  */
@@ -36,6 +38,15 @@ import java.nio.charset.StandardCharsets;
 public class OpenSearchIndexProvisioner {
 
     static final int VECTOR_DIMENSION = 1024;
+
+    /**
+     * k-NN distance space. We use {@code innerproduct} rather than {@code cosinesimil}: the Faiss
+     * engine on self-hosted OpenSearch 2.17 rejects {@code cosinesimil} for an HNSW field, and
+     * Titan Text Embeddings V2 vectors are L2-normalized (unit length). On unit vectors, inner
+     * product is mathematically identical to cosine similarity, so ranking is equivalent to the
+     * original AWS index (which used {@code cosinesimil}) with no re-embedding or query change.
+     */
+    static final String SPACE_TYPE = "innerproduct";
 
     private final OpenSearchClient client;
     private final OpenSearchProperties properties;
@@ -96,9 +107,13 @@ public class OpenSearchIndexProvisioner {
      * serverless does not accept it.
      */
     private IndexSettings buildSettings() {
-        boolean managedDomain = "es".equalsIgnoreCase(properties.getSigningService());
+        // A full (non-serverless) OpenSearch cluster accepts the ef_search index setting; AWS
+        // Serverless (aoss) does not. Basic auth => a self-hosted full cluster, so treat it as
+        // managed regardless of the (then-unused) signing-service value.
+        boolean managedCluster = "basic".equalsIgnoreCase(properties.getAuth())
+                || "es".equalsIgnoreCase(properties.getSigningService());
         IndexSettings.Builder builder = new IndexSettings.Builder().knn(true);
-        if (managedDomain) {
+        if (managedCluster) {
             // Wire the configured ef_search (query-time recall/latency) into the index setting.
             builder.customSettings("index.knn.algo_param.ef_search",
                     org.opensearch.client.json.JsonData.of(properties.getKnn().getEfSearch()));
@@ -153,25 +168,48 @@ public class OpenSearchIndexProvisioner {
     }
 
     private ObjectNode embeddingField() {
+        // Quantization knob (design §3):
+        //   none = full-precision float (default).
+        //   fp16 = Faiss scalar (fp16) encoder — halves vector memory, still stores/queries floats.
+        //   byte = disk-based mode (on_disk, 16x compression) — OpenSearch keeps a tiny compressed
+        //          copy of the vectors in memory and the full-precision floats on disk, rescoring
+        //          the top hits from disk to preserve recall. This is what lets the full 2.2M
+        //          index fit in the Oracle free-tier 12 GB box (raw fp32 vectors alone are ~9 GB,
+        //          which OOMs once the HNSW graph + JVM heap + OS are added). We keep the name
+        //          "byte" (the handoff's term for "the small-memory mode") but implement it as
+        //          on_disk, NOT data_type:byte: data_type:byte would require lossily converting
+        //          both the persisted List<Double> embeddings AND every query vector to int8 in
+        //          our code, which breaks portability. on_disk keeps data_type:float, so NO
+        //          client-side conversion is needed — the reindex and query paths are unchanged.
+        // NOTE: on_disk mode is a managed/self-hosted OpenSearch (>=2.17) feature; it is NOT
+        //       supported on AWS OpenSearch Serverless. That is fine: byte is only ever selected
+        //       for the self-hosted (basic-auth) node, while AWS used none/fp16.
+        String quantization = properties.getKnn().getQuantization();
+        ObjectNode field = objectMapper.createObjectNode();
+        field.put("type", "knn_vector");
+        field.put("dimension", VECTOR_DIMENSION);
+
+        if ("byte".equalsIgnoreCase(quantization)) {
+            // Disk-based mode: data_type stays float, OpenSearch handles compression + rescoring.
+            // space_type lives on the field (not inside a custom method) in on_disk mode.
+            field.put("space_type", SPACE_TYPE);
+            field.put("data_type", "float");
+            field.put("mode", "on_disk");
+            field.put("compression_level", "16x");
+            return field;
+        }
+
+        // space_type goes at the FIELD level, not inside the Faiss method block (self-hosted
+        // OpenSearch 2.17's faiss hnsw validator rejects it in the method).
+        field.put("space_type", SPACE_TYPE);
+
         ObjectNode method = objectMapper.createObjectNode();
         method.put("name", "hnsw");
-        method.put("space_type", "cosinesimil");
         method.put("engine", "faiss");
 
         ObjectNode methodParams = objectMapper.createObjectNode();
         methodParams.put("ef_construction", 128);
         methodParams.put("m", 16);
-
-        // Quantization knob (design §3): fp16 = Faiss scalar (fp16) encoder, halves memory while
-        // still storing/querying float vectors; none = full-precision float (default).
-        // NOTE: a true byte-vector path is intentionally NOT offered — it would require
-        // float->byte quantization of both the persisted List<Double> embeddings and every query
-        // vector; without that, an OpenSearch byte mapping rejects the decimal vectors. fp16 gives
-        // most of the memory benefit with no lossy conversion in our code.
-        String quantization = properties.getKnn().getQuantization();
-        ObjectNode field = objectMapper.createObjectNode();
-        field.put("type", "knn_vector");
-        field.put("dimension", VECTOR_DIMENSION);
 
         if ("fp16".equalsIgnoreCase(quantization)) {
             ObjectNode encoder = objectMapper.createObjectNode();
@@ -182,7 +220,8 @@ public class OpenSearchIndexProvisioner {
             methodParams.set("encoder", encoder);
         } else if (!"none".equalsIgnoreCase(quantization)) {
             throw new IllegalStateException(
-                    "Unsupported opensearch.knn.quantization=" + quantization + " (use none | fp16)");
+                    "Unsupported opensearch.knn.quantization=" + quantization
+                            + " (use none | fp16 | byte)");
         }
 
         method.set("parameters", methodParams);

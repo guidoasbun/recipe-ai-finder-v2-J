@@ -62,3 +62,26 @@ output "bedrock_batch_output_bucket" {
 output "bedrock_batch_role_arn" {
   value = module.opensearch.bedrock_batch_role_arn
 }
+
+# --- OCI self-hosted OpenSearch ---
+
+output "oci_opensearch_endpoint" {
+  description = "HTTPS endpoint of the self-hosted OpenSearch node (empty when disabled). Feeds OPENSEARCH_ENDPOINT with opensearch.auth=basic."
+  value       = module.oci_opensearch.endpoint
+}
+
+output "oci_opensearch_public_ip" {
+  description = "Public IP of the self-hosted OpenSearch VM (empty when disabled)."
+  value       = module.oci_opensearch.public_ip
+}
+
+output "oci_opensearch_ssh_command" {
+  description = "SSH into the OpenSearch VM."
+  value       = module.oci_opensearch.ssh_command
+}
+
+output "oci_opensearch_ssh_private_key_pem" {
+  description = "Generated SSH private key PEM (only if the module generated one). Write to ~/.ssh/oci_opensearch with chmod 600."
+  value       = module.oci_opensearch.generated_ssh_private_key_pem
+  sensitive   = true
+}

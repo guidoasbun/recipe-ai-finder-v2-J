@@ -40,7 +40,7 @@ A demo account is available so you can explore the app without creating your own
 5. Photos are stored in S3 and served via presigned URLs; recipes are persisted in DynamoDB
 6. Browse, view, and delete your saved recipe collection
 7. Set your **dietary restrictions** in Account Settings — every recipe generated afterwards is guaranteed to comply
-8. Browse a **catalog of ~2.2M existing recipes** (Amazon OpenSearch Serverless) with keyword and natural-language (semantic) search, filtered by your dietary restrictions
+8. Browse a **catalog of ~2.2M existing recipes** with keyword and natural-language (semantic) search, filtered by your dietary restrictions
 9. Visit the **Model Stats** page to see aggregated performance charts across all users — average image and text generation times per model, sample counts, and a 30-day trend line
 
 ---
@@ -200,9 +200,11 @@ When a user has no restrictions, the clause is omitted entirely and generation b
 
 Alongside AI generation, the app offers a **"Look for Existing Recipes"** tab (`/browse`) that searches a catalog of pre-made recipes ingested from open datasets. It supports keyword search, natural-language semantic search, and dietary filtering that reuses the same restrictions as the AI feature.
 
-The catalog is now served by **Amazon OpenSearch Serverless**, holding the **full ~2.2 million-recipe RecipeNLG dataset** — keyword (`multi_match`), semantic (k-NN over 1,024-dim Titan V2 vectors), hybrid, and dietary-tag filtering, all at scale. The migration was a backend swap behind the existing search seam: the controller, DTOs, and frontend were unchanged. An in-app (JVM-memory) backend remains as a config-selectable fast rollback for the smaller catalog.
+The catalog search supports keyword (`multi_match`), semantic (k-NN over 1,024-dim Titan V2 vectors), hybrid, and dietary-tag filtering over the **full ~2.2 million-recipe RecipeNLG dataset**. It runs behind a `CatalogSearchService` seam so the backend is swappable with no controller, DTO, or frontend changes.
 
-> **Deep-dive & post-mortem:** the full OpenSearch implementation — architecture, the 2.2M batch-embed + reindex, every serverless gotcha (throttling, no-upsert, PIT reconciliation, client timeouts), and the dev cutover — is documented in [documents/opensearch-implementation.md](documents/opensearch-implementation.md).
+> **Search backend status (2026-09):** the catalog was initially served by **Amazon OpenSearch Serverless**, but that collection kept ~6.5 OCU warm for the 2.2M vector index even when idle (~$240/mo forecast, far over budget) and was **deleted**. Search is being moved to a **self-hosted OpenSearch node on Oracle Cloud** (basic auth over HTTPS). The deployed app currently runs the **in-app** backend (fast, config-selectable fallback) until the Oracle node is stood up and reachable from ECS. DynamoDB remains the source of truth, so the index rebuilds anywhere with no re-embedding. See [documents/RUNBOOK-oracle-opensearch.md](documents/RUNBOOK-oracle-opensearch.md) and [documents/NEXT-STEPS-oracle-opensearch.md](documents/NEXT-STEPS-oracle-opensearch.md).
+
+> **Deep-dive & post-mortem:** the full AWS OpenSearch implementation — architecture, the 2.2M batch-embed + reindex, every serverless gotcha (throttling, no-upsert, PIT reconciliation, client timeouts), and the dev cutover — is documented in [documents/opensearch-implementation.md](documents/opensearch-implementation.md).
 
 ### Datasets
 
@@ -214,7 +216,7 @@ The catalog is built from open recipe datasets, normalized into a common schema 
 | Better Recipes / AllRecipes (Kaggle) | ~1,090 | American home cooking | CSV |
 | RecipeNLG (full set) | **~2,231,142** | Mixed | CSV |
 
-The live OpenSearch catalog holds the **full ~2,231,142-recipe RecipeNLG dataset** (embedded with Titan V2 and indexed at `fp16`). The smaller ~1,261-recipe catalog remains in a separate DynamoDB table for the in-app fallback. This is a non-commercial project; dataset licenses are respected accordingly.
+The **full ~2,231,142-recipe RecipeNLG dataset** (embedded with Titan V2) is stored in DynamoDB and indexed into OpenSearch (`fp16` on a 24 GB host, or `byte`/disk-based on a 12 GB host). The smaller ~1,261-recipe catalog remains in a separate DynamoDB table for the in-app fallback. This is a non-commercial project; dataset licenses are respected accordingly.
 
 ### Semantic search with Bedrock embeddings
 
@@ -228,20 +230,21 @@ At ingestion, each recipe is embedded with **Amazon Bedrock Titan Text Embedding
 
 If a query embedding call fails, search degrades gracefully to keyword-only rather than erroring. Embedding vectors are cached in memory as primitive `float[]` to keep the footprint small.
 
-### Swappable search backend (OpenSearch — live)
+### Swappable search backend
 
-All search runs behind a [`CatalogSearchService`](backend/src/main/java/io/asbun/backend/search/CatalogSearchService.java) interface, selected by the `catalog.search.backend` property. Two implementations coexist:
+All search runs behind a [`CatalogSearchService`](backend/src/main/java/io/asbun/backend/search/CatalogSearchService.java) interface, selected by the `catalog.search.backend` property. The implementations coexist:
 
 | Backend | `catalog.search.backend` | Scale | Role |
 | ------- | ------------------------ | ----- | ---- |
-| **OpenSearch Serverless** | `opensearch` | ~2.2M recipes | **Live** — SigV4-signed `opensearch-java` client against a `VECTORSEARCH` collection; keyword + k-NN + dietary filter |
-| In-app (JVM memory) | `inapp` (default) | ≤ ~50K recipes | Fast rollback — loads the small catalog into memory and ranks it there |
+| In-app (JVM memory) | `inapp` (default) | ≤ ~50K recipes | **Currently serving** — loads the small catalog into memory and ranks it there |
+| OpenSearch | `opensearch` | ~2.2M recipes | Full-scale keyword + k-NN + dietary filter. Transport is selectable by `opensearch.auth`: `sigv4` (Amazon OpenSearch) or `basic` (self-hosted node, e.g. Oracle Cloud) |
 
-Because dietary tags and embeddings are **persisted in DynamoDB** (the system of record), OpenSearch is a derived, rebuildable index: [`CatalogReindexRunner`](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) bulk-indexes from DynamoDB with **no re-embedding** (vectors are read from the table, never recomputed). Switching backends is a single config flip with no API, DTO, or frontend changes — which is exactly how the dev cutover was performed. The infrastructure is opt-in and cost-bounded (scale-to-zero serverless, OCU cap, budget alarm); the default deployment provisions no OpenSearch resources.
+The OpenSearch client transport is pluggable: `opensearch.auth=sigv4` uses a SigV4-signed `opensearch-java` client (Amazon OpenSearch); `opensearch.auth=basic` uses an HTTPS basic-auth client for a self-hosted node. Because dietary tags and embeddings are **persisted in DynamoDB** (the system of record), the OpenSearch index is derived and rebuildable: [`CatalogReindexRunner`](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) bulk-indexes from DynamoDB with **no re-embedding** (vectors are read from the table, never recomputed). Switching backends is a single config flip with no API, DTO, or frontend changes. All OpenSearch infrastructure is opt-in; the default deployment provisions none and serves search from the in-app backend.
 
 **Key files:**
 
-- [backend/.../search/OpenSearchCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/OpenSearchCatalogSearchService.java) — the live OpenSearch query translation + response mapping
+- [backend/.../search/OpenSearchCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/OpenSearchCatalogSearchService.java) — OpenSearch query translation + response mapping
+- [backend/.../config/OpenSearchConfig.java](backend/src/main/java/io/asbun/backend/config/OpenSearchConfig.java) — pluggable transport: SigV4 (AWS) or basic auth (self-hosted)
 - [backend/.../search/CatalogReindexRunner.java](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) — DynamoDB → OpenSearch bulk reindex (no re-embedding)
 - [backend/.../search/InAppCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/InAppCatalogSearchService.java) — in-memory fallback
 - [documents/opensearch-implementation.md](documents/opensearch-implementation.md) — full implementation + post-mortem
@@ -324,7 +327,7 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 | **ECS Fargate**               | Runs backend and frontend containers (ARM64, no EC2 to manage)                                                                                         |
 | **Application Load Balancer** | HTTPS termination, HTTP→HTTPS redirect, path-based routing                                                                                             |
 | **DynamoDB**                  | Serverless NoSQL; `PAY_PER_REQUEST` billing; GSI on `userId` for per-user recipe queries; recipe catalog tables (small + full ~2.2M) — system of record for catalog text + embeddings |
-| **OpenSearch Serverless**     | `VECTORSEARCH` collection serving the full ~2.2M catalog (keyword + k-NN + dietary filter); scale-to-zero, OCU-capped, opt-in (`enable_opensearch`)     |
+| **OpenSearch (self-hosted, Oracle Cloud)** | Single-node OpenSearch on an Ampere A1 VM for the full ~2.2M catalog (keyword + k-NN + dietary filter), basic auth over HTTPS; opt-in (`enable_oci_opensearch`). Replaces the deleted AWS OpenSearch Serverless collection (idle-OCU cost). The AWS Serverless module remains opt-in (`enable_opensearch`) but disabled. |
 | **Bedrock (Titan Embeddings)**| Titan Text Embeddings V2 for catalog semantic search — recipes embedded at ingestion (batch for the 2.2M load), query embedded at search time            |
 | **S3**                        | Image storage with SSE-AES256 encryption, versioning off, 90-day lifecycle                                                                             |
 | **Cognito**                   | User pool with Google as a federated identity provider; JWT-based sessions                                                                             |
@@ -351,7 +354,8 @@ infrastructure/
     ├── cognito/             # User pool, Google IdP, app client, hosted UI
     ├── s3/                  # Image bucket, encryption, lifecycle
     ├── ecr/                 # Backend and frontend repositories
-    ├── opensearch/          # Serverless VECTORSEARCH collection, policies, OCU cap, budget alarm (opt-in)
+    ├── opensearch/          # AWS Serverless VECTORSEARCH collection, policies, OCU cap, budget alarm (opt-in, disabled)
+    ├── oci-opensearch/      # Self-hosted OpenSearch on Oracle Cloud Ampere A1 (VCN, security list, cloud-init Docker) (opt-in)
     └── waf/                 # AWS WAF Web ACL, IP sets, rate limits, logging, monitoring
 ```
 
@@ -428,7 +432,7 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 | Styling            | Tailwind CSS                          | 4       |
 | Charts             | Recharts                              | 3       |
 | AI inference       | AWS Bedrock                           | —       |
-| Catalog search     | AWS OpenSearch Serverless (`opensearch-java`) | 3.9.0 |
+| Catalog search     | OpenSearch (`opensearch-java`; AWS SigV4 or self-hosted basic auth) | 3.9.0 |
 | Image generation   | Stability AI + OpenAI + Google Imagen | —       |
 | Authentication     | AWS Cognito (Google OAuth2)           | —       |
 | Database           | AWS DynamoDB                          | —       |

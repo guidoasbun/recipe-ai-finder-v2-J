@@ -40,6 +40,22 @@ module "opensearch" {
   budget_notification_email = var.opensearch_budget_notification_email
 }
 
+module "oci_opensearch" {
+  source       = "./modules/oci-opensearch"
+  project_name = var.project_name
+  environment  = var.environment
+
+  enable                    = var.enable_oci_opensearch
+  compartment_ocid          = var.oci_compartment_ocid != "" ? var.oci_compartment_ocid : var.oci_tenancy_ocid
+  ocpus                     = var.oci_opensearch_ocpus
+  memory_gb                 = var.oci_opensearch_memory_gb
+  boot_volume_gb            = var.oci_opensearch_boot_volume_gb
+  admin_cidr                = var.oci_admin_cidr
+  ssh_public_key            = var.oci_ssh_public_key
+  opensearch_admin_password = var.oci_opensearch_admin_password
+  image_ocid                = var.oci_opensearch_image_ocid
+}
+
 module "s3" {
   source       = "./modules/s3"
   project_name = var.project_name

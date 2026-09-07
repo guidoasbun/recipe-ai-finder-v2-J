@@ -1,0 +1,58 @@
+#cloud-config
+# Cloud-init for the self-hosted OpenSearch node (Oracle Linux, aarch64).
+# Installs Docker, opens the host firewall for 9200, and runs a single-node OpenSearch 2.x
+# container with the security plugin enabled (HTTPS + basic auth on 9200, self-signed demo cert).
+#
+# Templated values (from Terraform):
+#   heap_gb           -> OpenSearch JVM heap (Xms=Xmx)
+#   admin_password    -> OPENSEARCH_INITIAL_ADMIN_PASSWORD
+#   data_dir          -> host path bind-mounted to the container's data dir
+
+write_files:
+  # docker-compose for a single-node OpenSearch. Security plugin ON: 9200 serves HTTPS with a
+  # self-signed cert and requires basic auth. The app connects with opensearch.tls-verify=false
+  # (safe: the port is IP-locked by the OCI security list).
+  - path: /opt/opensearch/docker-compose.yml
+    permissions: "0644"
+    content: |
+      services:
+        opensearch:
+          image: opensearchproject/opensearch:2.17.1
+          container_name: opensearch
+          restart: unless-stopped
+          environment:
+            - discovery.type=single-node
+            - bootstrap.memory_lock=true
+            - "OPENSEARCH_JAVA_OPTS=-Xms${heap_gb}g -Xmx${heap_gb}g"
+            - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${admin_password}"
+            # Disk-based (on_disk) k-NN needs room; keep the default plugin settings otherwise.
+            - "cluster.routing.allocation.disk.threshold_enabled=false"
+          ulimits:
+            memlock:
+              soft: -1
+              hard: -1
+            nofile:
+              soft: 65536
+              hard: 65536
+          volumes:
+            - ${data_dir}:/usr/share/opensearch/data
+          ports:
+            - "9200:9200"
+
+runcmd:
+  # --- Kernel tuning OpenSearch requires ---
+  - sysctl -w vm.max_map_count=262144
+  - echo "vm.max_map_count=262144" > /etc/sysctl.d/99-opensearch.conf
+  # --- Data dir on the boot volume, owned by the container's opensearch uid (1000) ---
+  - mkdir -p ${data_dir}
+  - chown -R 1000:1000 ${data_dir}
+  # --- Install Docker (Oracle Linux) ---
+  - dnf install -y dnf-utils zip unzip
+  - dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+  - dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  - systemctl enable --now docker
+  # --- Open the host firewall for the OpenSearch API port (OCI Oracle Linux images ship firewalld) ---
+  - firewall-cmd --permanent --add-port=9200/tcp
+  - firewall-cmd --reload
+  # --- Launch OpenSearch ---
+  - cd /opt/opensearch && docker compose up -d
