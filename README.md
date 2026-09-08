@@ -295,7 +295,75 @@ Ingestion is a one-off, profile-guarded job (`catalog.ingest.enabled=true`) that
 
 ## Architecture
 
-![Infrastructure Image](images/Deployment-Archetecture.png)
+The diagram below reflects the current deployment (self-hosted OpenSearch on Oracle Cloud, ECS in
+private subnets behind a NAT gateway). It is a Mermaid diagram, which GitHub renders natively. A
+fuller walkthrough with a legend is in [documents/architecture.md](documents/architecture.md).
+
+```mermaid
+flowchart TB
+    user([User / Browser])
+    dns[Route 53 DNS]
+
+    subgraph aws["AWS — us-east-1"]
+        acm[ACM TLS cert]
+        waf[WAF Web ACL]
+
+        subgraph vpc["VPC 10.0.0.0/16"]
+            direction TB
+            subgraph public["Public subnets (2 AZs)"]
+                alb[Application Load Balancer<br/>HTTPS + path routing]
+                nat[NAT Gateway<br/>stable Elastic IP]
+            end
+            subgraph private["Private subnets (2 AZs) — no public IPs"]
+                fe[ECS Fargate<br/>Frontend Next.js]
+                be[ECS Fargate<br/>Backend Spring Boot]
+            end
+        end
+
+        subgraph awssvc["AWS services"]
+            ddb[(DynamoDB<br/>users, recipes, catalog-full 2.2M<br/>+ embeddings = source of truth)]
+            s3[(S3<br/>recipe images)]
+            bedrock[Bedrock<br/>Claude / Nova / Llama<br/>+ Titan embeddings]
+            cognito[Cognito<br/>Google OAuth2 / JWT]
+            secrets[Secrets Manager<br/>API keys + OpenSearch pw]
+            ecr[(ECR<br/>container images)]
+        end
+    end
+
+    subgraph oci["Oracle Cloud — us-sanjose-1"]
+        subgraph ocivcn["OCI VCN — security list: 9200 from NAT EIP only"]
+            os[OpenSearch 2.17 on Ampere A1<br/>2 OCPU / 24 GB, fp16<br/>2.23M vector index]
+        end
+    end
+
+    imggen[Stability AI / OpenAI / Google Imagen]
+
+    user -->|HTTPS| dns --> waf --> alb
+    acm -.-> alb
+    alb -->|/*| fe
+    alb -->|/api/*| be
+
+    be --> nat
+    fe --> nat
+    nat --> bedrock
+    nat --> ddb
+    nat --> s3
+    nat --> cognito
+    nat --> secrets
+    nat -->|HTTPS basic auth<br/>k-NN + keyword search| os
+    nat --> imggen
+    fe -. pull image .-> ecr
+    be -. pull image .-> ecr
+
+    ddb -. reindex: read embeddings<br/>no re-embedding .-> os
+
+    classDef edge fill:#f4f4f4,stroke:#888;
+    classDef awsbox fill:#eef6ff,stroke:#3b82f6;
+    classDef ocibox fill:#fff3e0,stroke:#f59e0b;
+    class user,dns,imggen edge;
+    class alb,nat,fe,be,ddb,s3,bedrock,cognito,secrets,ecr,acm,waf awsbox;
+    class os ocibox;
+```
 
 ### Request Flow
 
