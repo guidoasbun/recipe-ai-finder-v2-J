@@ -106,15 +106,32 @@ re-embedding. In-app stays the current live backend until ECS reachability is de
     to 83 GB (100 GB volume) — load continued uninterrupted. Now automated in cloud-init.
   - _Requirements: 5.2, 5.3_
 
-- [ ] 9. Decide ECS → Oracle reachability, then cut over (OPERATOR — open decision)
-  - [ ] 9.1 Choose the app egress path: NAT gateway + Elastic IP (open 9200 to that EIP) vs reverse
-        proxy vs keep laptop-only. Do NOT open 9200 to the internet.
-  - [ ] 9.2 Extend the security list to the app's stable source; wire the serving env vars into the
-        ECS task definition (`CATALOG_SEARCH_BACKEND=opensearch`, `OPENSEARCH_AUTH=basic`, endpoint,
-        username/password as secrets, `OPENSEARCH_TLS_VERIFY=false`, matching `OPENSEARCH_KNN_QUANTIZATION`).
-  - [ ] 9.3 Flip `catalog_search_backend=opensearch` in `dev.tfvars` and apply. Verify live search;
-        keep `inapp` as the instant rollback.
+- [x] 9. Decide ECS → Oracle reachability, then cut over (OPERATOR — DONE)
+  - [x] 9.1 Chose **NAT gateway + Elastic IP** (single-AZ, ~$33/mo, budget freed by cutting a NAT
+        on the portfolio app). Also moved ECS into private subnets for the AWS-recommended posture
+        (ALB-only public exposure). 9200 NOT opened to the internet — locked to the NAT EIP.
+  - [x] 9.2 Extended the OCI security list to allow the NAT EIP (`100.51.158.37`) on 9200. ECS task
+        def wired: `CATALOG_SEARCH_BACKEND=opensearch`, `OPENSEARCH_AUTH=basic`, endpoint auto =
+        OCI node, `OPENSEARCH_USERNAME=admin`, `OPENSEARCH_PASSWORD` from Secrets Manager (secret,
+        not plaintext), `OPENSEARCH_TLS_VERIFY=false`, `OPENSEARCH_KNN_QUANTIZATION=fp16`.
+  - [x] 9.3 Applied infra (8 add / 5 change / 1 destroy), merged to main (PR #43) → CI built+pushed
+        the new image (`a062114`) with the basic-auth `OpenSearchConfig` → ECS redeployed. New task
+        healthy in a private subnet (`10.0.11.140`), logs confirm `OpenSearch client (basic auth)`
+        to the Oracle node with no errors. **Live search verified in the browser** (keyword +
+        semantic both work against the 2.23M index). Rollback: flip `catalog_search_backend=inapp`.
+  - Note: first search after a fresh deploy has a ~10s cold start (Bedrock client warm-up + first
+    k-NN loads the HNSW graph from disk into page cache + JVM JIT). One-time; subsequent queries
+    are sub-second. Optional future fix: a startup warm-up query. Not a bug.
+  - Safety fixes added this session: `deployment_circuit_breaker{rollback=true}` on both ECS
+    services (auto-rollback on a bad deploy) and `depends_on = [module.networking]` on the ECS
+    module (NAT/route live before tasks move to private subnets).
   - _Requirements: 7.1, 7.2, 7.3_
+
+## Cutover complete (2026-09-08)
+All 9 tasks done. AWS OpenSearch Serverless (~$240/mo forecast) → self-hosted Oracle A1 node
+(~$0-13/mo). 2,231,142 docs indexed + verified, live search on the new backend, ECS hardened into
+private subnets behind a NAT. DynamoDB remains the source of truth; rollback is a one-line tfvars
+flip.
 
 ## Verification summary (done items)
 - Backend: `./mvnw -o compile` clean; OpenSearch + config test suites pass. The 6 unrelated

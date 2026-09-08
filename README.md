@@ -6,6 +6,8 @@
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.0-6DB33F?logo=springboot)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
 ![AWS](https://img.shields.io/badge/AWS-Bedrock%20%7C%20ECS%20%7C%20DynamoDB-FF9900?logo=amazonaws)
+![OpenSearch](https://img.shields.io/badge/OpenSearch-2.17-005EB8?logo=opensearch)
+![Oracle Cloud](https://img.shields.io/badge/Oracle_Cloud-Ampere_A1-F80000?logo=oracle)
 ![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform)
 ![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker)
 
@@ -27,7 +29,7 @@ A demo account is available so you can explore the app without creating your own
 | **Email**    | `testuser1@mail.com` |
 | **Password** | `TestUserPassword1$` |
 
-> This account is limited to **20 AI recipe generations** to prevent abuse of the underlying Bedrock and image generation APIs. All other features (browsing, saving, and deleting recipes) are fully accessible.
+> This account is limited to **40 AI recipe generations** to prevent abuse of the underlying Bedrock and image generation APIs. All other features (browsing, saving, and deleting recipes) are fully accessible.
 
 ---
 
@@ -202,7 +204,19 @@ Alongside AI generation, the app offers a **"Look for Existing Recipes"** tab (`
 
 The catalog search supports keyword (`multi_match`), semantic (k-NN over 1,024-dim Titan V2 vectors), hybrid, and dietary-tag filtering over the **full ~2.2 million-recipe RecipeNLG dataset**. It runs behind a `CatalogSearchService` seam so the backend is swappable with no controller, DTO, or frontend changes.
 
-> **Search backend status (2026-09):** the catalog was initially served by **Amazon OpenSearch Serverless**, but that collection kept ~6.5 OCU warm for the 2.2M vector index even when idle (~$240/mo forecast, far over budget) and was **deleted**. Search is being moved to a **self-hosted OpenSearch node on Oracle Cloud** (basic auth over HTTPS). The deployed app currently runs the **in-app** backend (fast, config-selectable fallback) until the Oracle node is stood up and reachable from ECS. DynamoDB remains the source of truth, so the index rebuilds anywhere with no re-embedding. See [documents/RUNBOOK-oracle-opensearch.md](documents/RUNBOOK-oracle-opensearch.md) and [documents/NEXT-STEPS-oracle-opensearch.md](documents/NEXT-STEPS-oracle-opensearch.md).
+> **Search backend — migrated off AWS for cost (2026-09):** the catalog was initially served by
+> **Amazon OpenSearch Serverless**. For a large, always-resident, low-traffic vector index that
+> proved very expensive — keeping the 2.2M-vector graph warm held **~6 OCUs (≈36 GB RAM) around the
+> clock**, an estimated **several hundred to ~$1,000+/month** at $0.24/OCU-hour, against a ~$15/month
+> hobby budget. We **deleted the collection** and re-hosted the identical index on a **single
+> self-hosted OpenSearch node on Oracle Cloud** (Ampere A1, basic auth over HTTPS), dropping the
+> recurring cost to **~$0–13/month**. DynamoDB is the source of truth, so the index rebuilt with no
+> re-embedding, and the app stays portable (a config flip selects the transport). **The cutover is
+> complete** — live search runs against the Oracle node.
+>
+> The full reasoning, cost breakdown, and the network hardening that came with it are documented in
+> **[documents/MIGRATION-aws-to-oracle-opensearch.md](documents/MIGRATION-aws-to-oracle-opensearch.md)**
+> (see also the [runbook](documents/RUNBOOK-oracle-opensearch.md)).
 
 > **Deep-dive & post-mortem:** the full AWS OpenSearch implementation — architecture, the 2.2M batch-embed + reindex, every serverless gotcha (throttling, no-upsert, PIT reconciliation, client timeouts), and the dev cutover — is documented in [documents/opensearch-implementation.md](documents/opensearch-implementation.md).
 
@@ -236,8 +250,8 @@ All search runs behind a [`CatalogSearchService`](backend/src/main/java/io/asbun
 
 | Backend | `catalog.search.backend` | Scale | Role |
 | ------- | ------------------------ | ----- | ---- |
-| In-app (JVM memory) | `inapp` (default) | ≤ ~50K recipes | **Currently serving** — loads the small catalog into memory and ranks it there |
-| OpenSearch | `opensearch` | ~2.2M recipes | Full-scale keyword + k-NN + dietary filter. Transport is selectable by `opensearch.auth`: `sigv4` (Amazon OpenSearch) or `basic` (self-hosted node, e.g. Oracle Cloud) |
+| OpenSearch | `opensearch` | ~2.2M recipes | **Currently serving** (self-hosted node on Oracle Cloud). Full-scale keyword + k-NN + dietary filter. Transport selectable by `opensearch.auth`: `sigv4` (Amazon OpenSearch) or `basic` (self-hosted) |
+| In-app (JVM memory) | `inapp` | ≤ ~50K recipes | Instant rollback — loads the small catalog into memory and ranks it there |
 
 The OpenSearch client transport is pluggable: `opensearch.auth=sigv4` uses a SigV4-signed `opensearch-java` client (Amazon OpenSearch); `opensearch.auth=basic` uses an HTTPS basic-auth client for a self-hosted node. Because dietary tags and embeddings are **persisted in DynamoDB** (the system of record), the OpenSearch index is derived and rebuildable: [`CatalogReindexRunner`](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) bulk-indexes from DynamoDB with **no re-embedding** (vectors are read from the table, never recomputed). Switching backends is a single config flip with no API, DTO, or frontend changes. All OpenSearch infrastructure is opt-in; the default deployment provisions none and serves search from the in-app backend.
 
@@ -283,7 +297,77 @@ Ingestion is a one-off, profile-guarded job (`catalog.ingest.enabled=true`) that
 
 ## Architecture
 
-![Infrastructure Image](images/Deployment-Archetecture.png)
+The diagram below reflects the current deployment (self-hosted OpenSearch on Oracle Cloud, ECS in
+private subnets behind a NAT gateway). It is a Mermaid diagram, which GitHub renders natively. A
+fuller walkthrough with a legend is in [documents/architecture.md](documents/architecture.md).
+
+```mermaid
+flowchart TB
+    user([User / Browser])
+    dns[Route 53 DNS]
+
+    subgraph aws["AWS — us-east-1"]
+        acm[ACM TLS cert]
+        waf["WAF Web ACL<br/>rate limits, AWS managed rules<br/>(bot control, bad inputs, IP reputation)<br/>+ IP allow/block lists"]
+
+        subgraph vpc["VPC 10.0.0.0/16"]
+            direction TB
+            subgraph public["Public subnets (2 AZs)"]
+                alb[Application Load Balancer<br/>HTTPS + path routing]
+                nat[NAT Gateway<br/>stable Elastic IP]
+            end
+            subgraph private["Private subnets (2 AZs) — no public IPs"]
+                fe[ECS Fargate<br/>Frontend Next.js]
+                be[ECS Fargate<br/>Backend Spring Boot]
+            end
+        end
+
+        subgraph awssvc["AWS services"]
+            ddb[(DynamoDB<br/>users, recipes, catalog-full 2.2M<br/>+ embeddings = source of truth)]
+            s3[(S3<br/>recipe images)]
+            bedrock[Bedrock<br/>Claude / Nova / Llama<br/>+ Titan embeddings]
+            cognito[Cognito<br/>Google OAuth2 / JWT]
+            secrets[Secrets Manager<br/>API keys + OpenSearch pw]
+            ecr[(ECR<br/>container images)]
+        end
+    end
+
+    subgraph oci["Oracle Cloud — us-sanjose-1"]
+        subgraph ocivcn["OCI VCN — security list: 9200 from NAT EIP only"]
+            os[OpenSearch 2.17 on Ampere A1<br/>2 OCPU / 24 GB, fp16<br/>2.23M vector index]
+        end
+    end
+
+    imggen[Stability AI / OpenAI / Google Imagen]
+
+    user -->|HTTPS| dns
+    dns -->|inspected by| waf
+    waf -->|allowed requests<br/>rate-limited, bot + IP rules| alb
+    acm -.-> alb
+    alb -->|/*| fe
+    alb -->|/api/*| be
+
+    be --> nat
+    fe --> nat
+    nat --> bedrock
+    nat --> ddb
+    nat --> s3
+    nat --> cognito
+    nat --> secrets
+    nat -->|HTTPS basic auth<br/>k-NN + keyword search| os
+    nat --> imggen
+    fe -. pull image .-> ecr
+    be -. pull image .-> ecr
+
+    ddb -. reindex: read embeddings<br/>no re-embedding .-> os
+
+    classDef edge fill:#f4f4f4,stroke:#888;
+    classDef awsbox fill:#eef6ff,stroke:#3b82f6;
+    classDef ocibox fill:#fff3e0,stroke:#f59e0b;
+    class user,dns,imggen edge;
+    class alb,nat,fe,be,ddb,s3,bedrock,cognito,secrets,ecr,acm,waf awsbox;
+    class os ocibox;
+```
 
 ### Request Flow
 
@@ -324,17 +408,19 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 
 | Service                       | Role                                                                                                                                                   |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **ECS Fargate**               | Runs backend and frontend containers (ARM64, no EC2 to manage)                                                                                         |
-| **Application Load Balancer** | HTTPS termination, HTTP→HTTPS redirect, path-based routing                                                                                             |
+| **VPC networking**            | Custom VPC with public + **private** subnets across 2 AZs. ECS tasks run in the **private subnets** (no public IPs); a **NAT gateway** (single Elastic IP) provides their outbound egress. The ALB is the only public entry point. |
+| **ECS Fargate**               | Runs backend and frontend containers (ARM64, no EC2 to manage) in private subnets behind the ALB; deployment circuit breaker auto-rolls-back a bad release |
+| **Application Load Balancer** | HTTPS termination, HTTP→HTTPS redirect, path-based routing; the sole internet-facing entry point (public subnets)                                       |
 | **DynamoDB**                  | Serverless NoSQL; `PAY_PER_REQUEST` billing; GSI on `userId` for per-user recipe queries; recipe catalog tables (small + full ~2.2M) — system of record for catalog text + embeddings |
 | **OpenSearch (self-hosted, Oracle Cloud)** | Single-node OpenSearch on an Ampere A1 VM for the full ~2.2M catalog (keyword + k-NN + dietary filter), basic auth over HTTPS; opt-in (`enable_oci_opensearch`). Replaces the deleted AWS OpenSearch Serverless collection (idle-OCU cost). The AWS Serverless module remains opt-in (`enable_opensearch`) but disabled. |
 | **Bedrock (Titan Embeddings)**| Titan Text Embeddings V2 for catalog semantic search — recipes embedded at ingestion (batch for the 2.2M load), query embedded at search time            |
 | **S3**                        | Image storage with SSE-AES256 encryption, versioning off, 90-day lifecycle                                                                             |
 | **Cognito**                   | User pool with Google as a federated identity provider; JWT-based sessions                                                                             |
 | **ECR**                       | Private container registries for backend and frontend images                                                                                           |
-| **Secrets Manager**           | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, and `GOOGLE_API_KEY`; injected into ECS task definitions at runtime — never in code or environment files |
+| **Secrets Manager**           | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, and the self-hosted OpenSearch password; injected into ECS task definitions at runtime — never in code or environment files |
 | **ACM**                       | TLS certificates for the load balancer                                                                                                                 |
-| **CloudWatch**                | Container logs; 30-day retention                                                                                                                       |
+| **Route 53**                  | DNS for the domain, resolving to the Application Load Balancer                                                                                          |
+| **CloudWatch**                | Container log groups (30-day retention) plus a WAF blocked-requests metric alarm                                                                        |
 
 ### Terraform Module Structure
 
@@ -346,7 +432,7 @@ infrastructure/
 │   ├── dev.tfvars
 │   └── prod.tfvars
 └── modules/
-    ├── networking/          # VPC, public/private subnets, IGW, route tables, security groups
+    ├── networking/          # VPC, public/private subnets, IGW, NAT gateway + EIP, route tables, security groups
     ├── alb/                 # ALB, target groups, HTTPS listener, path-based rules
     ├── ecs/                 # Cluster, task definitions, Fargate services
     ├── iam/                 # ECS execution role, ECS task role, GitHub Actions OIDC role
@@ -363,11 +449,13 @@ infrastructure/
 
 ### Security Design
 
+- **Network isolation (private subnets + NAT):** ECS tasks run in **private subnets with no public IPs** — the ALB is the only internet-facing component. Outbound traffic (Bedrock, DynamoDB, S3, ECR pulls, Secrets Manager, and the self-hosted OpenSearch node) egresses through a **NAT gateway** with a single stable Elastic IP. That fixed egress IP is also what the OpenSearch node's firewall whitelists, so the search port is never exposed to the public internet.
 - **Least-privilege IAM:** The ECS task role grants only `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream`, targeted DynamoDB actions, and S3 object operations on the specific bucket.
 - **No static credentials:** GitHub Actions authenticates to AWS via OIDC — no long-lived access keys anywhere.
 - **Secrets at runtime:** API keys are pulled from Secrets Manager by the ECS execution role and injected as environment variables; they never touch application code or version control.
 - **JWT validation:** Spring Security validates Cognito-issued JWTs on every protected endpoint using the Cognito JWKS endpoint.
 - **Secret hygiene:** a pre-commit hook ([`.githooks/pre-commit`](.githooks/pre-commit)) blocks commits containing real API keys or AWS access keys (and inline secrets in `*.tfvars`), so credentials can't slip into version control. `*.tfvars` files reference secrets only by Secrets Manager/SSM ARN. Enable per clone with `git config core.hooksPath .githooks`.
+- **Privacy & compliance (GDPR/CCPA):** users can grant/revoke **consent** (IP- and version-audited), **export their data** (JSON, or an async ZIP), and **delete their account** (scheduled deletion with a cancel window). These are backed by dedicated `Consent` and `AuditLog` DynamoDB tables and a nightly scheduled-deletion job; every action writes an audit record. Endpoints under `/api/consent` and `/api/account/*` (see the API reference).
 
 ---
 
@@ -452,23 +540,24 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 recipe-ai-finder-v2/
 ├── backend/                          # Spring Boot 4 service
 │   └── src/main/java/io/asbun/backend/
-│       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig, AsyncConfig, CatalogSearchConfig
-│       ├── controller/               # RecipeController, ImageController, AuthController, StatsController, CatalogController
+│       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig, CorsConfig, AsyncConfig, JacksonConfig, CatalogSearchConfig, OpenSearchConfig/Properties, rate-limit & request-size filters
+│       ├── controller/               # RecipeController, ImageController, AuthController, AccountController, ConsentController, StatsController, CatalogController, HealthController
 │       ├── service/                  # BedrockService, ImageGenerationService, S3Service, AsyncImageService, ImageSseService, StatsService, StatsSseService, EmbeddingService
-│       ├── search/                   # CatalogSearchService (+ in-app impl), query/result types
+│       ├── search/                   # CatalogSearchService (in-app + OpenSearch impls), OpenSearchIndexProvisioner, CatalogReindexRunner, query/result types
 │       ├── ingest/                   # RecipeSource parsers, DietaryTagger, embedding strategies, CatalogIngestionRunner
 │       ├── repository/               # RecipeRepository, UserRepository, StatsRepository, CatalogRecipeRepository (DynamoDB)
 │       └── model/                    # Recipe, User, CatalogRecipe, DTOs, enums (BedrockModel, ImageModel)
 ├── frontend/                         # Next.js 16 app
 │   └── app/
-│       ├── (auth)/login/             # Google OAuth login page
+│       ├── (auth)/                   # login, signup, confirm, forgot/reset-password, privacy, terms
 │       ├── (protected)/dashboard/    # Ingredient input + model selection
 │       ├── (protected)/generate/     # Generated recipe display
 │       ├── (protected)/recipes/      # Saved recipe gallery + detail view
 │       ├── (protected)/browse/       # Catalog search + recipe detail (keyword + semantic)
+│       ├── (protected)/account/      # Profile, dietary restrictions, settings (export/delete)
 │       └── (protected)/model-stats/  # Model performance charts (SSE-loaded)
 ├── infrastructure/                   # Terraform IaC
-│   └── modules/                      # networking, alb, ecs, iam, dynamodb, cognito, s3, ecr
+│   └── modules/                      # networking, alb, ecs, iam, dynamodb, cognito, s3, ecr, opensearch, oci-opensearch, waf
 ├── docker/
 │   ├── backend.Dockerfile            # Multi-stage Maven → Corretto 21 Alpine
 │   └── frontend.Dockerfile           # Multi-stage Node.js → Next.js standalone
@@ -492,11 +581,10 @@ recipe-ai-finder-v2/
 ```bash
 cd backend
 
-# Copy and fill in local config
+# Create your local config, then fill it in:
+#   src/main/resources/application-local.properties
 
-cd src/main/resources/application-local.properties
-
-Required variables in application-local.properties:
+# Required variables in application-local.properties:
 
 # COGNITO_ISSUER_URI=
 # dynamodb.users-table=
@@ -516,9 +604,7 @@ Required variables in application-local.properties:
 ```bash
 cd frontend
 
-cd .env.local.example .env.local
-
-# Required variables:
+# Create .env.local with the required variables:
 # COGNITO_DOMAIN=
 # COGNITO_CLIENT_ID=
 
@@ -543,6 +629,9 @@ npm run dev
 | `GET`    | `/api/account/profile`           | Get current user's profile (includes saved dietary restrictions)                                     |
 | `GET`    | `/api/account/dietary-restrictions` | Get current user's saved dietary restrictions                                                      |
 | `PUT`    | `/api/account/dietary-restrictions` | Replace the current user's dietary restrictions (max 10, validated)                                |
+| `POST`   | `/api/account/delete`            | Schedule account deletion (GDPR/CCPA); `POST /api/account/cancel-deletion` cancels it                 |
+| `GET`    | `/api/account/export?format=json`| Export the user's data as JSON; `POST .../export?format=zip` starts an async ZIP; `GET .../export/status` polls it |
+| `POST`   | `/api/consent`                   | Grant a consent (type + version, IP-audited); `GET /api/consent` lists; `DELETE /api/consent/{type}` revokes |
 | `GET`    | `/api/catalog/search`            | Search the recipe catalog (`q`, `tags`, `filtersApplied`, `page`, `pageSize`); paginated results     |
 | `GET`    | `/api/catalog/{id}`              | Get a single catalog recipe (404 if not found)                                                       |
 | `GET`    | `/api/stats/models`              | Return cached model performance stats (JSON)                                                          |
