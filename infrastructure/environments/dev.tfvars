@@ -29,15 +29,42 @@ google_api_key_arn = "arn:aws:secretsmanager:us-east-1:412381751532:secret:recip
 enable_opensearch                    = false
 enable_catalog_full                  = true
 enable_batch_embedding               = false
-catalog_search_backend               = "inapp"
-opensearch_knn_quantization          = "fp16"
 opensearch_knn_ef_search             = 100
 opensearch_budget_notification_email = "guido@asbun.io"
+
+# --- Cutover to the self-hosted Oracle OpenSearch node (basic auth over HTTPS) ---
+# The app now searches the Oracle node instead of the (deleted) AWS Serverless collection.
+# Endpoint auto-resolves to the OCI module's node when opensearch_auth=basic (no need to hardcode
+# the IP). The password is read from oci_opensearch_admin_password (oci-secrets.auto.tfvars) and
+# published to Secrets Manager for the ECS task. tls-verify=false: the node uses a self-signed
+# cert and 9200 is IP-locked to the NAT egress. Quantization must match the built index (fp16).
+catalog_search_backend      = "opensearch"
+opensearch_auth             = "basic"
+opensearch_username         = "admin"
+opensearch_tls_verify       = false
+opensearch_knn_quantization = "fp16"
 
 # To re-grant ad-hoc CLI/local data access to the collection later (reindex/backfill/debug),
 # add the principal ARN here and apply. Leave empty for least-privilege (ECS task role only).
 # The principal also needs aoss:APIAccessAll on its IAM side.
 # opensearch_admin_principals = ["arn:aws:iam::412381751532:user/rodrigo-cli"]
+
+# --- Self-hosted OpenSearch on Oracle Cloud (replaces AWS OpenSearch Serverless) ---
+# Non-secret values only (OCIDs / fingerprint / region / admin CIDR). The OpenSearch admin
+# password lives in the gitignored infrastructure/oci-secrets.auto.tfvars. The OCI API private
+# key is read from oci_private_key_path (never committed). See documents/RUNBOOK-oracle-opensearch.md.
+enable_oci_opensearch = true
+oci_tenancy_ocid      = "ocid1.tenancy.oc1..aaaaaaaacirtpm74wletcnptrkct4stvu3rdjzcda66ul4o2veabqtxueufa"
+oci_user_ocid         = "ocid1.user.oc1..aaaaaaaavmdgwndvsxuimimhof27g4f4ygmxe5f2nitbvk2vnu4rgebxp5sa"
+oci_fingerprint       = "69:59:91:1b:1a:e7:38:53:fe:60:33:d9:66:83:1e:d4"
+oci_region            = "us-sanjose-1"
+oci_private_key_path  = "/Users/rodrigo/Oracle/guido@asbun.io-2026-09-04T19_21_11.946Z.pem"
+oci_admin_cidr        = "70.95.245.8/32"
+
+# Shape: 2 OCPU / 24 GB (PAYG, ~$13/mo) → fp16 quantization at reindex time.
+# For the free $0 path instead, set oci_opensearch_memory_gb = 12 and reindex with QUANTIZATION=byte.
+oci_opensearch_ocpus     = 2
+oci_opensearch_memory_gb = 24
 
 # --- WAF Configuration ---
 waf_allowed_ips                      = []

@@ -40,6 +40,38 @@ module "opensearch" {
   budget_notification_email = var.opensearch_budget_notification_email
 }
 
+# OpenSearch basic-auth password in Secrets Manager, so the ECS task can inject it as a secret
+# (never plaintext in the task def). Created only for the self-hosted cutover (auth=basic) and
+# sourced from the same sensitive var cloud-init uses, so the node and the app share one password.
+resource "aws_secretsmanager_secret" "opensearch_password" {
+  count = var.opensearch_auth == "basic" && var.oci_opensearch_admin_password != "" ? 1 : 0
+  name  = "${var.project_name}-${var.environment}-opensearch-password"
+}
+
+resource "aws_secretsmanager_secret_version" "opensearch_password" {
+  count         = var.opensearch_auth == "basic" && var.oci_opensearch_admin_password != "" ? 1 : 0
+  secret_id     = aws_secretsmanager_secret.opensearch_password[0].id
+  secret_string = var.oci_opensearch_admin_password
+}
+
+module "oci_opensearch" {
+  source       = "./modules/oci-opensearch"
+  project_name = var.project_name
+  environment  = var.environment
+
+  enable                    = var.enable_oci_opensearch
+  compartment_ocid          = var.oci_compartment_ocid != "" ? var.oci_compartment_ocid : var.oci_tenancy_ocid
+  ocpus                     = var.oci_opensearch_ocpus
+  memory_gb                 = var.oci_opensearch_memory_gb
+  boot_volume_gb            = var.oci_opensearch_boot_volume_gb
+  admin_cidr                = var.oci_admin_cidr
+  ssh_public_key            = var.oci_ssh_public_key
+  opensearch_admin_password = var.oci_opensearch_admin_password
+  image_ocid                = var.oci_opensearch_image_ocid
+  # Whitelist the AWS NAT gateway's stable EIP on 9200 so the live ECS app can reach the node.
+  app_egress_cidr = "${module.networking.nat_gateway_public_ip}/32"
+}
+
 module "s3" {
   source       = "./modules/s3"
   project_name = var.project_name
@@ -66,7 +98,12 @@ module "alb" {
 }
 
 module "ecs" {
-  source                      = "./modules/ecs"
+  source = "./modules/ecs"
+  # Ensure the NAT gateway + private route table + associations are fully live before ECS tasks
+  # move into private subnets — new tasks pull their image (ECR) and read secrets at startup over
+  # the NAT, so the egress path must exist first.
+  depends_on = [module.networking]
+
   project_name                = var.project_name
   environment                 = var.environment
   aws_region                  = var.aws_region
@@ -86,22 +123,31 @@ module "ecs" {
   dynamodb_consent_table      = module.dynamodb.consent_table_name
   dynamodb_audit_table        = module.dynamodb.audit_log_table_name
 
-  catalog_search_backend      = var.catalog_search_backend
-  catalog_search_mode         = var.catalog_search_mode
-  catalog_semantic_enabled    = var.catalog_semantic_enabled
-  opensearch_endpoint         = module.opensearch.collection_endpoint
+  catalog_search_backend   = var.catalog_search_backend
+  catalog_search_mode      = var.catalog_search_mode
+  catalog_semantic_enabled = var.catalog_semantic_enabled
+  # Endpoint precedence: explicit override > self-hosted OCI node (auth=basic) > AWS collection.
+  opensearch_endpoint = var.opensearch_endpoint != "" ? var.opensearch_endpoint : (
+    var.opensearch_auth == "basic" ? module.oci_opensearch.endpoint : module.opensearch.collection_endpoint
+  )
   opensearch_knn_ef_search    = var.opensearch_knn_ef_search
   opensearch_knn_quantization = var.opensearch_knn_quantization
-  s3_bucket                   = module.s3.bucket_name
-  cognito_issuer_uri          = module.cognito.issuer_uri
-  cognito_domain              = module.cognito.cognito_domain
-  cognito_client_id           = module.cognito.client_id
-  cognito_user_pool_id        = module.cognito.user_pool_id
-  domain_name                 = var.domain_name
-  ecs_security_group_id       = module.networking.ecs_security_group_id
-  stability_api_key_arn       = var.stability_api_key_arn
-  openai_api_key_arn          = var.openai_api_key_arn
-  google_api_key_arn          = var.google_api_key_arn
+  opensearch_auth             = var.opensearch_auth
+  opensearch_username         = var.opensearch_username
+  opensearch_password_arn = var.opensearch_password_arn != "" ? var.opensearch_password_arn : (
+    length(aws_secretsmanager_secret.opensearch_password) > 0 ? aws_secretsmanager_secret.opensearch_password[0].arn : ""
+  )
+  opensearch_tls_verify = var.opensearch_tls_verify
+  s3_bucket             = module.s3.bucket_name
+  cognito_issuer_uri    = module.cognito.issuer_uri
+  cognito_domain        = module.cognito.cognito_domain
+  cognito_client_id     = module.cognito.client_id
+  cognito_user_pool_id  = module.cognito.user_pool_id
+  domain_name           = var.domain_name
+  ecs_security_group_id = module.networking.ecs_security_group_id
+  stability_api_key_arn = var.stability_api_key_arn
+  openai_api_key_arn    = var.openai_api_key_arn
+  google_api_key_arn    = var.google_api_key_arn
 }
 
 module "waf" {

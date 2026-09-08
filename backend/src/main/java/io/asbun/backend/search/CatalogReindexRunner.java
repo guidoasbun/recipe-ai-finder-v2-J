@@ -90,7 +90,11 @@ public class CatalogReindexRunner implements CommandLineRunner {
         this.provisioner = provisioner;
         this.properties = properties;
         this.batchSize = Math.max(1, batchSize);
-        this.serverless = !"es".equalsIgnoreCase(properties.getSigningService());
+        // Serverless (aoss) auto-generates _id and rejects a custom one; a full cluster (managed
+        // domain OR self-hosted basic-auth node) accepts catalogRecipeId as _id, enabling real
+        // idempotent upserts. Basic auth always implies a self-hosted full cluster.
+        this.serverless = !"basic".equalsIgnoreCase(properties.getAuth())
+                && !"es".equalsIgnoreCase(properties.getSigningService());
         this.recreateIndex = recreateIndex;
         this.concurrency = Math.max(1, concurrency);
         this.backfill = backfill;

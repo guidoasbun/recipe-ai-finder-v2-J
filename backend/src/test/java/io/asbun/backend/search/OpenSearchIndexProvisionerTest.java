@@ -76,7 +76,11 @@ class OpenSearchIndexProvisionerTest {
         JsonNode method = embedding.path("method");
         assertThat(method.path("name").asText()).isEqualTo("hnsw");
         assertThat(method.path("engine").asText()).isEqualTo("faiss");
-        assertThat(method.path("space_type").asText()).isEqualTo("cosinesimil");
+        // space_type is at the FIELD level (self-hosted OpenSearch 2.17's faiss validator rejects
+        // it inside the method), and is innerproduct (== cosine on Titan's unit-normalized vectors;
+        // faiss rejects cosinesimil for hnsw).
+        assertThat(embedding.path("space_type").asText()).isEqualTo("innerproduct");
+        assertThat(method.has("space_type")).isFalse();
     }
 
     @Test
@@ -97,12 +101,20 @@ class OpenSearchIndexProvisionerTest {
     }
 
     @Test
-    void quantizationByte_isRejected() {
-        // A true byte-vector path would need float->byte quantization of both persisted vectors
-        // and queries; unsupported, so 'byte' must fail loudly rather than produce a broken index.
-        assertThatThrownBy(() -> provisioner("byte", "aoss").buildMappingJson())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("byte");
+    void quantizationByte_usesDiskBasedOnDiskMode() throws Exception {
+        // 'byte' is implemented as disk-based (on_disk) mode: data_type stays float (no lossy
+        // client-side conversion), OpenSearch compresses internally (16x) + rescores from disk,
+        // so the full 2.2M index fits a 12 GB box. It must NOT emit a custom faiss method/encoder.
+        JsonNode embedding = mappingProps(provisioner("byte", "es")).path("embedding");
+
+        assertThat(embedding.path("type").asText()).isEqualTo("knn_vector");
+        assertThat(embedding.path("dimension").asInt()).isEqualTo(1024);
+        assertThat(embedding.path("data_type").asText()).isEqualTo("float");
+        assertThat(embedding.path("mode").asText()).isEqualTo("on_disk");
+        assertThat(embedding.path("compression_level").asText()).isEqualTo("16x");
+        assertThat(embedding.path("space_type").asText()).isEqualTo("innerproduct");
+        // on_disk lets OpenSearch pick the method; we don't pin a custom faiss method block.
+        assertThat(embedding.has("method")).isFalse();
     }
 
     @Test

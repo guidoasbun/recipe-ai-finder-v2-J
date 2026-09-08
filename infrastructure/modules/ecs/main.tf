@@ -58,14 +58,21 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "OPENSEARCH_ENDPOINT", value = var.opensearch_endpoint },
       { name = "OPENSEARCH_INDEX", value = var.opensearch_index },
       { name = "OPENSEARCH_KNN_EF_SEARCH", value = tostring(var.opensearch_knn_ef_search) },
-      { name = "OPENSEARCH_KNN_QUANTIZATION", value = var.opensearch_knn_quantization }
+      { name = "OPENSEARCH_KNN_QUANTIZATION", value = var.opensearch_knn_quantization },
+      { name = "OPENSEARCH_AUTH", value = var.opensearch_auth },
+      { name = "OPENSEARCH_USERNAME", value = var.opensearch_username },
+      { name = "OPENSEARCH_TLS_VERIFY", value = tostring(var.opensearch_tls_verify) }
     ]
 
-    secrets = [
+    # OpenSearch basic-auth password is injected from Secrets Manager only when configured
+    # (auth=basic). Concatenated so the sigv4 path adds no empty secret.
+    secrets = concat([
       { name = "STABILITY_API_KEY", valueFrom = var.stability_api_key_arn },
       { name = "OPENAI_API_KEY", valueFrom = var.openai_api_key_arn },
       { name = "GOOGLE_API_KEY", valueFrom = var.google_api_key_arn }
-    ]
+      ], var.opensearch_password_arn != "" ? [
+      { name = "OPENSEARCH_PASSWORD", valueFrom = var.opensearch_password_arn }
+    ] : [])
 
     logConfiguration = {
       logDriver = "awslogs"
@@ -128,10 +135,21 @@ resource "aws_ecs_service" "backend" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
+  # Auto-rollback safety net: if a new deployment's tasks fail to become healthy (e.g. a bad
+  # config or an unreachable dependency at startup), ECS rolls back to the last known-good task
+  # definition instead of retrying forever. Turns a risky change into a self-healing one.
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  # Private subnets: no public IP; egress (and thus OpenSearch access) flows through the NAT
+  # gateway's stable EIP. Inbound is via the ALB only. Tasks pull images / reach AWS APIs and the
+  # Oracle node over the NAT.
   network_configuration {
-    subnets          = var.public_subnets
+    subnets          = var.private_subnets
     security_groups  = [var.ecs_security_group_id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   load_balancer {
@@ -148,10 +166,17 @@ resource "aws_ecs_service" "frontend" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
+  # Auto-rollback safety net (see backend service).
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  # Private subnets: no public IP; egress via the NAT gateway, inbound via the ALB only.
   network_configuration {
-    subnets          = var.public_subnets
+    subnets          = var.private_subnets
     security_groups  = [var.ecs_security_group_id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   load_balancer {

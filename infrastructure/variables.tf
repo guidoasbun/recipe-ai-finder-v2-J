@@ -202,3 +202,127 @@ variable "opensearch_budget_notification_email" {
   default     = ""
   description = "Email for the OpenSearch budget alert. Empty = no budget resource created."
 }
+
+# --- OCI self-hosted OpenSearch (opt-in) ---
+# Self-hosted OpenSearch on an Oracle Cloud Ampere A1 VM, replacing AWS OpenSearch Serverless
+# (which kept ~6.5 OCU warm for the 2.2M vector index even when idle, ~$240/mo vs a ~$15 budget).
+# Everything is gated by enable_oci_opensearch, so the default deployment provisions nothing in
+# OCI. The OCI provider credentials are non-secret OCIDs + a fingerprint; the private key is read
+# from a local file path and never committed.
+
+variable "enable_oci_opensearch" {
+  type        = bool
+  default     = false
+  description = "Provision the self-hosted OpenSearch node on Oracle Cloud (Ampere A1). Off by default. Requires the oci_* provider variables to be set."
+}
+
+variable "oci_tenancy_ocid" {
+  type        = string
+  default     = ""
+  description = "OCI tenancy OCID (from the API-key config preview). Non-secret."
+}
+
+variable "oci_user_ocid" {
+  type        = string
+  default     = ""
+  description = "OCI user OCID whose API signing key Terraform uses. Non-secret."
+}
+
+variable "oci_fingerprint" {
+  type        = string
+  default     = ""
+  description = "Fingerprint of the OCI API signing key uploaded to the user. Non-secret."
+}
+
+variable "oci_private_key_path" {
+  type        = string
+  default     = "~/.oci/oci_api_key.pem"
+  description = "Local filesystem path to the OCI API signing PRIVATE key (PEM). Never committed; keep chmod 600."
+}
+
+variable "oci_region" {
+  type        = string
+  default     = "us-sanjose-1"
+  description = "OCI home region identifier where the Always-Free / A1 capacity lives."
+}
+
+variable "oci_compartment_ocid" {
+  type        = string
+  default     = ""
+  description = "OCI compartment OCID to create resources in. Defaults to the tenancy root compartment (= tenancy OCID) when blank."
+}
+
+variable "oci_opensearch_ocpus" {
+  type        = number
+  default     = 2
+  description = "Ampere A1 OCPUs (1 OCPU = 1 physical core). 2 is plenty for serving search; the workload is memory-bound, not CPU-bound."
+}
+
+variable "oci_opensearch_memory_gb" {
+  type        = number
+  default     = 24
+  description = "Ampere A1 memory (GB). 24 GB comfortably fits the 2.2M index at fp16. Free-tier cap is 12 GB (needs byte/on_disk quantization); 24 GB requires a Pay-As-You-Go account (~$13/mo)."
+}
+
+variable "oci_opensearch_boot_volume_gb" {
+  type        = number
+  default     = 100
+  description = "Boot volume size (GB). Holds the OS + Docker + the OpenSearch data dir (index ~10-16 GB). Free tier includes 200 GB block storage total."
+}
+
+variable "oci_admin_cidr" {
+  type        = string
+  default     = ""
+  description = "CIDR allowed to reach SSH (22) and the OpenSearch API (9200) — normally your admin IP as a /32 (e.g. 70.95.245.8/32). Required when enable_oci_opensearch=true."
+}
+
+variable "oci_ssh_public_key" {
+  type        = string
+  default     = ""
+  description = "SSH public key authorized for the 'opc' user on the VM. When blank, the module generates a key pair and writes the private key to oci_generated_ssh_key_path (output)."
+}
+
+variable "oci_opensearch_admin_password" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Initial admin password for OpenSearch security (OPENSEARCH_INITIAL_ADMIN_PASSWORD). Must meet OpenSearch's strong-password policy. Pass via TF_VAR_oci_opensearch_admin_password or a gitignored *.auto.tfvars — do NOT commit."
+}
+
+variable "oci_opensearch_image_ocid" {
+  type        = string
+  default     = ""
+  description = "Optional explicit OCID of an aarch64 Oracle Linux 8/9 image. When blank the module looks up the latest Oracle Linux image for the A1 shape."
+}
+
+# --- OpenSearch client transport (for the self-hosted Oracle node cutover) ---
+
+variable "opensearch_endpoint" {
+  type        = string
+  default     = ""
+  description = "Explicit OpenSearch endpoint override for the ECS app. Blank = auto: the OCI node endpoint when opensearch_auth=basic, else the AWS collection endpoint."
+}
+
+variable "opensearch_auth" {
+  type        = string
+  default     = "sigv4"
+  description = "OpenSearch transport auth the ECS app uses: sigv4 (Amazon OpenSearch) | basic (self-hosted Oracle node)."
+}
+
+variable "opensearch_username" {
+  type        = string
+  default     = ""
+  description = "OpenSearch basic-auth username for the ECS app (opensearch_auth=basic). Non-secret (typically 'admin')."
+}
+
+variable "opensearch_password_arn" {
+  type        = string
+  default     = ""
+  description = "Secrets Manager ARN of the OpenSearch basic-auth password, injected into ECS as a secret. Empty when auth=sigv4."
+}
+
+variable "opensearch_tls_verify" {
+  type        = bool
+  default     = true
+  description = "ECS app verifies the OpenSearch TLS cert. false only for the self-signed self-hosted node."
+}
