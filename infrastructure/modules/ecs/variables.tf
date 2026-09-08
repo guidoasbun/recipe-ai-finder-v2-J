@@ -107,6 +107,30 @@ variable "opensearch_knn_quantization" {
   description = "OpenSearch vector quantization: none | fp16 | byte. Must match the index the reindex built."
 }
 
+variable "opensearch_auth" {
+  type        = string
+  default     = "sigv4"
+  description = "OpenSearch transport auth: sigv4 (Amazon OpenSearch) | basic (self-hosted node, e.g. Oracle)."
+}
+
+variable "opensearch_username" {
+  type        = string
+  default     = ""
+  description = "OpenSearch basic-auth username (used when opensearch_auth=basic)."
+}
+
+variable "opensearch_password_arn" {
+  type        = string
+  default     = ""
+  description = "Secrets Manager ARN holding the OpenSearch basic-auth password. Injected as an ECS secret (never plaintext). Empty when auth=sigv4."
+}
+
+variable "opensearch_tls_verify" {
+  type        = bool
+  default     = true
+  description = "Verify the OpenSearch server TLS cert. false only for a self-signed cert on an IP-locked self-hosted node."
+}
+
 variable "s3_bucket" {
   type = string
 }

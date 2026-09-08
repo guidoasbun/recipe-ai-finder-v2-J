@@ -29,10 +29,20 @@ google_api_key_arn = "arn:aws:secretsmanager:us-east-1:412381751532:secret:recip
 enable_opensearch                    = false
 enable_catalog_full                  = true
 enable_batch_embedding               = false
-catalog_search_backend               = "inapp"
-opensearch_knn_quantization          = "fp16"
 opensearch_knn_ef_search             = 100
 opensearch_budget_notification_email = "guido@asbun.io"
+
+# --- Cutover to the self-hosted Oracle OpenSearch node (basic auth over HTTPS) ---
+# The app now searches the Oracle node instead of the (deleted) AWS Serverless collection.
+# Endpoint auto-resolves to the OCI module's node when opensearch_auth=basic (no need to hardcode
+# the IP). The password is read from oci_opensearch_admin_password (oci-secrets.auto.tfvars) and
+# published to Secrets Manager for the ECS task. tls-verify=false: the node uses a self-signed
+# cert and 9200 is IP-locked to the NAT egress. Quantization must match the built index (fp16).
+catalog_search_backend      = "opensearch"
+opensearch_auth             = "basic"
+opensearch_username         = "admin"
+opensearch_tls_verify       = false
+opensearch_knn_quantization = "fp16"
 
 # To re-grant ad-hoc CLI/local data access to the collection later (reindex/backfill/debug),
 # add the principal ARN here and apply. Leave empty for least-privilege (ECS task role only).

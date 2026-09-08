@@ -40,6 +40,12 @@ variable "admin_cidr" {
   description = "CIDR allowed to reach SSH (22) and OpenSearch (9200). Normally the admin IP /32."
 }
 
+variable "app_egress_cidr" {
+  type        = string
+  default     = ""
+  description = "Additional CIDR allowed to reach OpenSearch (9200) only — the app's stable egress (the AWS NAT gateway EIP as a /32). Empty = only the admin CIDR can reach 9200 (laptop-only)."
+}
+
 variable "ssh_public_key" {
   type        = string
   default     = ""

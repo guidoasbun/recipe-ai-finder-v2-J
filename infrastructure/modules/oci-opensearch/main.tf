@@ -146,8 +146,7 @@ resource "oci_core_security_list" "this" {
     }
   }
 
-  # OpenSearch API (9200) from the admin IP only. Reindex/backfill/verify run from the operator's
-  # laptop. Broaden this (or add the app's stable egress CIDR) at cutover.
+  # OpenSearch API (9200) from the admin IP (operator laptop: reindex/backfill/verify).
   ingress_security_rules {
     protocol    = "6" # TCP
     source      = var.admin_cidr
@@ -156,6 +155,22 @@ resource "oci_core_security_list" "this" {
     tcp_options {
       min = 9200
       max = 9200
+    }
+  }
+
+  # OpenSearch API (9200) from the app's stable egress (the AWS NAT gateway EIP), added at
+  # cutover so the live ECS backend can reach the node. Only present when app_egress_cidr is set.
+  dynamic "ingress_security_rules" {
+    for_each = var.app_egress_cidr != "" ? [var.app_egress_cidr] : []
+    content {
+      protocol    = "6" # TCP
+      source      = ingress_security_rules.value
+      source_type = "CIDR_BLOCK"
+      description = "OpenSearch API from app NAT egress"
+      tcp_options {
+        min = 9200
+        max = 9200
+      }
     }
   }
 }

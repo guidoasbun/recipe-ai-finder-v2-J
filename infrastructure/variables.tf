@@ -294,3 +294,35 @@ variable "oci_opensearch_image_ocid" {
   default     = ""
   description = "Optional explicit OCID of an aarch64 Oracle Linux 8/9 image. When blank the module looks up the latest Oracle Linux image for the A1 shape."
 }
+
+# --- OpenSearch client transport (for the self-hosted Oracle node cutover) ---
+
+variable "opensearch_endpoint" {
+  type        = string
+  default     = ""
+  description = "Explicit OpenSearch endpoint override for the ECS app. Blank = auto: the OCI node endpoint when opensearch_auth=basic, else the AWS collection endpoint."
+}
+
+variable "opensearch_auth" {
+  type        = string
+  default     = "sigv4"
+  description = "OpenSearch transport auth the ECS app uses: sigv4 (Amazon OpenSearch) | basic (self-hosted Oracle node)."
+}
+
+variable "opensearch_username" {
+  type        = string
+  default     = ""
+  description = "OpenSearch basic-auth username for the ECS app (opensearch_auth=basic). Non-secret (typically 'admin')."
+}
+
+variable "opensearch_password_arn" {
+  type        = string
+  default     = ""
+  description = "Secrets Manager ARN of the OpenSearch basic-auth password, injected into ECS as a secret. Empty when auth=sigv4."
+}
+
+variable "opensearch_tls_verify" {
+  type        = bool
+  default     = true
+  description = "ECS app verifies the OpenSearch TLS cert. false only for the self-signed self-hosted node."
+}

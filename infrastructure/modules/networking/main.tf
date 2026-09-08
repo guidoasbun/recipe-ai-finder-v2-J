@@ -60,6 +60,50 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# --- NAT gateway for private-subnet egress ---
+# Single NAT gateway (single-AZ) so private-subnet ECS tasks reach the internet (Bedrock,
+# DynamoDB, S3, ECR pulls, Secrets Manager, Cognito) AND the self-hosted OpenSearch node — all
+# from ONE stable Elastic IP. That stable EIP is what the OCI security list whitelists for port
+# 9200, which is why moving ECS behind this NAT solves the "dynamic Fargate egress IP" problem.
+# Single-AZ (not one-per-AZ) keeps it at ~$33/mo for this dev app; an AZ outage would drop egress
+# until recovery, an acceptable dev tradeoff.
+resource "aws_eip" "nat" {
+  domain = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-nat-eip"
+  }
+}
+
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id # NAT lives in a PUBLIC subnet
+  depends_on    = [aws_internet_gateway.main]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-nat"
+  }
+}
+
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main.id
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-private-rt"
+  }
+}
+
+resource "aws_route_table_association" "private" {
+  count          = 2
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private.id
+}
+
 resource "aws_security_group" "alb" {
   name   = "${var.project_name}-${var.environment}-alb-sg"
   vpc_id = aws_vpc.main.id

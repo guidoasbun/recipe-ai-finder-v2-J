@@ -94,10 +94,16 @@ re-embedding. In-app stays the current live backend until ECS reachability is de
         self-signed TLS path confirmed working end to end.
   - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 8. Load + verify the index (OPERATOR — long batch run)
-  - [ ] 8.1 Export `OPENSEARCH_ENDPOINT/USERNAME/PASSWORD` (+ `QUANTIZATION=fp16`, or `byte` for a
-        12 GB box) and run `./scripts/run-oracle-catalog-reindex.sh`.
-  - [ ] 8.2 Confirm the final `Verify PASSED` line: **2,231,142 == 2,231,142**.
+- [x] 8. Load + verify the index (OPERATOR — long batch run)
+  - [x] 8.1 Ran `./scripts/run-oracle-catalog-reindex.sh` (fp16). Load took ~7h15m (~12:13→19:29),
+        ~75-89 docs/sec, bound by the DynamoDB scan. **`Reindex complete: 2231142 seen, 2231142
+        indexed, 0 skipped, 0 failed`** — clean on the first pass, no backfill needed (self-hosted
+        node has fixed capacity, so none of the AWS-serverless throttle-drops occurred; AWS had
+        ~65K constant failures).
+  - [x] 8.2 Independent live `_count` = **2231142** == DynamoDB 2231142. Keyword search returns
+        hits; sample docs carry catalogRecipeId/title/dietaryTags. Index complete + functional.
+  - Mid-run fix: root FS was only 30 GB (Oracle Linux default); ran `oci-growfs` online to expand
+    to 83 GB (100 GB volume) — load continued uninterrupted. Now automated in cloud-init.
   - _Requirements: 5.2, 5.3_
 
 - [ ] 9. Decide ECS → Oracle reachability, then cut over (OPERATOR — open decision)

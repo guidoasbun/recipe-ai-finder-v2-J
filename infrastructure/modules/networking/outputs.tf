@@ -17,3 +17,8 @@ output "alb_security_group_id" {
 output "ecs_security_group_id" {
   value = aws_security_group.ecs.id
 }
+
+output "nat_gateway_public_ip" {
+  description = "Stable Elastic IP of the NAT gateway — the source IP of all private-subnet egress. Whitelist this on the OpenSearch node's 9200 rule."
+  value       = aws_eip.nat.public_ip
+}
