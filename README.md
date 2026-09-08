@@ -20,6 +20,24 @@ This application is live at
 
 ---
 
+## Table of Contents
+
+- [Try It Out](#try-it-out)
+- [What It Does](#what-it-does)
+- [Architecture](#architecture)
+- [Infrastructure](#infrastructure)
+- [Cost & Reliability Engineering](#cost--reliability-engineering)
+- [CI/CD Pipeline](#cicd-pipeline)
+- [Recipe Catalog Search](#recipe-catalog-search)
+- [AI & Model Layer](#ai--model-layer)
+- [Model Stats](#model-stats)
+- [Dietary Restrictions](#dietary-restrictions)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Local Development](#local-development)
+
+---
+
 ## Try It Out
 
 A demo account is available so you can explore the app without creating your own credentials:
@@ -44,254 +62,6 @@ A demo account is available so you can explore the app without creating your own
 7. Set your **dietary restrictions** in Account Settings — every recipe generated afterwards is guaranteed to comply
 8. Browse a **catalog of ~2.2M existing recipes** with keyword and natural-language (semantic) search, filtered by your dietary restrictions
 9. Visit the **Model Stats** page to see aggregated performance charts across all users — average image and text generation times per model, sample counts, and a 30-day trend line
-
----
-
-## AI & Model Layer
-
-### Foundation Model Inference — AWS Bedrock
-
-Recipe generation runs entirely through **AWS Bedrock Runtime**. The model is selected per-request from the frontend, allowing users to trade off speed vs. quality.
-
-| Model             | Bedrock ID                                    | Characteristics                 |
-| ----------------- | --------------------------------------------- | ------------------------------- |
-| Claude Haiku 4.5  | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Fastest, lowest cost            |
-| Claude Sonnet 4.6 | `us.anthropic.claude-sonnet-4-6`              | Best reasoning, highest quality |
-| Amazon Nova Micro | `amazon.nova-micro-v1:0`                      | Ultra-fast AWS-native           |
-| Amazon Nova Lite  | `amazon.nova-lite-v1:0`                       | Fast AWS-native with vision     |
-| Meta Llama 3.1 8B | `us.meta.llama3-1-8b-instruct-v1:0`           | Open-source alternative         |
-
-**How it works:**
-
-- Each model family gets a tailored prompt format: Anthropic models use the Messages API format; Nova/Titan models use the generic messages format; Llama 3.1 uses its special `<|begin_of_text|>` token syntax.
-- The system prompt instructs the model to return a JSON array of exactly three recipe objects. A fallback parser strips any prose the model prepends or appends before JSON deserialization.
-- AWS SDK v2 `BedrockRuntimeClient` with a 90-second read timeout handles long-running inference calls.
-
-**Key file:** [backend/src/main/java/io/asbun/backend/service/BedrockService.java](backend/src/main/java/io/asbun/backend/service/BedrockService.java)
-
-### Image Generation
-
-After recipes are generated, the backend produces a food photography image for each one. Three providers are supported; the user selects one per session.
-
-| Provider                 | Model ID                       | Notes                             |
-| ------------------------ | ------------------------------ | --------------------------------- |
-| **Stability AI Core**    | `stable-image/generate/core`   | 1:1 aspect ratio                  |
-| **OpenAI**               | `gpt-image-1.5`                | 1024×1024; high quality           |
-| **Google Imagen 4**      | `imagen-4.0-generate-001`      | 1:1 aspect ratio; highest quality |
-| **Google Imagen 4 Fast** | `imagen-4.0-fast-generate-001` | 1:1 aspect ratio; lower latency   |
-
-Both providers receive the same prompt template:
-
-```
-A beautiful food photography photo of {RECIPE_TITLE}, professional lighting, high quality, restaurant style
-```
-
-**Image lifecycle:**
-
-1. Base64 PNG returned by the provider
-2. Decoded and uploaded to S3 (`recipe-ai-{env}-recipe-images`)
-3. Presigned URL (1-hour TTL) generated on read and served once the image is available
-4. S3 lifecycle policy auto-deletes images after 90 days
-5. Image generation runs asynchronously in a background thread — recipes are saved immediately with `imageUrl: null`, which is populated once generation completes. Generation is retried up to 3 times with exponential backoff (2 s, 4 s) before giving up; if all attempts fail, the recipe remains accessible without an image.
-6. The frontend opens a **Server-Sent Events** connection to `GET /api/recipes/{id}/image-stream` immediately after saving. The backend holds the connection open via `SseEmitter` and fires an `image-ready` event as soon as the image URL is written to DynamoDB, at which point the frontend fetches the updated recipe and renders the image — no polling required.
-
-**Key file:** [backend/src/main/java/io/asbun/backend/service/ImageGenerationService.java](backend/src/main/java/io/asbun/backend/service/ImageGenerationService.java)
-
----
-
-## Model Stats
-
-The `/model-stats` page surfaces aggregated performance data across all users, visualized with three [Recharts](https://recharts.org) charts:
-
-| Chart                              | What it shows                                                          |
-| ---------------------------------- | ---------------------------------------------------------------------- |
-| **Image Generation Time by Model** | Average `imageGenerationMs` per image model (bar chart, 4 bars)        |
-| **Text Generation Time by Model**  | Average `textGenerationMs` per Bedrock model (bar chart, 5 bars)       |
-| **Image Generation Trend**         | Daily average image generation time over the last 30 days (line chart) |
-
-Each bar tooltip also shows the sample count (number of recipes) used to compute the average.
-
-### Data pipeline
-
-Stats are computed by scanning the entire `Recipes` DynamoDB table, grouping by model, and averaging the recorded `imageGenerationMs` / `textGenerationMs` fields that are stored on every recipe at save time. Results are cached in DynamoDB under a sentinel item (`recipeId = STATS#MODEL_AVERAGES`) with a 1-hour TTL, so at most one full scan runs per hour regardless of page traffic.
-
-### SSE-based delivery
-
-The page uses **Server-Sent Events** rather than a blocking fetch, so it never shows an error on a cache miss (e.g. first deployment, expired cache):
-
-```
-Browser → GET /api/backend/api/stats/stream (EventSource)
-    │
-    └─ Next.js middleware injects Authorization: Bearer <token> from session cookie
-        └─ StatsController.streamStats()
-            ├─ cache FRESH  → StatsSseService.sendToEmitter()  ← stats arrive in ~5 ms
-            └─ cache STALE  → StatsService.computeAndNotifyAsync() [@Async]
-                                 └─ DynamoDB full scan → compute averages
-                                 └─ StatsSseService.broadcastStats() ← pushes to all waiting clients
-```
-
-The frontend renders three pulsing skeleton cards while waiting and swaps them for the live charts the moment the `stats-ready` SSE event arrives — no polling, no page reload required.
-
-**Key files:**
-
-- [backend/.../service/StatsService.java](backend/src/main/java/io/asbun/backend/service/StatsService.java)
-- [backend/.../service/StatsSseService.java](backend/src/main/java/io/asbun/backend/service/StatsSseService.java)
-- [backend/.../repository/StatsRepository.java](backend/src/main/java/io/asbun/backend/repository/StatsRepository.java)
-- [frontend/app/(protected)/model-stats/ModelStatsLoader.tsx](<frontend/app/(protected)/model-stats/ModelStatsLoader.tsx>)
-- [frontend/app/(protected)/model-stats/ModelStatsChart.tsx](<frontend/app/(protected)/model-stats/ModelStatsChart.tsx>)
-
----
-
-## Dietary Restrictions
-
-Users can save a set of dietary restrictions to their profile, and every recipe generated afterwards is guaranteed to comply. Restrictions are managed at `/account/dietary` and surfaced on the dashboard so they're always visible.
-
-### Supported restrictions
-
-Ten restrictions are supported. The canonical list lives in the backend enum ([`DietaryRestriction`](backend/src/main/java/io/asbun/backend/model/enums/DietaryRestriction.java)) and is mirrored on the frontend ([`lib/dietary.ts`](frontend/lib/dietary.ts)):
-
-| Value          | Label       |
-| -------------- | ----------- |
-| `GLUTEN_FREE`  | Gluten-Free |
-| `KETO`         | Keto        |
-| `VEGAN`        | Vegan       |
-| `VEGETARIAN`   | Vegetarian  |
-| `DAIRY_FREE`   | Dairy-Free  |
-| `NUT_FREE`     | Nut-Free    |
-| `PALEO`        | Paleo       |
-| `LOW_CARB`     | Low-Carb    |
-| `HALAL`        | Halal       |
-| `KOSHER`       | Kosher      |
-
-### Persistence & API
-
-Restrictions are stored as a `List<String>` on the `User` item in DynamoDB and exposed through the account API:
-
-| Method | Path                                | Description                                        |
-| ------ | ----------------------------------- | -------------------------------------------------- |
-| `GET`  | `/api/account/dietary-restrictions` | Return the current user's saved restrictions       |
-| `PUT`  | `/api/account/dietary-restrictions` | Replace the saved restrictions with a new list     |
-
-The `PUT` payload is validated on both sides:
-
-- **Server:** [`UpdateDietaryRestrictionsRequest`](backend/src/main/java/io/asbun/backend/dto/UpdateDietaryRestrictionsRequest.java) enforces `@NotNull` and `@Size(max = 10)`; the controller rejects values outside the supported enum with a `400`, and de-duplicates the list before saving.
-- **Client:** the selector at `/account/dietary` only offers the ten supported values, and the dashboard shows the active restrictions (or a "None set" state) with a link to edit.
-
-The current user's restrictions are also included in the profile response (`GET /api/account/profile`), which the dashboard uses to render its badges.
-
-### AI enforcement
-
-When restrictions are set, they are injected into the Bedrock prompt so the model is constrained at generation time — not filtered afterwards. On `POST /api/recipes/generate`, [`RecipeController`](backend/src/main/java/io/asbun/backend/controller/RecipeController.java) loads the user's saved restrictions and passes them to [`BedrockService.generateRecipes()`](backend/src/main/java/io/asbun/backend/service/BedrockService.java), which:
-
-1. Adds an explicit dietary-constraints clause listing the restrictions by display name and instructing the model that every recipe **must** fully comply.
-2. Qualifies the "pantry staples" permission (flour, butter, soy sauce, etc.) so that any dietary restriction always overrides it — preventing contradictory instructions such as suggesting flour to a gluten-free user.
-
-When a user has no restrictions, the clause is omitted entirely and generation behaves exactly as before.
-
-**Key files:**
-
-- [backend/.../controller/AccountController.java](backend/src/main/java/io/asbun/backend/controller/AccountController.java) — dietary restriction endpoints
-- [backend/.../service/BedrockService.java](backend/src/main/java/io/asbun/backend/service/BedrockService.java) — prompt injection & enforcement
-- [backend/.../model/enums/DietaryRestriction.java](backend/src/main/java/io/asbun/backend/model/enums/DietaryRestriction.java) — supported values
-- [frontend/app/(protected)/account/dietary/page.tsx](<frontend/app/(protected)/account/dietary/page.tsx>) — restriction selection UI
-- [frontend/lib/dietary.ts](frontend/lib/dietary.ts) — shared restriction types & labels
-
----
-
-## Recipe Catalog Search
-
-Alongside AI generation, the app offers a **"Look for Existing Recipes"** tab (`/browse`) that searches a catalog of pre-made recipes ingested from open datasets. It supports keyword search, natural-language semantic search, and dietary filtering that reuses the same restrictions as the AI feature.
-
-The catalog search supports keyword (`multi_match`), semantic (k-NN over 1,024-dim Titan V2 vectors), hybrid, and dietary-tag filtering over the **full ~2.2 million-recipe RecipeNLG dataset**. It runs behind a `CatalogSearchService` seam so the backend is swappable with no controller, DTO, or frontend changes.
-
-> **Search backend — migrated off AWS for cost (2026-09):** the catalog was initially served by
-> **Amazon OpenSearch Serverless**. For a large, always-resident, low-traffic vector index that
-> proved very expensive — keeping the 2.2M-vector graph warm held **~6 OCUs (≈36 GB RAM) around the
-> clock**, an estimated **several hundred to ~$1,000+/month** at $0.24/OCU-hour, against a ~$15/month
-> hobby budget. We **deleted the collection** and re-hosted the identical index on a **single
-> self-hosted OpenSearch node on Oracle Cloud** (Ampere A1, basic auth over HTTPS), dropping the
-> recurring cost to **~$0–13/month**. DynamoDB is the source of truth, so the index rebuilt with no
-> re-embedding, and the app stays portable (a config flip selects the transport). **The cutover is
-> complete** — live search runs against the Oracle node.
->
-> The full reasoning, cost breakdown, and the network hardening that came with it are documented in
-> **[documents/MIGRATION-aws-to-oracle-opensearch.md](documents/MIGRATION-aws-to-oracle-opensearch.md)**
-> (see also the [runbook](documents/RUNBOOK-oracle-opensearch.md)).
-
-> **Deep-dive & post-mortem:** the full AWS OpenSearch implementation — architecture, the 2.2M batch-embed + reindex, every serverless gotcha (throttling, no-upsert, PIT reconciliation, client timeouts), and the dev cutover — is documented in [documents/opensearch-implementation.md](documents/opensearch-implementation.md).
-
-### Datasets
-
-The catalog is built from open recipe datasets, normalized into a common schema and tagged for dietary restrictions at ingestion. Each recipe records its `sourceName`, `sourceUrl`, and `sourceLicense` for attribution.
-
-| Source | Recipes | Style | Format |
-| ------ | ------- | ----- | ------ |
-| TheMealDB (Kaggle export) | ~300 | International (34 countries) | XLSX |
-| Better Recipes / AllRecipes (Kaggle) | ~1,090 | American home cooking | CSV |
-| RecipeNLG (full set) | **~2,231,142** | Mixed | CSV |
-
-The **full ~2,231,142-recipe RecipeNLG dataset** (embedded with Titan V2) is stored in DynamoDB and indexed into OpenSearch (`fp16` on a 24 GB host, or `byte`/disk-based on a 12 GB host). The smaller ~1,261-recipe catalog remains in a separate DynamoDB table for the in-app fallback. This is a non-commercial project; dataset licenses are respected accordingly.
-
-### Semantic search with Bedrock embeddings
-
-At ingestion, each recipe is embedded with **Amazon Bedrock Titan Text Embeddings V2** (`amazon.titan-embed-text-v2:0`, 1,024 dimensions). At query time the search string is embedded once and compared against the stored vectors by cosine similarity. Three modes are configurable:
-
-| Mode | Behavior |
-| ---- | -------- |
-| `keyword` | Term matching over title/description/ingredients (title weighted higher) |
-| `semantic` | Vector similarity only — finds recipes by meaning, e.g. "something warm for a rainy day" |
-| `hybrid` (default) | Blends keyword and semantic scores; a recipe matches on a keyword hit **or** a strong semantic score |
-
-If a query embedding call fails, search degrades gracefully to keyword-only rather than erroring. Embedding vectors are cached in memory as primitive `float[]` to keep the footprint small.
-
-### Swappable search backend
-
-All search runs behind a [`CatalogSearchService`](backend/src/main/java/io/asbun/backend/search/CatalogSearchService.java) interface, selected by the `catalog.search.backend` property. The implementations coexist:
-
-| Backend | `catalog.search.backend` | Scale | Role |
-| ------- | ------------------------ | ----- | ---- |
-| OpenSearch | `opensearch` | ~2.2M recipes | **Currently serving** (self-hosted node on Oracle Cloud). Full-scale keyword + k-NN + dietary filter. Transport selectable by `opensearch.auth`: `sigv4` (Amazon OpenSearch) or `basic` (self-hosted) |
-| In-app (JVM memory) | `inapp` | ≤ ~50K recipes | Instant rollback — loads the small catalog into memory and ranks it there |
-
-The OpenSearch client transport is pluggable: `opensearch.auth=sigv4` uses a SigV4-signed `opensearch-java` client (Amazon OpenSearch); `opensearch.auth=basic` uses an HTTPS basic-auth client for a self-hosted node. Because dietary tags and embeddings are **persisted in DynamoDB** (the system of record), the OpenSearch index is derived and rebuildable: [`CatalogReindexRunner`](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) bulk-indexes from DynamoDB with **no re-embedding** (vectors are read from the table, never recomputed). Switching backends is a single config flip with no API, DTO, or frontend changes. All OpenSearch infrastructure is opt-in; the default deployment provisions none and serves search from the in-app backend.
-
-**Key files:**
-
-- [backend/.../search/OpenSearchCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/OpenSearchCatalogSearchService.java) — OpenSearch query translation + response mapping
-- [backend/.../config/OpenSearchConfig.java](backend/src/main/java/io/asbun/backend/config/OpenSearchConfig.java) — pluggable transport: SigV4 (AWS) or basic auth (self-hosted)
-- [backend/.../search/CatalogReindexRunner.java](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) — DynamoDB → OpenSearch bulk reindex (no re-embedding)
-- [backend/.../search/InAppCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/InAppCatalogSearchService.java) — in-memory fallback
-- [documents/opensearch-implementation.md](documents/opensearch-implementation.md) — full implementation + post-mortem
-
-### Dietary tagging
-
-Recipes are tagged at ingestion by a deterministic [`DietaryTagger`](backend/src/main/java/io/asbun/backend/ingest/DietaryTagger.java) using per-restriction disqualifier keyword lists with word-boundary matching. The tagging is intentionally conservative:
-
-- Recipes with missing/unknown ingredients receive **no** tags (absence of disqualifiers is not evidence of safety).
-- **HALAL and KOSHER are not inferred** from ingredient text — they require certification/provenance that ingredients cannot establish — so they are only present when a source supplies them explicitly.
-
-Filtering at query time is then a simple tag match. The browse UI defaults its filter chips to the user's saved dietary restrictions; toggling them applies a per-search override without changing the saved account settings. Deselecting every chip explicitly searches with no dietary filter (distinct from never touching the filters, which uses saved restrictions).
-
-### API
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| `GET` | `/api/catalog/search` | Search the catalog (`q`, repeated `tags`, `filtersApplied`, `page`, `pageSize`); returns paginated results |
-| `GET` | `/api/catalog/{id}` | Get a single catalog recipe (404 if not found) |
-
-`filtersApplied=true` treats the request's `tags` as an explicit override (including an empty list = "no filter"); when absent/false, the user's saved restrictions apply. Invalid dietary tags are rejected with a `400`.
-
-### Ingestion
-
-Ingestion is a one-off, profile-guarded job (`catalog.ingest.enabled=true`) that never runs on normal boot. It parses each dataset behind a common [`RecipeSource`](backend/src/main/java/io/asbun/backend/ingest/RecipeSource.java) abstraction, tags dietary restrictions, embeds, and persists to the catalog table. It is idempotent (deterministic `catalogRecipeId` + skip-if-already-embedded), so re-running is safe and resumable. Two embedding strategies: a paced (RPM-limited) **synchronous** path for small catalogs (≤50K), and a **`BatchEmbeddingStrategy`** (Bedrock Batch Inference, JSONL to S3, streamed back) used to embed the full ~2.2M set (~$8–15 one-time). For the OpenSearch cutover, ingestion + reindex runbook and the full post-mortem live in [documents/opensearch-implementation.md](documents/opensearch-implementation.md) and [.kiro/specs/opensearch-catalog-backend/RUNBOOK.md](.kiro/specs/opensearch-catalog-backend/RUNBOOK.md).
-
-**Key files:**
-
-- [backend/.../search/InAppCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/InAppCatalogSearchService.java) — in-memory keyword + semantic ranking
-- [backend/.../service/EmbeddingService.java](backend/src/main/java/io/asbun/backend/service/EmbeddingService.java) — Bedrock Titan V2 embeddings
-- [backend/.../controller/CatalogController.java](backend/src/main/java/io/asbun/backend/controller/CatalogController.java) — search & detail endpoints
-- [backend/.../ingest/CatalogIngestionRunner.java](backend/src/main/java/io/asbun/backend/ingest/CatalogIngestionRunner.java) — ingestion pipeline
-- [frontend/app/(protected)/browse/page.tsx](<frontend/app/(protected)/browse/page.tsx>) — search UI
 
 ---
 
@@ -489,6 +259,34 @@ A regional WAF Web ACL is attached to the ALB, inspecting every inbound HTTP req
 
 ---
 
+## Cost & Reliability Engineering
+
+A defining engineering decision in this project was **migrating catalog search off Amazon
+OpenSearch Serverless to a self-hosted OpenSearch node on Oracle Cloud** — a deliberate
+cost-optimization exercise with real reliability and security upside.
+
+- **The problem:** the 2.2M-vector search index had to stay resident in memory, so OpenSearch
+  Serverless held **~6 OCUs (≈36 GB RAM) warm around the clock** — an estimated **several hundred to
+  ~$1,000+/month** at $0.24/OCU-hour, for a low-traffic hobby app with a ~$15/month budget. "Scale
+  to zero" never applied to a large always-resident index.
+- **The fix:** delete the serverless collection and re-host the identical index on a single
+  fixed-price **Oracle Cloud Ampere A1 VM** (2 OCPU / 24 GB, `fp16` quantization), dropping the
+  recurring cost to **~$0–13/month** — a **~99% reduction** — with no change to search behavior.
+- **Why it was safe:** DynamoDB holds the embeddings and is the source of truth, so the index was
+  **rebuilt with no re-embedding**, and the app was made transport-portable (`opensearch.auth`
+  selects AWS SigV4 or self-hosted basic auth) so the swap was a config change, not a rewrite.
+  Rollback is a one-line flip back to the in-app backend.
+- **Reliability + security bonus:** the fixed-capacity node reindexed **2,231,142 docs with zero
+  failures** (vs. constant throttling drops on serverless), and the cutover moved ECS into
+  **private subnets behind a NAT gateway**, so app containers have no public IPs and the search
+  port is reachable only from the NAT's fixed Elastic IP.
+
+**Full write-up (decision log, verified cost math, network hardening):**
+[documents/MIGRATION-aws-to-oracle-opensearch.md](documents/MIGRATION-aws-to-oracle-opensearch.md).
+
+---
+
+
 ## CI/CD Pipeline
 
 **File:** [.github/workflows/deploy.yml](.github/workflows/deploy.yml)
@@ -506,6 +304,254 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
         ├─ recipe-ai-{env}-backend
         └─ recipe-ai-{env}-frontend
 ```
+
+---
+
+## Recipe Catalog Search
+
+Alongside AI generation, the app offers a **"Look for Existing Recipes"** tab (`/browse`) that searches a catalog of pre-made recipes ingested from open datasets. It supports keyword search, natural-language semantic search, and dietary filtering that reuses the same restrictions as the AI feature.
+
+The catalog search supports keyword (`multi_match`), semantic (k-NN over 1,024-dim Titan V2 vectors), hybrid, and dietary-tag filtering over the **full ~2.2 million-recipe RecipeNLG dataset**. It runs behind a `CatalogSearchService` seam so the backend is swappable with no controller, DTO, or frontend changes.
+
+> **Search backend — migrated off AWS for cost (2026-09):** the catalog was initially served by
+> **Amazon OpenSearch Serverless**. For a large, always-resident, low-traffic vector index that
+> proved very expensive — keeping the 2.2M-vector graph warm held **~6 OCUs (≈36 GB RAM) around the
+> clock**, an estimated **several hundred to ~$1,000+/month** at $0.24/OCU-hour, against a ~$15/month
+> hobby budget. We **deleted the collection** and re-hosted the identical index on a **single
+> self-hosted OpenSearch node on Oracle Cloud** (Ampere A1, basic auth over HTTPS), dropping the
+> recurring cost to **~$0–13/month**. DynamoDB is the source of truth, so the index rebuilt with no
+> re-embedding, and the app stays portable (a config flip selects the transport). **The cutover is
+> complete** — live search runs against the Oracle node.
+>
+> The full reasoning, cost breakdown, and the network hardening that came with it are documented in
+> **[documents/MIGRATION-aws-to-oracle-opensearch.md](documents/MIGRATION-aws-to-oracle-opensearch.md)**
+> (see also the [runbook](documents/RUNBOOK-oracle-opensearch.md)).
+
+> **Deep-dive & post-mortem:** the full AWS OpenSearch implementation — architecture, the 2.2M batch-embed + reindex, every serverless gotcha (throttling, no-upsert, PIT reconciliation, client timeouts), and the dev cutover — is documented in [documents/opensearch-implementation.md](documents/opensearch-implementation.md).
+
+### Datasets
+
+The catalog is built from open recipe datasets, normalized into a common schema and tagged for dietary restrictions at ingestion. Each recipe records its `sourceName`, `sourceUrl`, and `sourceLicense` for attribution.
+
+| Source | Recipes | Style | Format |
+| ------ | ------- | ----- | ------ |
+| TheMealDB (Kaggle export) | ~300 | International (34 countries) | XLSX |
+| Better Recipes / AllRecipes (Kaggle) | ~1,090 | American home cooking | CSV |
+| RecipeNLG (full set) | **~2,231,142** | Mixed | CSV |
+
+The **full ~2,231,142-recipe RecipeNLG dataset** (embedded with Titan V2) is stored in DynamoDB and indexed into OpenSearch (`fp16` on a 24 GB host, or `byte`/disk-based on a 12 GB host). The smaller ~1,261-recipe catalog remains in a separate DynamoDB table for the in-app fallback. This is a non-commercial project; dataset licenses are respected accordingly.
+
+### Semantic search with Bedrock embeddings
+
+At ingestion, each recipe is embedded with **Amazon Bedrock Titan Text Embeddings V2** (`amazon.titan-embed-text-v2:0`, 1,024 dimensions). At query time the search string is embedded once and compared against the stored vectors by cosine similarity. Three modes are configurable:
+
+| Mode | Behavior |
+| ---- | -------- |
+| `keyword` | Term matching over title/description/ingredients (title weighted higher) |
+| `semantic` | Vector similarity only — finds recipes by meaning, e.g. "something warm for a rainy day" |
+| `hybrid` (default) | Blends keyword and semantic scores; a recipe matches on a keyword hit **or** a strong semantic score |
+
+If a query embedding call fails, search degrades gracefully to keyword-only rather than erroring. Embedding vectors are cached in memory as primitive `float[]` to keep the footprint small.
+
+### Swappable search backend
+
+All search runs behind a [`CatalogSearchService`](backend/src/main/java/io/asbun/backend/search/CatalogSearchService.java) interface, selected by the `catalog.search.backend` property. The implementations coexist:
+
+| Backend | `catalog.search.backend` | Scale | Role |
+| ------- | ------------------------ | ----- | ---- |
+| OpenSearch | `opensearch` | ~2.2M recipes | **Currently serving** (self-hosted node on Oracle Cloud). Full-scale keyword + k-NN + dietary filter. Transport selectable by `opensearch.auth`: `sigv4` (Amazon OpenSearch) or `basic` (self-hosted) |
+| In-app (JVM memory) | `inapp` | ≤ ~50K recipes | Instant rollback — loads the small catalog into memory and ranks it there |
+
+The OpenSearch client transport is pluggable: `opensearch.auth=sigv4` uses a SigV4-signed `opensearch-java` client (Amazon OpenSearch); `opensearch.auth=basic` uses an HTTPS basic-auth client for a self-hosted node. Because dietary tags and embeddings are **persisted in DynamoDB** (the system of record), the OpenSearch index is derived and rebuildable: [`CatalogReindexRunner`](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) bulk-indexes from DynamoDB with **no re-embedding** (vectors are read from the table, never recomputed). Switching backends is a single config flip with no API, DTO, or frontend changes. All OpenSearch infrastructure is opt-in; the default deployment provisions none and serves search from the in-app backend.
+
+**Key files:**
+
+- [backend/.../search/OpenSearchCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/OpenSearchCatalogSearchService.java) — OpenSearch query translation + response mapping
+- [backend/.../config/OpenSearchConfig.java](backend/src/main/java/io/asbun/backend/config/OpenSearchConfig.java) — pluggable transport: SigV4 (AWS) or basic auth (self-hosted)
+- [backend/.../search/CatalogReindexRunner.java](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) — DynamoDB → OpenSearch bulk reindex (no re-embedding)
+- [backend/.../search/InAppCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/InAppCatalogSearchService.java) — in-memory fallback
+- [documents/opensearch-implementation.md](documents/opensearch-implementation.md) — full implementation + post-mortem
+
+### Dietary tagging
+
+Recipes are tagged at ingestion by a deterministic [`DietaryTagger`](backend/src/main/java/io/asbun/backend/ingest/DietaryTagger.java) using per-restriction disqualifier keyword lists with word-boundary matching. The tagging is intentionally conservative:
+
+- Recipes with missing/unknown ingredients receive **no** tags (absence of disqualifiers is not evidence of safety).
+- **HALAL and KOSHER are not inferred** from ingredient text — they require certification/provenance that ingredients cannot establish — so they are only present when a source supplies them explicitly.
+
+Filtering at query time is then a simple tag match. The browse UI defaults its filter chips to the user's saved dietary restrictions; toggling them applies a per-search override without changing the saved account settings. Deselecting every chip explicitly searches with no dietary filter (distinct from never touching the filters, which uses saved restrictions).
+
+### API
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET` | `/api/catalog/search` | Search the catalog (`q`, repeated `tags`, `filtersApplied`, `page`, `pageSize`); returns paginated results |
+| `GET` | `/api/catalog/{id}` | Get a single catalog recipe (404 if not found) |
+
+`filtersApplied=true` treats the request's `tags` as an explicit override (including an empty list = "no filter"); when absent/false, the user's saved restrictions apply. Invalid dietary tags are rejected with a `400`.
+
+### Ingestion
+
+Ingestion is a one-off, profile-guarded job (`catalog.ingest.enabled=true`) that never runs on normal boot. It parses each dataset behind a common [`RecipeSource`](backend/src/main/java/io/asbun/backend/ingest/RecipeSource.java) abstraction, tags dietary restrictions, embeds, and persists to the catalog table. It is idempotent (deterministic `catalogRecipeId` + skip-if-already-embedded), so re-running is safe and resumable. Two embedding strategies: a paced (RPM-limited) **synchronous** path for small catalogs (≤50K), and a **`BatchEmbeddingStrategy`** (Bedrock Batch Inference, JSONL to S3, streamed back) used to embed the full ~2.2M set (~$8–15 one-time). For the OpenSearch cutover, ingestion + reindex runbook and the full post-mortem live in [documents/opensearch-implementation.md](documents/opensearch-implementation.md) and [.kiro/specs/opensearch-catalog-backend/RUNBOOK.md](.kiro/specs/opensearch-catalog-backend/RUNBOOK.md).
+
+**Key files:**
+
+- [backend/.../search/InAppCatalogSearchService.java](backend/src/main/java/io/asbun/backend/search/InAppCatalogSearchService.java) — in-memory keyword + semantic ranking
+- [backend/.../service/EmbeddingService.java](backend/src/main/java/io/asbun/backend/service/EmbeddingService.java) — Bedrock Titan V2 embeddings
+- [backend/.../controller/CatalogController.java](backend/src/main/java/io/asbun/backend/controller/CatalogController.java) — search & detail endpoints
+- [backend/.../ingest/CatalogIngestionRunner.java](backend/src/main/java/io/asbun/backend/ingest/CatalogIngestionRunner.java) — ingestion pipeline
+- [frontend/app/(protected)/browse/page.tsx](<frontend/app/(protected)/browse/page.tsx>) — search UI
+
+---
+
+## AI & Model Layer
+
+### Foundation Model Inference — AWS Bedrock
+
+Recipe generation runs entirely through **AWS Bedrock Runtime**. The model is selected per-request from the frontend, allowing users to trade off speed vs. quality.
+
+| Model             | Bedrock ID                                    | Characteristics                 |
+| ----------------- | --------------------------------------------- | ------------------------------- |
+| Claude Haiku 4.5  | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Fastest, lowest cost            |
+| Claude Sonnet 4.6 | `us.anthropic.claude-sonnet-4-6`              | Best reasoning, highest quality |
+| Amazon Nova Micro | `amazon.nova-micro-v1:0`                      | Ultra-fast AWS-native           |
+| Amazon Nova Lite  | `amazon.nova-lite-v1:0`                       | Fast AWS-native with vision     |
+| Meta Llama 3.1 8B | `us.meta.llama3-1-8b-instruct-v1:0`           | Open-source alternative         |
+
+**How it works:**
+
+- Each model family gets a tailored prompt format: Anthropic models use the Messages API format; Nova/Titan models use the generic messages format; Llama 3.1 uses its special `<|begin_of_text|>` token syntax.
+- The system prompt instructs the model to return a JSON array of exactly three recipe objects. A fallback parser strips any prose the model prepends or appends before JSON deserialization.
+- AWS SDK v2 `BedrockRuntimeClient` with a 90-second read timeout handles long-running inference calls.
+
+**Key file:** [backend/src/main/java/io/asbun/backend/service/BedrockService.java](backend/src/main/java/io/asbun/backend/service/BedrockService.java)
+
+### Image Generation
+
+After recipes are generated, the backend produces a food photography image for each one. Three providers are supported; the user selects one per session.
+
+| Provider                 | Model ID                       | Notes                             |
+| ------------------------ | ------------------------------ | --------------------------------- |
+| **Stability AI Core**    | `stable-image/generate/core`   | 1:1 aspect ratio                  |
+| **OpenAI**               | `gpt-image-1.5`                | 1024×1024; high quality           |
+| **Google Imagen 4**      | `imagen-4.0-generate-001`      | 1:1 aspect ratio; highest quality |
+| **Google Imagen 4 Fast** | `imagen-4.0-fast-generate-001` | 1:1 aspect ratio; lower latency   |
+
+Both providers receive the same prompt template:
+
+```
+A beautiful food photography photo of {RECIPE_TITLE}, professional lighting, high quality, restaurant style
+```
+
+**Image lifecycle:**
+
+1. Base64 PNG returned by the provider
+2. Decoded and uploaded to S3 (`recipe-ai-{env}-recipe-images`)
+3. Presigned URL (1-hour TTL) generated on read and served once the image is available
+4. S3 lifecycle policy auto-deletes images after 90 days
+5. Image generation runs asynchronously in a background thread — recipes are saved immediately with `imageUrl: null`, which is populated once generation completes. Generation is retried up to 3 times with exponential backoff (2 s, 4 s) before giving up; if all attempts fail, the recipe remains accessible without an image.
+6. The frontend opens a **Server-Sent Events** connection to `GET /api/recipes/{id}/image-stream` immediately after saving. The backend holds the connection open via `SseEmitter` and fires an `image-ready` event as soon as the image URL is written to DynamoDB, at which point the frontend fetches the updated recipe and renders the image — no polling required.
+
+**Key file:** [backend/src/main/java/io/asbun/backend/service/ImageGenerationService.java](backend/src/main/java/io/asbun/backend/service/ImageGenerationService.java)
+
+---
+
+## Model Stats
+
+The `/model-stats` page surfaces aggregated performance data across all users, visualized with three [Recharts](https://recharts.org) charts:
+
+| Chart                              | What it shows                                                          |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| **Image Generation Time by Model** | Average `imageGenerationMs` per image model (bar chart, 4 bars)        |
+| **Text Generation Time by Model**  | Average `textGenerationMs` per Bedrock model (bar chart, 5 bars)       |
+| **Image Generation Trend**         | Daily average image generation time over the last 30 days (line chart) |
+
+Each bar tooltip also shows the sample count (number of recipes) used to compute the average.
+
+### Data pipeline
+
+Stats are computed by scanning the entire `Recipes` DynamoDB table, grouping by model, and averaging the recorded `imageGenerationMs` / `textGenerationMs` fields that are stored on every recipe at save time. Results are cached in DynamoDB under a sentinel item (`recipeId = STATS#MODEL_AVERAGES`) with a 1-hour TTL, so at most one full scan runs per hour regardless of page traffic.
+
+### SSE-based delivery
+
+The page uses **Server-Sent Events** rather than a blocking fetch, so it never shows an error on a cache miss (e.g. first deployment, expired cache):
+
+```
+Browser → GET /api/backend/api/stats/stream (EventSource)
+    │
+    └─ Next.js middleware injects Authorization: Bearer <token> from session cookie
+        └─ StatsController.streamStats()
+            ├─ cache FRESH  → StatsSseService.sendToEmitter()  ← stats arrive in ~5 ms
+            └─ cache STALE  → StatsService.computeAndNotifyAsync() [@Async]
+                                 └─ DynamoDB full scan → compute averages
+                                 └─ StatsSseService.broadcastStats() ← pushes to all waiting clients
+```
+
+The frontend renders three pulsing skeleton cards while waiting and swaps them for the live charts the moment the `stats-ready` SSE event arrives — no polling, no page reload required.
+
+**Key files:**
+
+- [backend/.../service/StatsService.java](backend/src/main/java/io/asbun/backend/service/StatsService.java)
+- [backend/.../service/StatsSseService.java](backend/src/main/java/io/asbun/backend/service/StatsSseService.java)
+- [backend/.../repository/StatsRepository.java](backend/src/main/java/io/asbun/backend/repository/StatsRepository.java)
+- [frontend/app/(protected)/model-stats/ModelStatsLoader.tsx](<frontend/app/(protected)/model-stats/ModelStatsLoader.tsx>)
+- [frontend/app/(protected)/model-stats/ModelStatsChart.tsx](<frontend/app/(protected)/model-stats/ModelStatsChart.tsx>)
+
+---
+
+## Dietary Restrictions
+
+Users can save a set of dietary restrictions to their profile, and every recipe generated afterwards is guaranteed to comply. Restrictions are managed at `/account/dietary` and surfaced on the dashboard so they're always visible.
+
+### Supported restrictions
+
+Ten restrictions are supported. The canonical list lives in the backend enum ([`DietaryRestriction`](backend/src/main/java/io/asbun/backend/model/enums/DietaryRestriction.java)) and is mirrored on the frontend ([`lib/dietary.ts`](frontend/lib/dietary.ts)):
+
+| Value          | Label       |
+| -------------- | ----------- |
+| `GLUTEN_FREE`  | Gluten-Free |
+| `KETO`         | Keto        |
+| `VEGAN`        | Vegan       |
+| `VEGETARIAN`   | Vegetarian  |
+| `DAIRY_FREE`   | Dairy-Free  |
+| `NUT_FREE`     | Nut-Free    |
+| `PALEO`        | Paleo       |
+| `LOW_CARB`     | Low-Carb    |
+| `HALAL`        | Halal       |
+| `KOSHER`       | Kosher      |
+
+### Persistence & API
+
+Restrictions are stored as a `List<String>` on the `User` item in DynamoDB and exposed through the account API:
+
+| Method | Path                                | Description                                        |
+| ------ | ----------------------------------- | -------------------------------------------------- |
+| `GET`  | `/api/account/dietary-restrictions` | Return the current user's saved restrictions       |
+| `PUT`  | `/api/account/dietary-restrictions` | Replace the saved restrictions with a new list     |
+
+The `PUT` payload is validated on both sides:
+
+- **Server:** [`UpdateDietaryRestrictionsRequest`](backend/src/main/java/io/asbun/backend/dto/UpdateDietaryRestrictionsRequest.java) enforces `@NotNull` and `@Size(max = 10)`; the controller rejects values outside the supported enum with a `400`, and de-duplicates the list before saving.
+- **Client:** the selector at `/account/dietary` only offers the ten supported values, and the dashboard shows the active restrictions (or a "None set" state) with a link to edit.
+
+The current user's restrictions are also included in the profile response (`GET /api/account/profile`), which the dashboard uses to render its badges.
+
+### AI enforcement
+
+When restrictions are set, they are injected into the Bedrock prompt so the model is constrained at generation time — not filtered afterwards. On `POST /api/recipes/generate`, [`RecipeController`](backend/src/main/java/io/asbun/backend/controller/RecipeController.java) loads the user's saved restrictions and passes them to [`BedrockService.generateRecipes()`](backend/src/main/java/io/asbun/backend/service/BedrockService.java), which:
+
+1. Adds an explicit dietary-constraints clause listing the restrictions by display name and instructing the model that every recipe **must** fully comply.
+2. Qualifies the "pantry staples" permission (flour, butter, soy sauce, etc.) so that any dietary restriction always overrides it — preventing contradictory instructions such as suggesting flour to a gluten-free user.
+
+When a user has no restrictions, the clause is omitted entirely and generation behaves exactly as before.
+
+**Key files:**
+
+- [backend/.../controller/AccountController.java](backend/src/main/java/io/asbun/backend/controller/AccountController.java) — dietary restriction endpoints
+- [backend/.../service/BedrockService.java](backend/src/main/java/io/asbun/backend/service/BedrockService.java) — prompt injection & enforcement
+- [backend/.../model/enums/DietaryRestriction.java](backend/src/main/java/io/asbun/backend/model/enums/DietaryRestriction.java) — supported values
+- [frontend/app/(protected)/account/dietary/page.tsx](<frontend/app/(protected)/account/dietary/page.tsx>) — restriction selection UI
+- [frontend/lib/dietary.ts](frontend/lib/dietary.ts) — shared restriction types & labels
 
 ---
 
