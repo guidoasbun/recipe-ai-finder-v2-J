@@ -27,7 +27,7 @@ A demo account is available so you can explore the app without creating your own
 | **Email**    | `testuser1@mail.com` |
 | **Password** | `TestUserPassword1$` |
 
-> This account is limited to **20 AI recipe generations** to prevent abuse of the underlying Bedrock and image generation APIs. All other features (browsing, saving, and deleting recipes) are fully accessible.
+> This account is limited to **40 AI recipe generations** to prevent abuse of the underlying Bedrock and image generation APIs. All other features (browsing, saving, and deleting recipes) are fully accessible.
 
 ---
 
@@ -453,6 +453,7 @@ infrastructure/
 - **Secrets at runtime:** API keys are pulled from Secrets Manager by the ECS execution role and injected as environment variables; they never touch application code or version control.
 - **JWT validation:** Spring Security validates Cognito-issued JWTs on every protected endpoint using the Cognito JWKS endpoint.
 - **Secret hygiene:** a pre-commit hook ([`.githooks/pre-commit`](.githooks/pre-commit)) blocks commits containing real API keys or AWS access keys (and inline secrets in `*.tfvars`), so credentials can't slip into version control. `*.tfvars` files reference secrets only by Secrets Manager/SSM ARN. Enable per clone with `git config core.hooksPath .githooks`.
+- **Privacy & compliance (GDPR/CCPA):** users can grant/revoke **consent** (IP- and version-audited), **export their data** (JSON, or an async ZIP), and **delete their account** (scheduled deletion with a cancel window). These are backed by dedicated `Consent` and `AuditLog` DynamoDB tables and a nightly scheduled-deletion job; every action writes an audit record. Endpoints under `/api/consent` and `/api/account/*` (see the API reference).
 
 ---
 
@@ -537,23 +538,24 @@ Trigger: push to main  OR  manual dispatch (select: dev | prod)
 recipe-ai-finder-v2/
 ├── backend/                          # Spring Boot 4 service
 │   └── src/main/java/io/asbun/backend/
-│       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig, AsyncConfig, CatalogSearchConfig
-│       ├── controller/               # RecipeController, ImageController, AuthController, StatsController, CatalogController
+│       ├── config/                   # AwsConfig, DynamoDbConfig, SecurityConfig, CorsConfig, AsyncConfig, JacksonConfig, CatalogSearchConfig, OpenSearchConfig/Properties, rate-limit & request-size filters
+│       ├── controller/               # RecipeController, ImageController, AuthController, AccountController, ConsentController, StatsController, CatalogController, HealthController
 │       ├── service/                  # BedrockService, ImageGenerationService, S3Service, AsyncImageService, ImageSseService, StatsService, StatsSseService, EmbeddingService
-│       ├── search/                   # CatalogSearchService (+ in-app impl), query/result types
+│       ├── search/                   # CatalogSearchService (in-app + OpenSearch impls), OpenSearchIndexProvisioner, CatalogReindexRunner, query/result types
 │       ├── ingest/                   # RecipeSource parsers, DietaryTagger, embedding strategies, CatalogIngestionRunner
 │       ├── repository/               # RecipeRepository, UserRepository, StatsRepository, CatalogRecipeRepository (DynamoDB)
 │       └── model/                    # Recipe, User, CatalogRecipe, DTOs, enums (BedrockModel, ImageModel)
 ├── frontend/                         # Next.js 16 app
 │   └── app/
-│       ├── (auth)/login/             # Google OAuth login page
+│       ├── (auth)/                   # login, signup, confirm, forgot/reset-password, privacy, terms
 │       ├── (protected)/dashboard/    # Ingredient input + model selection
 │       ├── (protected)/generate/     # Generated recipe display
 │       ├── (protected)/recipes/      # Saved recipe gallery + detail view
 │       ├── (protected)/browse/       # Catalog search + recipe detail (keyword + semantic)
+│       ├── (protected)/account/      # Profile, dietary restrictions, settings (export/delete)
 │       └── (protected)/model-stats/  # Model performance charts (SSE-loaded)
 ├── infrastructure/                   # Terraform IaC
-│   └── modules/                      # networking, alb, ecs, iam, dynamodb, cognito, s3, ecr
+│   └── modules/                      # networking, alb, ecs, iam, dynamodb, cognito, s3, ecr, opensearch, oci-opensearch, waf
 ├── docker/
 │   ├── backend.Dockerfile            # Multi-stage Maven → Corretto 21 Alpine
 │   └── frontend.Dockerfile           # Multi-stage Node.js → Next.js standalone
@@ -577,11 +579,10 @@ recipe-ai-finder-v2/
 ```bash
 cd backend
 
-# Copy and fill in local config
+# Create your local config, then fill it in:
+#   src/main/resources/application-local.properties
 
-cd src/main/resources/application-local.properties
-
-Required variables in application-local.properties:
+# Required variables in application-local.properties:
 
 # COGNITO_ISSUER_URI=
 # dynamodb.users-table=
@@ -601,9 +602,7 @@ Required variables in application-local.properties:
 ```bash
 cd frontend
 
-cd .env.local.example .env.local
-
-# Required variables:
+# Create .env.local with the required variables:
 # COGNITO_DOMAIN=
 # COGNITO_CLIENT_ID=
 
@@ -628,6 +627,9 @@ npm run dev
 | `GET`    | `/api/account/profile`           | Get current user's profile (includes saved dietary restrictions)                                     |
 | `GET`    | `/api/account/dietary-restrictions` | Get current user's saved dietary restrictions                                                      |
 | `PUT`    | `/api/account/dietary-restrictions` | Replace the current user's dietary restrictions (max 10, validated)                                |
+| `POST`   | `/api/account/delete`            | Schedule account deletion (GDPR/CCPA); `POST /api/account/cancel-deletion` cancels it                 |
+| `GET`    | `/api/account/export?format=json`| Export the user's data as JSON; `POST .../export?format=zip` starts an async ZIP; `GET .../export/status` polls it |
+| `POST`   | `/api/consent`                   | Grant a consent (type + version, IP-audited); `GET /api/consent` lists; `DELETE /api/consent/{type}` revokes |
 | `GET`    | `/api/catalog/search`            | Search the recipe catalog (`q`, `tags`, `filtersApplied`, `page`, `pageSize`); paginated results     |
 | `GET`    | `/api/catalog/{id}`              | Get a single catalog recipe (404 if not found)                                                       |
 | `GET`    | `/api/stats/models`              | Return cached model performance stats (JSON)                                                          |
