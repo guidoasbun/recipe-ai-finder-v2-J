@@ -13,7 +13,7 @@ flowchart TB
 
     subgraph aws["AWS — us-east-1"]
         acm[ACM TLS cert]
-        waf[WAF Web ACL]
+        waf["WAF Web ACL<br/>rate limits, AWS managed rules<br/>(bot control, bad inputs, IP reputation)<br/>+ IP allow/block lists"]
 
         subgraph vpc["VPC 10.0.0.0/16"]
             direction TB
@@ -45,8 +45,10 @@ flowchart TB
 
     imggen[Stability AI / OpenAI / Google Imagen]
 
-    %% ingress
-    user -->|HTTPS| dns --> waf --> alb
+    %% ingress — every request is inspected by the WAF before the ALB
+    user -->|HTTPS| dns
+    dns -->|inspected by| waf
+    waf -->|allowed requests<br/>rate-limited, bot + IP rules| alb
     acm -.-> alb
     alb -->|/*| fe
     alb -->|/api/*| be
@@ -77,8 +79,11 @@ flowchart TB
 
 ## How to read it
 
-- **Only the ALB is internet-facing.** User traffic enters via Route 53 → WAF → ALB (in the public
-  subnets). The ALB path-routes: `/*` to the frontend, `/api/*` to the backend.
+- **Only the ALB is internet-facing.** User traffic enters via Route 53 → **WAF** → ALB (in the
+  public subnets). The **WAF Web ACL** inspects every inbound request before it reaches the ALB —
+  applying per-IP rate limits, AWS managed rule groups (bot control, known-bad-inputs, IP
+  reputation), and IP allow/block lists. The ALB then path-routes: `/*` to the frontend, `/api/*`
+  to the backend.
 - **ECS tasks run in private subnets with no public IPs.** All of their outbound traffic — AWS
   services (Bedrock, DynamoDB, S3, Cognito, Secrets Manager), image-generation APIs, and the
   self-hosted OpenSearch node — egresses through the **NAT gateway's single stable Elastic IP**.

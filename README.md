@@ -306,7 +306,7 @@ flowchart TB
 
     subgraph aws["AWS — us-east-1"]
         acm[ACM TLS cert]
-        waf[WAF Web ACL]
+        waf["WAF Web ACL<br/>rate limits, AWS managed rules<br/>(bot control, bad inputs, IP reputation)<br/>+ IP allow/block lists"]
 
         subgraph vpc["VPC 10.0.0.0/16"]
             direction TB
@@ -338,7 +338,9 @@ flowchart TB
 
     imggen[Stability AI / OpenAI / Google Imagen]
 
-    user -->|HTTPS| dns --> waf --> alb
+    user -->|HTTPS| dns
+    dns -->|inspected by| waf
+    waf -->|allowed requests<br/>rate-limited, bot + IP rules| alb
     acm -.-> alb
     alb -->|/*| fe
     alb -->|/api/*| be
