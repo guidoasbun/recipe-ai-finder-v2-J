@@ -6,6 +6,8 @@
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.0-6DB33F?logo=springboot)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
 ![AWS](https://img.shields.io/badge/AWS-Bedrock%20%7C%20ECS%20%7C%20DynamoDB-FF9900?logo=amazonaws)
+![OpenSearch](https://img.shields.io/badge/OpenSearch-2.17-005EB8?logo=opensearch)
+![Oracle Cloud](https://img.shields.io/badge/Oracle_Cloud-Ampere_A1-F80000?logo=oracle)
 ![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform)
 ![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker)
 
