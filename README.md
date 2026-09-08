@@ -202,7 +202,19 @@ Alongside AI generation, the app offers a **"Look for Existing Recipes"** tab (`
 
 The catalog search supports keyword (`multi_match`), semantic (k-NN over 1,024-dim Titan V2 vectors), hybrid, and dietary-tag filtering over the **full ~2.2 million-recipe RecipeNLG dataset**. It runs behind a `CatalogSearchService` seam so the backend is swappable with no controller, DTO, or frontend changes.
 
-> **Search backend status (2026-09):** the catalog was initially served by **Amazon OpenSearch Serverless**, but that collection kept ~6.5 OCU warm for the 2.2M vector index even when idle (~$240/mo forecast, far over budget) and was **deleted**. Search is being moved to a **self-hosted OpenSearch node on Oracle Cloud** (basic auth over HTTPS). The deployed app currently runs the **in-app** backend (fast, config-selectable fallback) until the Oracle node is stood up and reachable from ECS. DynamoDB remains the source of truth, so the index rebuilds anywhere with no re-embedding. See [documents/RUNBOOK-oracle-opensearch.md](documents/RUNBOOK-oracle-opensearch.md) and [documents/NEXT-STEPS-oracle-opensearch.md](documents/NEXT-STEPS-oracle-opensearch.md).
+> **Search backend — migrated off AWS for cost (2026-09):** the catalog was initially served by
+> **Amazon OpenSearch Serverless**. For a large, always-resident, low-traffic vector index that
+> proved very expensive — keeping the 2.2M-vector graph warm held **~6 OCUs (≈36 GB RAM) around the
+> clock**, an estimated **several hundred to ~$1,000+/month** at $0.24/OCU-hour, against a ~$15/month
+> hobby budget. We **deleted the collection** and re-hosted the identical index on a **single
+> self-hosted OpenSearch node on Oracle Cloud** (Ampere A1, basic auth over HTTPS), dropping the
+> recurring cost to **~$0–13/month**. DynamoDB is the source of truth, so the index rebuilt with no
+> re-embedding, and the app stays portable (a config flip selects the transport). **The cutover is
+> complete** — live search runs against the Oracle node.
+>
+> The full reasoning, cost breakdown, and the network hardening that came with it are documented in
+> **[documents/MIGRATION-aws-to-oracle-opensearch.md](documents/MIGRATION-aws-to-oracle-opensearch.md)**
+> (see also the [runbook](documents/RUNBOOK-oracle-opensearch.md)).
 
 > **Deep-dive & post-mortem:** the full AWS OpenSearch implementation — architecture, the 2.2M batch-embed + reindex, every serverless gotcha (throttling, no-upsert, PIT reconciliation, client timeouts), and the dev cutover — is documented in [documents/opensearch-implementation.md](documents/opensearch-implementation.md).
 
@@ -236,8 +248,8 @@ All search runs behind a [`CatalogSearchService`](backend/src/main/java/io/asbun
 
 | Backend | `catalog.search.backend` | Scale | Role |
 | ------- | ------------------------ | ----- | ---- |
-| In-app (JVM memory) | `inapp` (default) | ≤ ~50K recipes | **Currently serving** — loads the small catalog into memory and ranks it there |
-| OpenSearch | `opensearch` | ~2.2M recipes | Full-scale keyword + k-NN + dietary filter. Transport is selectable by `opensearch.auth`: `sigv4` (Amazon OpenSearch) or `basic` (self-hosted node, e.g. Oracle Cloud) |
+| OpenSearch | `opensearch` | ~2.2M recipes | **Currently serving** (self-hosted node on Oracle Cloud). Full-scale keyword + k-NN + dietary filter. Transport selectable by `opensearch.auth`: `sigv4` (Amazon OpenSearch) or `basic` (self-hosted) |
+| In-app (JVM memory) | `inapp` | ≤ ~50K recipes | Instant rollback — loads the small catalog into memory and ranks it there |
 
 The OpenSearch client transport is pluggable: `opensearch.auth=sigv4` uses a SigV4-signed `opensearch-java` client (Amazon OpenSearch); `opensearch.auth=basic` uses an HTTPS basic-auth client for a self-hosted node. Because dietary tags and embeddings are **persisted in DynamoDB** (the system of record), the OpenSearch index is derived and rebuildable: [`CatalogReindexRunner`](backend/src/main/java/io/asbun/backend/search/CatalogReindexRunner.java) bulk-indexes from DynamoDB with **no re-embedding** (vectors are read from the table, never recomputed). Switching backends is a single config flip with no API, DTO, or frontend changes. All OpenSearch infrastructure is opt-in; the default deployment provisions none and serves search from the in-app backend.
 
@@ -324,15 +336,16 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 
 | Service                       | Role                                                                                                                                                   |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **ECS Fargate**               | Runs backend and frontend containers (ARM64, no EC2 to manage)                                                                                         |
-| **Application Load Balancer** | HTTPS termination, HTTP→HTTPS redirect, path-based routing                                                                                             |
+| **VPC networking**            | Custom VPC with public + **private** subnets across 2 AZs. ECS tasks run in the **private subnets** (no public IPs); a **NAT gateway** (single Elastic IP) provides their outbound egress. The ALB is the only public entry point. |
+| **ECS Fargate**               | Runs backend and frontend containers (ARM64, no EC2 to manage) in private subnets behind the ALB; deployment circuit breaker auto-rolls-back a bad release |
+| **Application Load Balancer** | HTTPS termination, HTTP→HTTPS redirect, path-based routing; the sole internet-facing entry point (public subnets)                                       |
 | **DynamoDB**                  | Serverless NoSQL; `PAY_PER_REQUEST` billing; GSI on `userId` for per-user recipe queries; recipe catalog tables (small + full ~2.2M) — system of record for catalog text + embeddings |
 | **OpenSearch (self-hosted, Oracle Cloud)** | Single-node OpenSearch on an Ampere A1 VM for the full ~2.2M catalog (keyword + k-NN + dietary filter), basic auth over HTTPS; opt-in (`enable_oci_opensearch`). Replaces the deleted AWS OpenSearch Serverless collection (idle-OCU cost). The AWS Serverless module remains opt-in (`enable_opensearch`) but disabled. |
 | **Bedrock (Titan Embeddings)**| Titan Text Embeddings V2 for catalog semantic search — recipes embedded at ingestion (batch for the 2.2M load), query embedded at search time            |
 | **S3**                        | Image storage with SSE-AES256 encryption, versioning off, 90-day lifecycle                                                                             |
 | **Cognito**                   | User pool with Google as a federated identity provider; JWT-based sessions                                                                             |
 | **ECR**                       | Private container registries for backend and frontend images                                                                                           |
-| **Secrets Manager**           | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, and `GOOGLE_API_KEY`; injected into ECS task definitions at runtime — never in code or environment files |
+| **Secrets Manager**           | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, and the self-hosted OpenSearch password; injected into ECS task definitions at runtime — never in code or environment files |
 | **ACM**                       | TLS certificates for the load balancer                                                                                                                 |
 | **CloudWatch**                | Container logs; 30-day retention                                                                                                                       |
 
@@ -363,6 +376,7 @@ infrastructure/
 
 ### Security Design
 
+- **Network isolation (private subnets + NAT):** ECS tasks run in **private subnets with no public IPs** — the ALB is the only internet-facing component. Outbound traffic (Bedrock, DynamoDB, S3, ECR pulls, Secrets Manager, and the self-hosted OpenSearch node) egresses through a **NAT gateway** with a single stable Elastic IP. That fixed egress IP is also what the OpenSearch node's firewall whitelists, so the search port is never exposed to the public internet.
 - **Least-privilege IAM:** The ECS task role grants only `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream`, targeted DynamoDB actions, and S3 object operations on the specific bucket.
 - **No static credentials:** GitHub Actions authenticates to AWS via OIDC — no long-lived access keys anywhere.
 - **Secrets at runtime:** API keys are pulled from Secrets Manager by the ECS execution role and injected as environment variables; they never touch application code or version control.
