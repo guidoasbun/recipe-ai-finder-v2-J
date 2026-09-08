@@ -417,7 +417,8 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 | **ECR**                       | Private container registries for backend and frontend images                                                                                           |
 | **Secrets Manager**           | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, and the self-hosted OpenSearch password; injected into ECS task definitions at runtime — never in code or environment files |
 | **ACM**                       | TLS certificates for the load balancer                                                                                                                 |
-| **CloudWatch**                | Container logs; 30-day retention                                                                                                                       |
+| **Route 53**                  | DNS for the domain, resolving to the Application Load Balancer                                                                                          |
+| **CloudWatch**                | Container log groups (30-day retention) plus a WAF blocked-requests metric alarm                                                                        |
 
 ### Terraform Module Structure
 
@@ -429,7 +430,7 @@ infrastructure/
 │   ├── dev.tfvars
 │   └── prod.tfvars
 └── modules/
-    ├── networking/          # VPC, public/private subnets, IGW, route tables, security groups
+    ├── networking/          # VPC, public/private subnets, IGW, NAT gateway + EIP, route tables, security groups
     ├── alb/                 # ALB, target groups, HTTPS listener, path-based rules
     ├── ecs/                 # Cluster, task definitions, Fargate services
     ├── iam/                 # ECS execution role, ECS task role, GitHub Actions OIDC role
