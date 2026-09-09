@@ -190,7 +190,8 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 | **Secrets Manager**           | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, and the self-hosted OpenSearch password; injected into ECS task definitions at runtime — never in code or environment files |
 | **ACM**                       | TLS certificates for the load balancer                                                                                                                 |
 | **Route 53**                  | DNS for the domain, resolving to the Application Load Balancer                                                                                          |
-| **CloudWatch**                | Container log groups (30-day retention) plus an opt-in monitoring suite: SNS-backed alarms (ECS, ALB, DynamoDB, NAT gateway, Bedrock, self-hosted OpenSearch node), a single consolidated dashboard, and a cost budget — see [Monitoring & Observability](#monitoring--observability) |
+| **CloudWatch**                | Container log groups (30-day retention) plus an opt-in monitoring suite: SNS-backed alarms (ECS, ALB, DynamoDB, NAT gateway, Bedrock, self-hosted OpenSearch node), a single consolidated dashboard (incl. an X-Ray service-map widget), and a cost budget — see [Monitoring & Observability](#monitoring--observability) |
+| **X-Ray (opt-in)**            | Distributed tracing via an ADOT collector sidecar + OpenTelemetry Java agent; ServiceLens service map across ALB → ECS → Bedrock/DynamoDB/S3/OpenSearch. Behind `enable_xray`, off by default |
 
 ### Terraform Module Structure
 
@@ -268,7 +269,7 @@ free-tier, vs **~$180–200/mo** for a Datadog-style per-host + APM setup). The 
 [`infrastructure/modules/monitoring/`](infrastructure/modules/monitoring/) and is **opt-in**
 (`enable_monitoring`, default off, so the standard deployment provisions nothing extra).
 
-It ships in two independently-valuable layers:
+It ships in three independently-valuable layers:
 
 - **Infra layer (pure Terraform, zero app changes):** an SNS topic + email subscription as the
   alarm channel, and metric alarms across **ECS** (CPU/memory), **ALB** (target/ELB 5XX, unhealthy
@@ -283,6 +284,12 @@ It ships in two independently-valuable layers:
   IAM, since logs already flow through `awslogs`, and a metrics failure can never affect a request.
   Signals include Bedrock/image/search latency and failures, embed-fallbacks, and SSE emitter
   counts.
+- **Distributed tracing (opt-in, `enable_xray`):** an **AWS Distro for OpenTelemetry (ADOT)**
+  collector sidecar plus the OpenTelemetry Java agent (auto-attached at JVM startup — no code
+  changes) send end-to-end traces to **AWS X-Ray**. This yields a per-request waterfall and a
+  **ServiceLens service map** of ALB → ECS → Bedrock / DynamoDB / S3 / OpenSearch, embedded as a
+  widget on the same dashboard. Off by default; effectively free at this scale (well within the
+  100k-traces/month free tier). The base suite is fully usable without it.
 
 **Watching the off-AWS search node:** the live catalog-search backend runs on Oracle Cloud, which
 native CloudWatch cannot reach. A lightweight scheduled health probe in the backend calls the

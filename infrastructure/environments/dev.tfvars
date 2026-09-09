@@ -89,4 +89,4 @@ waf_budget_notification_email        = ""
 enable_monitoring              = true
 monitoring_notification_email  = "guido@asbun.io"
 monitoring_budget_limit_amount = "20"
-enable_xray                    = false
+enable_xray                    = true

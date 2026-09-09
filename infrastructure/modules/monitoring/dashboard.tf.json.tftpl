@@ -270,5 +270,17 @@
       }
     }
 %{ endif ~}
+%{ if enable_xray ~}
+    ,
+    {
+      "type": "trace",
+      "x": 0, "y": 49, "width": 24, "height": 8,
+      "properties": {
+        "title": "X-Ray — Service map (ALB → ECS → Bedrock / DynamoDB / S3 / OpenSearch)",
+        "region": "${region}",
+        "view": "serviceMap"
+      }
+    }
+%{ endif ~}
   ]
 }
