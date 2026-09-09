@@ -13,6 +13,7 @@ module "iam" {
   source                = "./modules/iam"
   project_name          = var.project_name
   cognito_user_pool_arn = module.cognito.user_pool_arn
+  enable_xray           = var.enable_xray
 }
 
 module "dynamodb" {
@@ -139,6 +140,7 @@ module "ecs" {
   )
   opensearch_tls_verify = var.opensearch_tls_verify
   enable_monitoring     = var.enable_monitoring
+  enable_xray           = var.enable_xray
   s3_bucket             = module.s3.bucket_name
   cognito_issuer_uri    = module.cognito.issuer_uri
   cognito_domain        = module.cognito.cognito_domain
@@ -182,6 +184,7 @@ module "monitoring" {
   enable_app_metrics = var.enable_monitoring && var.opensearch_auth == "basic"
   # Legacy AWS OpenSearch Serverless alarms/widgets only when that collection is enabled.
   enable_opensearch = var.enable_opensearch
+  enable_xray       = var.enable_xray
 
   budget_limit_amount = var.monitoring_budget_limit_amount
 }

@@ -137,6 +137,12 @@ variable "enable_monitoring" {
   description = "Sets MONITORING_METRICS_ENABLED on the backend task so the app emits EMF custom metrics + runs the OpenSearch health probe. Mirrors the root enable_monitoring flag."
 }
 
+variable "enable_xray" {
+  type        = bool
+  default     = false
+  description = "Add the ADOT (AWS Distro for OpenTelemetry) collector sidecar to the backend task and activate the OpenTelemetry Java agent (via JAVA_TOOL_OPTIONS) so traces flow to AWS X-Ray. Off by default; the base task is a single container."
+}
+
 variable "s3_bucket" {
   type = string
 }

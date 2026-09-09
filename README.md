@@ -190,7 +190,7 @@ The entire AWS environment is defined in Terraform under [`/infrastructure`](inf
 | **Secrets Manager**           | Stores `STABILITY_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, and the self-hosted OpenSearch password; injected into ECS task definitions at runtime — never in code or environment files |
 | **ACM**                       | TLS certificates for the load balancer                                                                                                                 |
 | **Route 53**                  | DNS for the domain, resolving to the Application Load Balancer                                                                                          |
-| **CloudWatch**                | Container log groups (30-day retention) plus a WAF blocked-requests metric alarm                                                                        |
+| **CloudWatch**                | Container log groups (30-day retention) plus an opt-in monitoring suite: SNS-backed alarms (ECS, ALB, DynamoDB, NAT gateway, Bedrock, self-hosted OpenSearch node), a single consolidated dashboard, and a cost budget — see [Monitoring & Observability](#monitoring--observability) |
 
 ### Terraform Module Structure
 
@@ -212,7 +212,8 @@ infrastructure/
     ├── ecr/                 # Backend and frontend repositories
     ├── opensearch/          # AWS Serverless VECTORSEARCH collection, policies, OCU cap, budget alarm (opt-in, disabled)
     ├── oci-opensearch/      # Self-hosted OpenSearch on Oracle Cloud Ampere A1 (VCN, security list, cloud-init Docker) (opt-in)
-    └── waf/                 # AWS WAF Web ACL, IP sets, rate limits, logging, monitoring
+    ├── waf/                 # AWS WAF Web ACL, IP sets, rate limits, logging, monitoring
+    └── monitoring/          # CloudWatch suite: SNS alarms (ECS/ALB/DynamoDB/NAT/Bedrock + OCI-node health), single dashboard, budget (opt-in)
 ```
 
 **Remote state:** Terraform state is stored in S3 (`recipe-ai-terraform-state`) with DynamoDB (`recipe-ai-terraform-locks`) for concurrency-safe locking.
@@ -256,6 +257,41 @@ A regional WAF Web ACL is attached to the ALB, inspecting every inbound HTTP req
 - All blocked requests are logged to S3 (`aws-waf-logs-recipe-ai-{env}`) with 90-day retention
 - CloudWatch alarm fires when blocked requests spike above threshold
 - IP allow/block lists and geo-restrictions are configurable via `tfvars` without code changes
+
+---
+
+### Monitoring & Observability
+
+A consolidated **Amazon CloudWatch** observability layer gives one place to see the health of the
+whole system — and a chosen alternative to a third-party vendor on cost (est. **~$5–15/mo**, largely
+free-tier, vs **~$180–200/mo** for a Datadog-style per-host + APM setup). The module lives at
+[`infrastructure/modules/monitoring/`](infrastructure/modules/monitoring/) and is **opt-in**
+(`enable_monitoring`, default off, so the standard deployment provisions nothing extra).
+
+It ships in two independently-valuable layers:
+
+- **Infra layer (pure Terraform, zero app changes):** an SNS topic + email subscription as the
+  alarm channel, and metric alarms across **ECS** (CPU/memory), **ALB** (target/ELB 5XX, unhealthy
+  hosts, p95 latency), **DynamoDB** (per-table throttling), **Bedrock** (invocation errors), and
+  the **NAT gateway** — the single egress chokepoint for every outbound call. Two log-metric
+  filters turn existing log lines into signals (image-generation final failures, Bedrock
+  retry-exhaustion), a single **templated dashboard** renders everything on one page, and a
+  **budget** guards spend. The pre-existing WAF alarm is rewired to this SNS topic so it finally
+  has a live destination.
+- **App layer (opt-in, non-blocking):** the backend publishes custom metrics to the
+  `RecipeAiFinder/App` namespace via **CloudWatch Embedded Metric Format (EMF) over logs** — no new
+  IAM, since logs already flow through `awslogs`, and a metrics failure can never affect a request.
+  Signals include Bedrock/image/search latency and failures, embed-fallbacks, and SSE emitter
+  counts.
+
+**Watching the off-AWS search node:** the live catalog-search backend runs on Oracle Cloud, which
+native CloudWatch cannot reach. A lightweight scheduled health probe in the backend calls the
+node's cluster-health API and pushes `OpenSearchNodeUp` / `OpenSearchClusterStatus` /
+`OpenSearchHealthProbeLatencyMs` into CloudWatch — the only way to observe that node — with an alarm
+on it going unreachable.
+
+**Enable, verify, and roll back:** see
+**[documents/RUNBOOK-cloudwatch-monitoring.md](documents/RUNBOOK-cloudwatch-monitoring.md)**.
 
 ---
 
