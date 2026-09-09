@@ -138,6 +138,7 @@ module "ecs" {
     length(aws_secretsmanager_secret.opensearch_password) > 0 ? aws_secretsmanager_secret.opensearch_password[0].arn : ""
   )
   opensearch_tls_verify = var.opensearch_tls_verify
+  enable_monitoring     = var.enable_monitoring
   s3_bucket             = module.s3.bucket_name
   cognito_issuer_uri    = module.cognito.issuer_uri
   cognito_domain        = module.cognito.cognito_domain
@@ -148,6 +149,41 @@ module "ecs" {
   stability_api_key_arn = var.stability_api_key_arn
   openai_api_key_arn    = var.openai_api_key_arn
   google_api_key_arn    = var.google_api_key_arn
+}
+
+module "monitoring" {
+  source       = "./modules/monitoring"
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+
+  enable_monitoring  = var.enable_monitoring
+  notification_email = var.monitoring_notification_email
+
+  # Signal sources wired from the other modules.
+  ecs_cluster_name         = module.ecs.cluster_name
+  ecs_backend_service_name = module.ecs.backend_service_name
+  alb_arn_suffix           = module.alb.alb_arn_suffix
+  backend_tg_arn_suffix    = module.alb.backend_tg_arn_suffix
+  nat_gateway_id           = module.networking.nat_gateway_id
+  waf_web_acl_name         = module.waf.web_acl_name
+
+  # DynamoDB tables to watch for throttling (catalog-full is "" when disabled → filtered out).
+  dynamodb_table_names = [
+    module.dynamodb.users_table_name,
+    module.dynamodb.recipes_table_name,
+    module.dynamodb.catalog_table_name,
+    module.dynamodb.consent_table_name,
+    module.dynamodb.audit_log_table_name,
+    module.dynamodb.catalog_full_table_name,
+  ]
+
+  # App metrics + OCI-node health widgets/alarms turn on with the backend flag (Milestone B).
+  enable_app_metrics = var.enable_monitoring && var.opensearch_auth == "basic"
+  # Legacy AWS OpenSearch Serverless alarms/widgets only when that collection is enabled.
+  enable_opensearch = var.enable_opensearch
+
+  budget_limit_amount = var.monitoring_budget_limit_amount
 }
 
 module "waf" {
@@ -167,8 +203,10 @@ module "waf" {
   rate_limit_image_upload = var.waf_rate_limit_image_upload
   rate_limit_auth         = var.waf_rate_limit_auth
 
-  waf_log_bucket_name              = "aws-waf-logs-${var.project_name}-${var.environment}"
-  alarm_sns_topic_arn              = var.waf_alarm_sns_topic_arn
+  waf_log_bucket_name = "aws-waf-logs-${var.project_name}-${var.environment}"
+  # Give the existing WAF alarm a live destination: use the monitoring SNS topic when monitoring
+  # is enabled, otherwise fall back to the (currently empty) explicit var.
+  alarm_sns_topic_arn              = var.enable_monitoring ? module.monitoring.sns_topic_arn : var.waf_alarm_sns_topic_arn
   blocked_requests_alarm_threshold = var.waf_blocked_requests_alarm_threshold
   budget_limit_amount              = var.waf_budget_limit_amount
   budget_notification_email        = var.waf_budget_notification_email

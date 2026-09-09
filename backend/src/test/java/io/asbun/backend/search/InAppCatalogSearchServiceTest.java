@@ -42,7 +42,8 @@ class InAppCatalogSearchServiceTest {
 
     private InAppCatalogSearchService keywordService(CatalogRecipeRepository repo) {
         // semantic disabled, keyword mode: no Bedrock calls
-        return new InAppCatalogSearchService(repo, mock(EmbeddingService.class), false, "keyword");
+        return new InAppCatalogSearchService(repo, mock(EmbeddingService.class),
+                new io.asbun.backend.metrics.NoOpMetricsService(), false, "keyword");
     }
 
     @Test
@@ -144,7 +145,8 @@ class InAppCatalogSearchServiceTest {
         // semantic enabled + hybrid, but embedding throws => must still return keyword results
         // (no crash), and keyword filtering means only the actual match is returned.
         InAppCatalogSearchService svc =
-                new InAppCatalogSearchService(repo, failing, true, "hybrid");
+                new InAppCatalogSearchService(repo, failing,
+                        new io.asbun.backend.metrics.NoOpMetricsService(), true, "hybrid");
         CatalogSearchResults results = svc.search(new CatalogSearchQuery("chicken", List.of(), 0, 10));
 
         assertThat(results.items()).extracting(CatalogRecipeDto::getTitle)

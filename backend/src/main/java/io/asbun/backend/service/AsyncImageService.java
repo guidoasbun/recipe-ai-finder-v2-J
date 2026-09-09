@@ -1,6 +1,7 @@
 package io.asbun.backend.service;
 
 import io.asbun.backend.dto.ImageUploadResult;
+import io.asbun.backend.metrics.MetricsService;
 import io.asbun.backend.model.Recipe;
 import io.asbun.backend.model.enums.ImageModel;
 import io.asbun.backend.repository.RecipeRepository;
@@ -17,12 +18,14 @@ public class AsyncImageService {
     private final ImageGenerationService imageGenerationService;
     private final RecipeRepository recipeRepository;
     private final ImageSseService imageSseService;
+    private final MetricsService metricsService;
 
     @Async("imageGenerationExecutor")
     public void generateAndUpdateRecipe(String recipeId, String title, ImageModel imageModel) {
         int maxAttempts = 3;
         long delayMs = 2000;
         Exception lastException = null;
+        String modelName = imageModel == null ? "unknown" : imageModel.name();
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
@@ -44,6 +47,10 @@ public class AsyncImageService {
                 recipeRepository.save(recipe);
                 log.info("Image updated for recipe {}", recipeId);
                 imageSseService.notifyImageReady(recipeId);
+                if (result.generationMs() != null) {
+                    metricsService.latencyMs("ImageLatencyMs", result.generationMs(), "ImageModel", modelName);
+                }
+                metricsService.count("ImageRetryCount", attempt - 1, "ImageModel", modelName);
                 return;
             } catch (Exception e) {
                 lastException = e;
@@ -61,5 +68,6 @@ public class AsyncImageService {
         }
 
         log.warn("Image generation failed after {} attempts for recipe {}: {}", maxAttempts, recipeId, lastException.getMessage(), lastException);
+        metricsService.count("ImageFinalFailure", 1.0, "ImageModel", modelName);
     }
 }

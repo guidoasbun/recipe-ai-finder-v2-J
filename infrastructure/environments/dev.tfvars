@@ -80,3 +80,13 @@ waf_alarm_sns_topic_arn              = ""
 waf_blocked_requests_alarm_threshold = 500
 waf_budget_limit_amount              = "25"
 waf_budget_notification_email        = ""
+
+# --- CloudWatch monitoring suite (Milestone A: infra layer) ---
+# Off by default. To enable: set enable_monitoring=true and a real email, then `terraform apply`
+# and confirm the SNS subscription email. enable_app_metrics is derived in main.tf from
+# opensearch_auth=="basic" (the OCI node), so the node-health widgets/alarms light up once the
+# backend starts pushing metrics in Milestone B.
+enable_monitoring              = true
+monitoring_notification_email  = "guido@asbun.io"
+monitoring_budget_limit_amount = "20"
+enable_xray                    = false

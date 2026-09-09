@@ -2,6 +2,7 @@ package io.asbun.backend.search;
 
 import io.asbun.backend.config.OpenSearchProperties;
 import io.asbun.backend.dto.CatalogRecipeDto;
+import io.asbun.backend.metrics.MetricsService;
 import io.asbun.backend.service.EmbeddingService;
 import lombok.extern.slf4j.Slf4j;
 import org.opensearch.client.opensearch.OpenSearchClient;
@@ -49,6 +50,7 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
     private final OpenSearchClient client;
     private final OpenSearchProperties properties;
     private final EmbeddingService embeddingService;
+    private final MetricsService metricsService;
     private final boolean semanticEnabled;
     private final String mode; // keyword | semantic | hybrid
 
@@ -59,17 +61,20 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
             OpenSearchClient client,
             OpenSearchProperties properties,
             EmbeddingService embeddingService,
+            MetricsService metricsService,
             @Value("${catalog.search.semantic-enabled:true}") boolean semanticEnabled,
             @Value("${catalog.search.mode:hybrid}") String mode) {
         this.client = client;
         this.properties = properties;
         this.embeddingService = embeddingService;
+        this.metricsService = metricsService;
         this.semanticEnabled = semanticEnabled;
         this.mode = mode;
     }
 
     @Override
     public CatalogSearchResults search(CatalogSearchQuery query) {
+        long searchStart = System.currentTimeMillis();
         int pageSize = Math.max(1, query.pageSize());
         int page = Math.max(0, query.page());
         long from = (long) page * pageSize;
@@ -112,6 +117,7 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
                     ? response.hits().total().value()
                     : items.size();
 
+            metricsService.latencyMs("SearchLatencyMs", System.currentTimeMillis() - searchStart, "SearchMode", mode);
             return new CatalogSearchResults(items, page, pageSize, total);
         } catch (IOException e) {
             // Do NOT swallow into an empty page: let it surface as a 500 via GlobalExceptionHandler.
@@ -209,6 +215,7 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
         try {
             List<Double> embedding = embeddingService.embed(text);
             if (embedding == null || embedding.isEmpty()) {
+                metricsService.count("SearchEmbedFallback");
                 return null;
             }
             float[] arr = new float[embedding.size()];
@@ -218,6 +225,7 @@ public class OpenSearchCatalogSearchService implements CatalogSearchService {
             return arr;
         } catch (Exception e) {
             log.warn("Query embedding failed, falling back to keyword search: {}", e.getMessage());
+            metricsService.count("SearchEmbedFallback");
             return null;
         }
     }

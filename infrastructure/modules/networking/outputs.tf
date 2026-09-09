@@ -22,3 +22,8 @@ output "nat_gateway_public_ip" {
   description = "Stable Elastic IP of the NAT gateway — the source IP of all private-subnet egress. Whitelist this on the OpenSearch node's 9200 rule."
   value       = aws_eip.nat.public_ip
 }
+
+output "nat_gateway_id" {
+  description = "ID of the single NAT gateway (the whole-app egress chokepoint). Used as the NatGatewayId dimension for AWS/NATGateway CloudWatch alarms in the monitoring module."
+  value       = aws_nat_gateway.main.id
+}

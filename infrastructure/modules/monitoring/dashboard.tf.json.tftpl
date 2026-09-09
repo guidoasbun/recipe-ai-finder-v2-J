@@ -1,0 +1,274 @@
+{
+  "widgets": [
+    {
+      "type": "text",
+      "x": 0, "y": 0, "width": 24, "height": 1,
+      "properties": { "markdown": "# ${project_name}-${environment} — System Health (CloudWatch)" }
+    },
+
+    {
+      "type": "metric",
+      "x": 0, "y": 1, "width": 12, "height": 6,
+      "properties": {
+        "title": "ECS — CPU / Memory (%)",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Average",
+        "metrics": [
+          [ "AWS/ECS", "CPUUtilization", "ClusterName", "${cluster_name}", "ServiceName", "${service_name}" ],
+          [ "AWS/ECS", "MemoryUtilization", "ClusterName", "${cluster_name}", "ServiceName", "${service_name}" ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 1, "width": 12, "height": 6,
+      "properties": {
+        "title": "ALB — Healthy / Unhealthy hosts",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Maximum",
+        "metrics": [
+          [ "AWS/ApplicationELB", "HealthyHostCount", "LoadBalancer", "${alb_arn_suffix}", "TargetGroup", "${backend_tg_arn_suffix}" ],
+          [ "AWS/ApplicationELB", "UnHealthyHostCount", "LoadBalancer", "${alb_arn_suffix}", "TargetGroup", "${backend_tg_arn_suffix}" ]
+        ]
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 0, "y": 7, "width": 8, "height": 6,
+      "properties": {
+        "title": "ALB — Request count",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Sum",
+        "metrics": [
+          [ "AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${alb_arn_suffix}" ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8, "y": 7, "width": 8, "height": 6,
+      "properties": {
+        "title": "ALB — 5XX (target vs ELB)",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Sum",
+        "metrics": [
+          [ "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "${alb_arn_suffix}", "TargetGroup", "${backend_tg_arn_suffix}" ],
+          [ "AWS/ApplicationELB", "HTTPCode_ELB_5XX_Count", "LoadBalancer", "${alb_arn_suffix}" ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16, "y": 7, "width": 8, "height": 6,
+      "properties": {
+        "title": "ALB — Target response time (p95)",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "p95",
+        "metrics": [
+          [ "AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "${alb_arn_suffix}", "TargetGroup", "${backend_tg_arn_suffix}" ]
+        ]
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 0, "y": 13, "width": 12, "height": 6,
+      "properties": {
+        "title": "DynamoDB — Throttled requests per table",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Sum",
+        "metrics": [
+%{ for idx, t in dynamodb_tables ~}
+          [ "AWS/DynamoDB", "ThrottledRequests", "TableName", "${t}" ]${ idx == length(dynamodb_tables) - 1 ? "" : "," }
+%{ endfor ~}
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 13, "width": 12, "height": 6,
+      "properties": {
+        "title": "DynamoDB — Consumed capacity per table",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Sum",
+        "metrics": [
+%{ for idx, t in dynamodb_tables ~}
+          [ "AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "${t}" ],
+          [ "AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "${t}" ]${ idx == length(dynamodb_tables) - 1 ? "" : "," }
+%{ endfor ~}
+        ]
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 0, "y": 19, "width": 12, "height": 6,
+      "properties": {
+        "title": "NAT gateway — Throughput (bytes)",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Sum",
+        "metrics": [
+          [ "AWS/NATGateway", "BytesOutToDestination", "NatGatewayId", "${nat_gateway_id}" ],
+          [ "AWS/NATGateway", "BytesInFromDestination", "NatGatewayId", "${nat_gateway_id}" ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 19, "width": 12, "height": 6,
+      "properties": {
+        "title": "NAT gateway — Connections / drops / port errors",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Maximum",
+        "metrics": [
+          [ "AWS/NATGateway", "ActiveConnectionCount", "NatGatewayId", "${nat_gateway_id}" ],
+          [ "AWS/NATGateway", "PacketsDropCount", "NatGatewayId", "${nat_gateway_id}", { "stat": "Sum" } ],
+          [ "AWS/NATGateway", "ErrorPortAllocation", "NatGatewayId", "${nat_gateway_id}", { "stat": "Sum" } ]
+        ]
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 0, "y": 25, "width": 12, "height": 6,
+      "properties": {
+        "title": "Bedrock — Invocations / errors",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Sum",
+        "metrics": [
+          [ "AWS/Bedrock", "Invocations" ],
+          [ "AWS/Bedrock", "InvocationServerErrors" ],
+          [ "AWS/Bedrock", "InvocationClientErrors" ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 25, "width": 12, "height": 6,
+      "properties": {
+        "title": "Bedrock — Latency",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Average",
+        "metrics": [
+          [ "AWS/Bedrock", "InvocationLatency" ]
+        ]
+      }
+    }
+%{ if enable_app_metrics ~}
+    ,
+    {
+      "type": "metric",
+      "x": 0, "y": 31, "width": 8, "height": 6,
+      "properties": {
+        "title": "App — Bedrock latency / failures (by model)",
+        "region": "${region}",
+        "view": "timeSeries",
+        "metrics": [
+          [ "RecipeAiFinder/App", "BedrockLatencyMs", { "stat": "Average" } ],
+          [ "RecipeAiFinder/App", "BedrockFailure", { "stat": "Sum" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8, "y": 31, "width": 8, "height": 6,
+      "properties": {
+        "title": "App — Image latency / final failures",
+        "region": "${region}",
+        "view": "timeSeries",
+        "metrics": [
+          [ "RecipeAiFinder/App", "ImageLatencyMs", { "stat": "Average" } ],
+          [ "RecipeAiFinder/App", "ImageFinalFailure", { "stat": "Sum" } ],
+          [ "RecipeAiFinder/App", "ImageGenFinalFailures", { "stat": "Sum" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16, "y": 31, "width": 8, "height": 6,
+      "properties": {
+        "title": "App — Search latency / embed fallback",
+        "region": "${region}",
+        "view": "timeSeries",
+        "metrics": [
+          [ "RecipeAiFinder/App", "SearchLatencyMs", { "stat": "Average" } ],
+          [ "RecipeAiFinder/App", "SearchEmbedFallback", { "stat": "Sum" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 37, "width": 12, "height": 6,
+      "properties": {
+        "title": "OpenSearch node (Oracle Cloud) — Up / cluster status / probe latency",
+        "region": "${region}",
+        "view": "timeSeries",
+        "metrics": [
+          [ "RecipeAiFinder/App", "OpenSearchNodeUp", { "stat": "Minimum" } ],
+          [ "RecipeAiFinder/App", "OpenSearchClusterStatus", { "stat": "Minimum" } ],
+          [ "RecipeAiFinder/App", "OpenSearchHealthProbeLatencyMs", { "stat": "Average" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 37, "width": 12, "height": 6,
+      "properties": {
+        "title": "App — SSE active emitters / broadcast failures",
+        "region": "${region}",
+        "view": "timeSeries",
+        "metrics": [
+          [ "RecipeAiFinder/App", "SseActiveEmitters", { "stat": "Maximum" } ],
+          [ "RecipeAiFinder/App", "SseBroadcastFailure", { "stat": "Sum" } ]
+        ]
+      }
+    }
+%{ endif ~}
+%{ if enable_opensearch ~}
+    ,
+    {
+      "type": "metric",
+      "x": 0, "y": 43, "width": 12, "height": 6,
+      "properties": {
+        "title": "OpenSearch Serverless (legacy) — OCU",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Maximum",
+        "metrics": [
+          [ "AWS/AOSS", "SearchOCU" ],
+          [ "AWS/AOSS", "IndexingOCU" ]
+        ]
+      }
+    }
+%{ endif ~}
+%{ if waf_web_acl_name != "" ~}
+    ,
+    {
+      "type": "metric",
+      "x": 12, "y": 43, "width": 12, "height": 6,
+      "properties": {
+        "title": "WAF — Allowed vs Blocked",
+        "region": "${region}",
+        "view": "timeSeries",
+        "stat": "Sum",
+        "metrics": [
+          [ "AWS/WAFV2", "AllowedRequests", "WebACL", "${waf_web_acl_name}", "Region", "${region}", "Rule", "ALL" ],
+          [ "AWS/WAFV2", "BlockedRequests", "WebACL", "${waf_web_acl_name}", "Region", "${region}", "Rule", "ALL" ]
+        ]
+      }
+    }
+%{ endif ~}
+  ]
+}

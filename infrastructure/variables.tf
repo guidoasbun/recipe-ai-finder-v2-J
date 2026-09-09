@@ -123,6 +123,32 @@ variable "waf_budget_notification_email" {
   description = "Email for budget alerts (empty = no budget resource created)"
 }
 
+# --- CloudWatch monitoring suite (opt-in) ---
+
+variable "enable_monitoring" {
+  type        = bool
+  default     = false
+  description = "Provision the CloudWatch monitoring suite (SNS topic, alarms incl. NAT gateway, dashboard, budget) and wire the existing WAF alarm to the new SNS topic. Off by default (no extra cost)."
+}
+
+variable "monitoring_notification_email" {
+  type        = string
+  default     = ""
+  description = "Email for monitoring alarm notifications + the CloudWatch budget. Required when enable_monitoring=true (module fails fast otherwise). Confirmation is a one-time manual click."
+}
+
+variable "monitoring_budget_limit_amount" {
+  type        = string
+  default     = "20"
+  description = "Monthly budget (USD) scoped to CloudWatch. Design §9 estimates ~$5–15/mo."
+}
+
+variable "enable_xray" {
+  type        = bool
+  default     = false
+  description = "Reserved for the optional X-Ray tracing layer (Milestone/Task 9). Off by default; not yet wired."
+}
+
 # --- OpenSearch catalog backend (opt-in) ---
 
 variable "enable_opensearch" {

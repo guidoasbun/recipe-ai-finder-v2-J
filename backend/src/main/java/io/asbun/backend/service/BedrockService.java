@@ -54,6 +54,7 @@ public class BedrockService {
                 }
             }
         }
+        log.error("Bedrock generation failed after {} attempts", maxAttempts, lastException);
         throw new RuntimeException("Failed to generate recipes after " + maxAttempts + " attempts", lastException);
     }
 

@@ -74,7 +74,8 @@ class OpenSearchCatalogSearchServiceTest {
                                                    EmbeddingService embeddingService,
                                                    boolean semanticEnabled,
                                                    String mode) {
-        return new OpenSearchCatalogSearchService(client, props(), embeddingService, semanticEnabled, mode);
+        return new OpenSearchCatalogSearchService(client, props(), embeddingService,
+                new io.asbun.backend.metrics.NoOpMetricsService(), semanticEnabled, mode);
     }
 
     private CatalogRecipeDto dto(String id) {
