@@ -3,6 +3,8 @@ package io.asbun.backend.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.asbun.backend.dto.ModelStatsDto;
+import io.asbun.backend.metrics.MetricsService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -14,7 +16,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class StatsSseService {
+
+    private static final String STREAM = "stats";
+
+    private final MetricsService metricsService;
 
     private final ConcurrentHashMap<String, SseEmitter> emitters = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -22,10 +29,20 @@ public class StatsSseService {
     public SseEmitter subscribe() {
         String id = UUID.randomUUID().toString();
         SseEmitter emitter = new SseEmitter(120_000L);
-        emitter.onCompletion(() -> emitters.remove(id));
-        emitter.onTimeout(() -> emitters.remove(id));
-        emitter.onError(e -> emitters.remove(id));
+        emitter.onCompletion(() -> {
+            emitters.remove(id);
+            metricsService.gauge("SseActiveEmitters", emitters.size(), "Stream", STREAM);
+        });
+        emitter.onTimeout(() -> {
+            emitters.remove(id);
+            metricsService.gauge("SseActiveEmitters", emitters.size(), "Stream", STREAM);
+        });
+        emitter.onError(e -> {
+            emitters.remove(id);
+            metricsService.gauge("SseActiveEmitters", emitters.size(), "Stream", STREAM);
+        });
         emitters.put(id, emitter);
+        metricsService.gauge("SseActiveEmitters", emitters.size(), "Stream", STREAM);
         return emitter;
     }
 
@@ -44,6 +61,7 @@ public class StatsSseService {
             json = objectMapper.writeValueAsString(stats);
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize stats for broadcast", e);
+            metricsService.count("SseBroadcastFailure", 1.0, "Stream", STREAM);
             return;
         }
         emitters.forEach((id, emitter) -> {
@@ -52,8 +70,10 @@ public class StatsSseService {
                 emitter.complete();
             } catch (IOException e) {
                 emitters.remove(id);
+                metricsService.count("SseBroadcastFailure", 1.0, "Stream", STREAM);
             }
         });
+        metricsService.gauge("SseActiveEmitters", emitters.size(), "Stream", STREAM);
     }
 
     public void completeAllWithError() {

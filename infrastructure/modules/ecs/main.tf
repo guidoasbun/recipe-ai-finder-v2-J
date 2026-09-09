@@ -61,7 +61,8 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "OPENSEARCH_KNN_QUANTIZATION", value = var.opensearch_knn_quantization },
       { name = "OPENSEARCH_AUTH", value = var.opensearch_auth },
       { name = "OPENSEARCH_USERNAME", value = var.opensearch_username },
-      { name = "OPENSEARCH_TLS_VERIFY", value = tostring(var.opensearch_tls_verify) }
+      { name = "OPENSEARCH_TLS_VERIFY", value = tostring(var.opensearch_tls_verify) },
+      { name = "MONITORING_METRICS_ENABLED", value = tostring(var.enable_monitoring) }
     ]
 
     # OpenSearch basic-auth password is injected from Secrets Manager only when configured

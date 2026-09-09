@@ -1,6 +1,7 @@
 package io.asbun.backend.search;
 
 import io.asbun.backend.dto.CatalogRecipeDto;
+import io.asbun.backend.metrics.MetricsService;
 import io.asbun.backend.model.CatalogRecipe;
 import io.asbun.backend.repository.CatalogRecipeRepository;
 import io.asbun.backend.service.EmbeddingService;
@@ -32,6 +33,7 @@ public class InAppCatalogSearchService implements CatalogSearchService {
 
     private final CatalogRecipeRepository repository;
     private final EmbeddingService embeddingService;
+    private final MetricsService metricsService;
     private final boolean semanticEnabled;
     private final String mode; // keyword | semantic | hybrid
 
@@ -39,10 +41,12 @@ public class InAppCatalogSearchService implements CatalogSearchService {
 
     public InAppCatalogSearchService(CatalogRecipeRepository repository,
                                      EmbeddingService embeddingService,
+                                     MetricsService metricsService,
                                      @Value("${catalog.search.semantic-enabled:true}") boolean semanticEnabled,
                                      @Value("${catalog.search.mode:hybrid}") String mode) {
         this.repository = repository;
         this.embeddingService = embeddingService;
+        this.metricsService = metricsService;
         this.semanticEnabled = semanticEnabled;
         this.mode = mode;
     }
@@ -82,6 +86,7 @@ public class InAppCatalogSearchService implements CatalogSearchService {
 
     @Override
     public CatalogSearchResults search(CatalogSearchQuery query) {
+        long searchStart = System.currentTimeMillis();
         List<CachedRecipe> candidates = catalog().stream()
                 .filter(r -> matchesDietary(r.recipe, query.dietaryTags()))
                 .collect(Collectors.toList());
@@ -120,6 +125,7 @@ public class InAppCatalogSearchService implements CatalogSearchService {
                 .map(s -> toDto(s.cached.recipe))
                 .collect(Collectors.toList());
 
+        metricsService.latencyMs("SearchLatencyMs", System.currentTimeMillis() - searchStart, "SearchMode", mode);
         return new CatalogSearchResults(items, page, pageSize, total);
     }
 
@@ -129,9 +135,13 @@ public class InAppCatalogSearchService implements CatalogSearchService {
         if (useSemantic) {
             try {
                 queryVector = toFloatArray(embeddingService.embed(text));
+                if (queryVector == null) {
+                    metricsService.count("SearchEmbedFallback");
+                }
             } catch (Exception e) {
                 // Graceful fallback: semantic failed, use keyword only.
                 log.warn("Query embedding failed, falling back to keyword search: {}", e.getMessage());
+                metricsService.count("SearchEmbedFallback");
                 queryVector = null;
             }
         }

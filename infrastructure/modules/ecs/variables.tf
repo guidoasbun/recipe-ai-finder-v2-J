@@ -131,6 +131,12 @@ variable "opensearch_tls_verify" {
   description = "Verify the OpenSearch server TLS cert. false only for a self-signed cert on an IP-locked self-hosted node."
 }
 
+variable "enable_monitoring" {
+  type        = bool
+  default     = false
+  description = "Sets MONITORING_METRICS_ENABLED on the backend task so the app emits EMF custom metrics + runs the OpenSearch health probe. Mirrors the root enable_monitoring flag."
+}
+
 variable "s3_bucket" {
   type = string
 }

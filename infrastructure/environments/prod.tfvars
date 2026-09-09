@@ -31,3 +31,10 @@ waf_budget_notification_email        = ""
 # cut over in DEV only (see environments/dev.tfvars). Enabling it here would provision an EMPTY
 # prod collection and flip prod search to it — do NOT set enable_opensearch/catalog_search_backend
 # for prod until a full prod load + reindex + parity verification has been run.
+
+# --- CloudWatch monitoring suite (Milestone A: infra layer) ---
+# Off by default. Enable per the dev.tfvars notes once you're ready to monitor prod.
+enable_monitoring              = false
+monitoring_notification_email  = ""
+monitoring_budget_limit_amount = "20"
+enable_xray                    = false

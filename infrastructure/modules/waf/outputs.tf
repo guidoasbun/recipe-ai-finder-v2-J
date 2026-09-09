@@ -8,6 +8,11 @@ output "web_acl_arn" {
   description = "ARN of the created Web ACL"
 }
 
+output "web_acl_name" {
+  value       = aws_wafv2_web_acl.main.name
+  description = "Name of the Web ACL (WebACL dimension for AWS/WAFV2 metrics on the monitoring dashboard)."
+}
+
 output "waf_log_bucket_arn" {
   value       = aws_s3_bucket.waf_logs.arn
   description = "ARN of the WAF logging S3 bucket"

@@ -61,7 +61,8 @@ class RecipeControllerPropertyTest {
         ConsentService consentService = mock(ConsentService.class);
 
         RecipeController controller = new RecipeController(
-                recipeService, bedrockService, userRepository, imageSseService, consentService);
+                recipeService, bedrockService, userRepository, imageSseService, consentService,
+                new io.asbun.backend.metrics.NoOpMetricsService());
         ReflectionTestUtils.setField(controller, "testEmail", "test@example.com");
         ReflectionTestUtils.setField(controller, "generateCallLimit", 10);
 
@@ -107,7 +108,8 @@ class RecipeControllerPropertyTest {
         ConsentService consentService = mock(ConsentService.class);
 
         RecipeController controller = new RecipeController(
-                recipeService, bedrockService, userRepository, imageSseService, consentService);
+                recipeService, bedrockService, userRepository, imageSseService, consentService,
+                new io.asbun.backend.metrics.NoOpMetricsService());
         ReflectionTestUtils.setField(controller, "testEmail", "test@example.com");
         ReflectionTestUtils.setField(controller, "generateCallLimit", 10);
 
@@ -143,7 +145,8 @@ class RecipeControllerPropertyTest {
         ConsentService consentService = mock(ConsentService.class);
 
         RecipeController controller = new RecipeController(
-                recipeService, bedrockService, userRepository, imageSseService, consentService);
+                recipeService, bedrockService, userRepository, imageSseService, consentService,
+                new io.asbun.backend.metrics.NoOpMetricsService());
         ReflectionTestUtils.setField(controller, "testEmail", "test@example.com");
         ReflectionTestUtils.setField(controller, "generateCallLimit", 10);
 
@@ -181,7 +184,8 @@ class RecipeControllerPropertyTest {
         ConsentService consentService = mock(ConsentService.class);
 
         RecipeController controller = new RecipeController(
-                recipeService, bedrockService, userRepository, imageSseService, consentService);
+                recipeService, bedrockService, userRepository, imageSseService, consentService,
+                new io.asbun.backend.metrics.NoOpMetricsService());
         ReflectionTestUtils.setField(controller, "testEmail", "test@example.com");
         ReflectionTestUtils.setField(controller, "generateCallLimit", 10);
 

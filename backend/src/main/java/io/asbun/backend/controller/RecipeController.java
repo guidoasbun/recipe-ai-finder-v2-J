@@ -7,6 +7,7 @@ import io.asbun.backend.dto.SaveRecipeRequest;
 import io.asbun.backend.exception.RateLimitExceededException;
 import io.asbun.backend.model.enums.AccountStatus;
 import io.asbun.backend.model.enums.ConsentType;
+import io.asbun.backend.metrics.MetricsService;
 import io.asbun.backend.repository.UserRepository;
 import io.asbun.backend.service.BedrockService;
 import io.asbun.backend.service.ConsentService;
@@ -38,6 +39,7 @@ public class RecipeController {
     private final UserRepository userRepository;
     private final ImageSseService imageSseService;
     private final ConsentService consentService;
+    private final MetricsService metricsService;
 
     @Value("${testuser.email}")
     private String testEmail;
@@ -125,11 +127,20 @@ public class RecipeController {
                         : u.getDietaryRestrictions())
                 .orElse(java.util.Collections.emptyList());
 
+        String modelName = request.getModel() == null ? "unknown" : request.getModel().name();
         long start = System.currentTimeMillis();
-        List<GenerateRecipeResponse> recipes = bedrockService.generateRecipes(
-                request.getIngredients(), dietaryRestrictions, request.getModel());
+        List<GenerateRecipeResponse> recipes;
+        try {
+            recipes = bedrockService.generateRecipes(
+                    request.getIngredients(), dietaryRestrictions, request.getModel());
+        } catch (RuntimeException e) {
+            // Telemetry only — do not change behavior: record the failure and rethrow.
+            metricsService.count("BedrockFailure", 1.0, "Model", modelName);
+            throw e;
+        }
         long generationMs = System.currentTimeMillis() - start;
         recipes.forEach(r -> r.setGenerationMs(generationMs));
+        metricsService.latencyMs("BedrockLatencyMs", generationMs, "Model", modelName);
 
         if (testEmail.equals(email)) {
             userRepository.atomicIncrementGenerateCalls(userId);
