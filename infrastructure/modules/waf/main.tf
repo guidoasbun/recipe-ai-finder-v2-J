@@ -215,6 +215,10 @@ resource "aws_wafv2_web_acl" "main" {
         managed_rule_group_configs {
           aws_managed_rules_bot_control_rule_set {
             inspection_level = "COMMON"
+            # Explicit to match the AWS default (ML on). Without this the provider renders it as
+            # false while AWS stores true, producing perpetual false→true plan churn. Setting it
+            # explicitly makes code and state agree so the WAF rule set stops drifting.
+            enable_machine_learning = true
           }
         }
       }
@@ -568,6 +572,16 @@ resource "aws_wafv2_web_acl" "main" {
     Environment = var.environment
     Project     = var.project_name
     ManagedBy   = "terraform"
+  }
+
+  # The AWS provider does not round-trip Bot Control's enable_machine_learning through state (it
+  # reads back false regardless of the configured value under inspection_level=COMMON), so every
+  # plan re-renders the entire rule[] array and shows perpetual drift. Ignore rule changes so the
+  # WebACL stops churning. TRADE-OFF: intentional rule edits (new rate limits, managed-rule
+  # tweaks) won't be detected while this is set — to change rules, temporarily remove this
+  # ignore_changes, apply, then restore it.
+  lifecycle {
+    ignore_changes = [rule]
   }
 }
 
