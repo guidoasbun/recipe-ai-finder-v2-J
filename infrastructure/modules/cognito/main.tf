@@ -64,6 +64,16 @@ resource "aws_cognito_identity_provider" "google" {
     name     = "name"
     picture  = "picture"
   }
+
+  # Cognito normalizes the Google token_url back to the legacy
+  # https://www.googleapis.com/oauth2/v4/token on read, so it never matches our
+  # https://oauth2.googleapis.com/token and every plan shows perpetual drift (both URLs are
+  # valid, equivalent Google token endpoints). Ignore provider_details so Terraform stops
+  # fighting AWS over a value AWS owns at runtime. To intentionally change credentials/scopes
+  # later, temporarily remove this and apply.
+  lifecycle {
+    ignore_changes = [provider_details]
+  }
 }
 
 resource "aws_cognito_user_pool_client" "main" {
