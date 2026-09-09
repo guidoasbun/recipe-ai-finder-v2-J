@@ -398,6 +398,7 @@ resource "aws_cloudwatch_dashboard" "main" {
     waf_web_acl_name      = var.waf_web_acl_name
     enable_app_metrics    = var.enable_app_metrics
     enable_opensearch     = var.enable_opensearch
+    enable_xray           = var.enable_xray
   })
 }
 
