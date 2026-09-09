@@ -16,21 +16,62 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
+# Log group for the ADOT collector sidecar (only when X-Ray tracing is enabled).
+resource "aws_cloudwatch_log_group" "adot" {
+  count             = var.enable_xray ? 1 : 0
+  name              = "/ecs/${var.project_name}-${var.environment}-adot"
+  retention_in_days = 30
+}
+
+locals {
+  # OTEL agent env added to the BACKEND container only when X-Ray is enabled. JAVA_TOOL_OPTIONS
+  # attaches the OpenTelemetry Java agent at JVM startup (auto-instruments Spring MVC, AWS SDK v2,
+  # and outbound HTTP — so Bedrock/DynamoDB/S3/OpenSearch calls become subsegments). Traces are
+  # exported via OTLP to the ADOT collector sidecar on localhost, which forwards to X-Ray.
+  backend_otel_env = var.enable_xray ? [
+    { name = "JAVA_TOOL_OPTIONS", value = "-javaagent:/opt/aws-opentelemetry-agent.jar" },
+    { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = "http://localhost:4318" },
+    { name = "OTEL_TRACES_EXPORTER", value = "otlp" },
+    { name = "OTEL_METRICS_EXPORTER", value = "none" },
+    { name = "OTEL_LOGS_EXPORTER", value = "none" },
+    { name = "OTEL_PROPAGATORS", value = "xray,tracecontext" },
+    { name = "OTEL_SERVICE_NAME", value = "${var.project_name}-${var.environment}-backend" },
+  ] : []
+
+  # ADOT collector sidecar, appended to the backend task's container list only when X-Ray is on.
+  # Uses the AWS-published collector image with its built-in X-Ray config.
+  adot_sidecar = var.enable_xray ? [{
+    name      = "aws-otel-collector"
+    image     = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
+    essential = false
+    command   = ["--config=/etc/ecs/ecs-default-config.yaml"]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.adot[0].name
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "ecs"
+      }
+    }
+  }] : []
+}
+
 resource "aws_ecs_task_definition" "backend" {
   family                   = "${var.project_name}-${var.environment}-backend"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 512
-  memory                   = 1024
-  execution_role_arn       = var.execution_role_arn
-  task_role_arn            = var.task_role_arn
+  # X-Ray adds the ADOT sidecar; give the task a little more headroom when tracing is on.
+  cpu                = var.enable_xray ? 1024 : 512
+  memory             = var.enable_xray ? 2048 : 1024
+  execution_role_arn = var.execution_role_arn
+  task_role_arn      = var.task_role_arn
 
   runtime_platform {
     cpu_architecture        = "ARM64"
     operating_system_family = "LINUX"
   }
 
-  container_definitions = jsonencode([{
+  container_definitions = jsonencode(concat([{
     name      = "backend"
     image     = "${var.backend_ecr_url}:latest"
     essential = true
@@ -40,7 +81,7 @@ resource "aws_ecs_task_definition" "backend" {
       protocol      = "tcp"
     }]
 
-    environment = [
+    environment = concat([
       { name = "AWS_REGION", value = var.aws_region },
       { name = "COGNITO_ISSUER_URI", value = var.cognito_issuer_uri },
       { name = "DYNAMODB_USERS_TABLE", value = var.dynamodb_users_table },
@@ -63,7 +104,7 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "OPENSEARCH_USERNAME", value = var.opensearch_username },
       { name = "OPENSEARCH_TLS_VERIFY", value = tostring(var.opensearch_tls_verify) },
       { name = "MONITORING_METRICS_ENABLED", value = tostring(var.enable_monitoring) }
-    ]
+    ], local.backend_otel_env)
 
     # OpenSearch basic-auth password is injected from Secrets Manager only when configured
     # (auth=basic). Concatenated so the sigv4 path adds no empty secret.
@@ -83,7 +124,7 @@ resource "aws_ecs_task_definition" "backend" {
         "awslogs-stream-prefix" = "ecs"
       }
     }
-  }])
+  }], local.adot_sidecar))
 }
 
 resource "aws_ecs_task_definition" "frontend" {

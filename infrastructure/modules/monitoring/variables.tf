@@ -83,6 +83,12 @@ variable "enable_opensearch" {
   description = "Legacy path: when the AWS OpenSearch Serverless collection is enabled, add its OCU/search-error alarms + dashboard widgets. The live backend is the OCI node (see enable_app_metrics), not this."
 }
 
+variable "enable_xray" {
+  type        = bool
+  default     = false
+  description = "When true, the cost budget's service filter also covers AWS X-Ray (the optional tracing layer). Off by default."
+}
+
 # ── Alarm thresholds (sensible defaults, overridable per env) ──────────────────
 
 variable "ecs_cpu_threshold" {

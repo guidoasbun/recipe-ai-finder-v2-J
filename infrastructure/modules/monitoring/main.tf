@@ -413,7 +413,7 @@ resource "aws_budgets_budget" "monitoring" {
 
   cost_filter {
     name   = "Service"
-    values = ["AmazonCloudWatch"]
+    values = var.enable_xray ? ["AmazonCloudWatch", "AWS X-Ray"] : ["AmazonCloudWatch"]
   }
 
   notification {

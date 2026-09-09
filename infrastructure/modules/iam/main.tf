@@ -104,6 +104,30 @@ resource "aws_iam_role_policy_attachment" "task_policy" {
   policy_arn = aws_iam_policy.task_policy.arn
 }
 
+# X-Ray write permissions for the optional tracing layer. Kept as a SEPARATE inline policy gated
+# by enable_xray so the base task policy above is byte-for-byte unchanged when tracing is off.
+# X-Ray actions do not support resource-level ARNs, so Resource is "*" (standard for X-Ray).
+resource "aws_iam_role_policy" "task_xray" {
+  count = var.enable_xray ? 1 : 0
+  name  = "${var.project_name}-ecs-task-xray"
+  role  = aws_iam_role.task_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets",
+        "xray:GetSamplingStatisticSummaries"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_openid_connect_provider" "github" {
