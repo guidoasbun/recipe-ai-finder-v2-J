@@ -9,12 +9,16 @@ import io.asbun.backend.model.enums.AccountStatus;
 import io.asbun.backend.model.enums.ConsentType;
 import io.asbun.backend.metrics.MetricsService;
 import io.asbun.backend.repository.UserRepository;
+import io.asbun.backend.search.SavedRecipeSearchQuery;
+import io.asbun.backend.search.SavedRecipeSearchResults;
+import io.asbun.backend.search.SavedRecipeSearchService;
 import io.asbun.backend.service.BedrockService;
 import io.asbun.backend.service.ConsentService;
 import io.asbun.backend.service.ImageSseService;
 import io.asbun.backend.service.RecipeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -40,12 +44,19 @@ public class RecipeController {
     private final ImageSseService imageSseService;
     private final ConsentService consentService;
     private final MetricsService metricsService;
+    private final SavedRecipeSearchService savedRecipeSearchService;
 
     @Value("${testuser.email}")
     private String testEmail;
 
     @Value("${testuser.generate-call-limit}")
     private int generateCallLimit;
+
+    @Value("${recipes.search.page-size-default:6}")
+    private int defaultPageSize;
+
+    @Value("${recipes.search.page-size-max:50}")
+    private int maxPageSize;
 
     @PostMapping
     public ResponseEntity<RecipeDto> saveRecipe(
@@ -55,9 +66,29 @@ public class RecipeController {
         return ResponseEntity.status(HttpStatus.CREATED).body(recipe);
     }
 
+    /**
+     * Lists the caller's saved recipes, paginated and optionally filtered by a search term.
+     *
+     * <p>{@code q} matches (case-insensitive) the recipe title, description, or ingredients;
+     * blank/absent means no filter. Results are newest-first. {@code page} is 0-based and
+     * {@code pageSize} defaults to {@code recipes.search.page-size-default}, both clamped to safe
+     * bounds. The response carries the page of items plus {@code page}/{@code pageSize}/{@code
+     * totalMatches} so the UI can render pagination controls. Only the caller's own recipes are
+     * ever returned.
+     */
     @GetMapping
-    public ResponseEntity<List<RecipeDto>> getRecipes(Authentication authentication) {
-        return ResponseEntity.ok(recipeService.getRecipesByUser(getUserId(authentication)));
+    public ResponseEntity<SavedRecipeSearchResults> getRecipes(
+            @RequestParam(required = false) @Size(max = 200) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(required = false) Integer pageSize,
+            Authentication authentication) {
+        int size = pageSize == null ? defaultPageSize : pageSize;
+        size = Math.max(1, Math.min(size, maxPageSize));
+        int safePage = Math.max(0, page);
+
+        SavedRecipeSearchQuery query =
+                new SavedRecipeSearchQuery(getUserId(authentication), q, safePage, size);
+        return ResponseEntity.ok(savedRecipeSearchService.search(query));
     }
 
     @GetMapping("/{id}")

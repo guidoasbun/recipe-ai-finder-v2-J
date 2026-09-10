@@ -54,6 +54,16 @@ public class RecipeService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Maps a {@link Recipe} to its {@link RecipeDto}, including S3 presigned-URL generation and
+     * lazy image regeneration. Exposed for {@code InAppSavedRecipeSearchService} so the search
+     * path reuses this logic and runs the (paid) image side effects only for the page of recipes
+     * actually returned, rather than every recipe the user owns.
+     */
+    public RecipeDto toDtoFor(Recipe recipe) {
+        return toDto(recipe);
+    }
+
     public RecipeDto getRecipeById(String recipeId, String userId) {
         Recipe recipe = recipeRepository.findById(recipeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Recipe not found: " + recipeId));
