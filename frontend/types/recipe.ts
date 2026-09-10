@@ -4,6 +4,7 @@ export interface Recipe {
   description: string;
   ingredients: string[];
   steps: string[];
+  dietaryTags?: string[];
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
@@ -22,5 +23,6 @@ export interface GeneratedRecipe {
   description: string;
   ingredients: string[];
   steps: string[];
+  dietaryTags?: string[];
   generationMs?: number;
 }

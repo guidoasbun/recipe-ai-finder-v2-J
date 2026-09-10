@@ -65,7 +65,8 @@ class RecipeControllerPropertyTest {
 
         RecipeController controller = new RecipeController(
                 recipeService, bedrockService, userRepository, imageSseService, consentService,
-                new io.asbun.backend.metrics.NoOpMetricsService(), mock(SavedRecipeSearchService.class));
+                new io.asbun.backend.metrics.NoOpMetricsService(), mock(SavedRecipeSearchService.class),
+                mock(io.asbun.backend.ingest.DietaryTagger.class));
         ReflectionTestUtils.setField(controller, "testEmail", "test@example.com");
         ReflectionTestUtils.setField(controller, "generateCallLimit", 10);
 
@@ -113,7 +114,8 @@ class RecipeControllerPropertyTest {
 
         RecipeController controller = new RecipeController(
                 recipeService, bedrockService, userRepository, imageSseService, consentService,
-                new io.asbun.backend.metrics.NoOpMetricsService(), savedRecipeSearchService);
+                new io.asbun.backend.metrics.NoOpMetricsService(), savedRecipeSearchService,
+                mock(io.asbun.backend.ingest.DietaryTagger.class));
         ReflectionTestUtils.setField(controller, "testEmail", "test@example.com");
         ReflectionTestUtils.setField(controller, "generateCallLimit", 10);
         ReflectionTestUtils.setField(controller, "defaultPageSize", 6);
@@ -154,7 +156,8 @@ class RecipeControllerPropertyTest {
 
         RecipeController controller = new RecipeController(
                 recipeService, bedrockService, userRepository, imageSseService, consentService,
-                new io.asbun.backend.metrics.NoOpMetricsService(), mock(SavedRecipeSearchService.class));
+                new io.asbun.backend.metrics.NoOpMetricsService(), mock(SavedRecipeSearchService.class),
+                mock(io.asbun.backend.ingest.DietaryTagger.class));
         ReflectionTestUtils.setField(controller, "testEmail", "test@example.com");
         ReflectionTestUtils.setField(controller, "generateCallLimit", 10);
 
@@ -193,7 +196,8 @@ class RecipeControllerPropertyTest {
 
         RecipeController controller = new RecipeController(
                 recipeService, bedrockService, userRepository, imageSseService, consentService,
-                new io.asbun.backend.metrics.NoOpMetricsService(), mock(SavedRecipeSearchService.class));
+                new io.asbun.backend.metrics.NoOpMetricsService(), mock(SavedRecipeSearchService.class),
+                mock(io.asbun.backend.ingest.DietaryTagger.class));
         ReflectionTestUtils.setField(controller, "testEmail", "test@example.com");
         ReflectionTestUtils.setField(controller, "generateCallLimit", 10);
 

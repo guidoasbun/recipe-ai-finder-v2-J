@@ -176,6 +176,17 @@ describe("RecipesPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders dietary restriction chips on recipe cards", async () => {
+    const tagged: Recipe = { ...makeRecipe(0), dietaryTags: ["VEGAN", "GLUTEN_FREE"] };
+    vi.stubGlobal("fetch", stubFetchFor([tagged]));
+
+    render(<RecipesPage />);
+
+    // Labels come from lib/dietary's dietaryLabel mapping.
+    expect(await screen.findByText("Vegan")).toBeInTheDocument();
+    expect(screen.getByText("Gluten-Free")).toBeInTheDocument();
+  });
+
   it("shows the empty state when there are no saved recipes", async () => {
     vi.stubGlobal("fetch", stubFetchFor([]));
     render(<RecipesPage />);

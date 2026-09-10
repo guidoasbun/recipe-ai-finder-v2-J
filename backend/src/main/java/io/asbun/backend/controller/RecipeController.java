@@ -7,6 +7,7 @@ import io.asbun.backend.dto.SaveRecipeRequest;
 import io.asbun.backend.exception.RateLimitExceededException;
 import io.asbun.backend.model.enums.AccountStatus;
 import io.asbun.backend.model.enums.ConsentType;
+import io.asbun.backend.ingest.DietaryTagger;
 import io.asbun.backend.metrics.MetricsService;
 import io.asbun.backend.repository.UserRepository;
 import io.asbun.backend.search.SavedRecipeSearchQuery;
@@ -45,6 +46,7 @@ public class RecipeController {
     private final ConsentService consentService;
     private final MetricsService metricsService;
     private final SavedRecipeSearchService savedRecipeSearchService;
+    private final DietaryTagger dietaryTagger;
 
     @Value("${testuser.email}")
     private String testEmail;
@@ -170,7 +172,13 @@ public class RecipeController {
             throw e;
         }
         long generationMs = System.currentTimeMillis() - start;
-        recipes.forEach(r -> r.setGenerationMs(generationMs));
+        recipes.forEach(r -> {
+            r.setGenerationMs(generationMs);
+            // Derive dietary tags from the actual generated ingredients (same tagger the catalog
+            // uses), so tags reflect the recipe itself and stay consistent across the app. These
+            // flow to the card and are persisted verbatim on save.
+            r.setDietaryTags(dietaryTagger.tag(r.getIngredients()));
+        });
         metricsService.latencyMs("BedrockLatencyMs", generationMs, "Model", modelName);
 
         if (testEmail.equals(email)) {

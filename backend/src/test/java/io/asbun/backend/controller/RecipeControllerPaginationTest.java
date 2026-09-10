@@ -50,7 +50,8 @@ class RecipeControllerPaginationTest {
                 mock(ImageSseService.class),
                 mock(ConsentService.class),
                 mock(MetricsService.class),
-                savedRecipeSearchService);
+                savedRecipeSearchService,
+                mock(io.asbun.backend.ingest.DietaryTagger.class));
 
         ReflectionTestUtils.setField(controller, "defaultPageSize", 6);
         ReflectionTestUtils.setField(controller, "maxPageSize", 50);

@@ -23,9 +23,17 @@ public class RecipeService {
     private final AsyncImageService asyncImageService;
     private final S3Service s3Service;
     private final StatsService statsService;
+    private final io.asbun.backend.ingest.DietaryTagger dietaryTagger;
 
     public RecipeDto saveRecipe(SaveRecipeRequest request, String userId) {
         String recipeId = UUID.randomUUID().toString();
+
+        // Persist the client-supplied dietary tags (produced at generation). If the request
+        // omits them, derive from the ingredients so a saved recipe always carries tags,
+        // consistent with how the catalog tags recipes.
+        List<String> dietaryTags = request.getDietaryTags() != null
+                ? request.getDietaryTags()
+                : dietaryTagger.tag(request.getIngredients());
 
         Recipe recipe = Recipe.builder()
                 .recipeId(recipeId)
@@ -34,6 +42,7 @@ public class RecipeService {
                 .description(request.getDescription())
                 .ingredients(request.getIngredients())
                 .steps(request.getSteps())
+                .dietaryTags(dietaryTags)
                 .model(request.getModel())
                 .imageModel(request.getImageModel())
                 .textGenerationMs(request.getTextGenerationMs())
@@ -151,6 +160,7 @@ public class RecipeService {
                 .description(recipe.getDescription())
                 .ingredients(recipe.getIngredients())
                 .steps(recipe.getSteps())
+                .dietaryTags(recipe.getDietaryTags())
                 .imageUrl(imageUrl)
                 .imageWidth(recipe.getImageWidth())
                 .imageHeight(recipe.getImageHeight())

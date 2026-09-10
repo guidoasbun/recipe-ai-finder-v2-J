@@ -106,7 +106,8 @@ class ComplianceLifecycleIntegrationTest {
         recipeController = new RecipeController(
                 recipeService, bedrockService, userRepository, imageSseService, consentService,
                 new io.asbun.backend.metrics.NoOpMetricsService(),
-                mock(io.asbun.backend.search.SavedRecipeSearchService.class));
+                mock(io.asbun.backend.search.SavedRecipeSearchService.class),
+                mock(io.asbun.backend.ingest.DietaryTagger.class));
         ReflectionTestUtils.setField(recipeController, "testEmail", "testdemo@example.com");
         ReflectionTestUtils.setField(recipeController, "generateCallLimit", 10);
     }

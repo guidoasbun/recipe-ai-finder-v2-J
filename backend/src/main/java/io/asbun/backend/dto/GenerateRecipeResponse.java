@@ -18,4 +18,7 @@ public class GenerateRecipeResponse {
     private List<String> ingredients;
     private List<String> steps;
     private Long generationMs;
+
+    /** DietaryRestriction enum names the recipe satisfies, derived from its ingredients. */
+    private List<String> dietaryTags;
 }
