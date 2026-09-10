@@ -42,8 +42,12 @@ public class ImageGenerationService {
             "https://api.stability.ai/v2beta/stable-image/generate/core";
     private static final String OPENAI_URL =
             "https://api.openai.com/v1/images/generations";
-    private static final String GOOGLE_IMAGEN_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/%s:predict";
+    // Nano Banana (Gemini native image generation) via the Interactions API. The old Imagen
+    // models (imagen-4.0-*) reached their shutdown date and now return 404, so the Google image
+    // path was migrated to gemini-3.1-flash-image / -lite-image on this endpoint.
+    // See https://ai.google.dev/gemini-api/docs/image-generation
+    private static final String GOOGLE_INTERACTIONS_URL =
+            "https://generativelanguage.googleapis.com/v1beta/interactions";
     private static final String PROMPT_PREFIX =
             "A beautiful food photography photo of ";
     private static final String PROMPT_SUFFIX =
@@ -60,8 +64,9 @@ public class ImageGenerationService {
             byte[] imageBytes = switch (imageModel) {
                 case STABILITY_CORE      -> generateWithStability(recipeTitle);
                 case GPT_IMAGE_1_5       -> generateWithGptImage(recipeTitle);
-                case GOOGLE_IMAGEN_4      -> generateWithGoogleImagen(recipeTitle, "imagen-4.0-generate-001");
-                case GOOGLE_IMAGEN_4_FAST -> generateWithGoogleImagen(recipeTitle, "imagen-4.0-fast-generate-001");
+                // Enum names retained for DynamoDB backward-compat; they now map to Nano Banana.
+                case GOOGLE_IMAGEN_4      -> generateWithGoogleImagen(recipeTitle, "gemini-3.1-flash-image");
+                case GOOGLE_IMAGEN_4_FAST -> generateWithGoogleImagen(recipeTitle, "gemini-3.1-flash-lite-image");
             };
             long generationMs = System.currentTimeMillis() - start;
 
@@ -76,12 +81,15 @@ public class ImageGenerationService {
                 log.warn("Could not read image dimensions for recipe {}", recipeId, e);
             }
 
-            String s3Key = s3Service.uploadImage(recipeId, imageBytes);
+            // Providers don't all return PNG (e.g. Nano Banana returns JPEG), so detect the real
+            // format from the bytes and store the correct Content-Type instead of assuming PNG.
+            String contentType = detectContentType(imageBytes);
+            String s3Key = s3Service.uploadImage(recipeId, imageBytes, contentType);
             return new ImageUploadResult(
                     s3Key,
                     width  > 0 ? width  : null,
                     height > 0 ? height : null,
-                    "image/png",
+                    contentType,
                     (long) imageBytes.length,
                     generationMs
             );
@@ -113,32 +121,106 @@ public class ImageGenerationService {
 
     private byte[] generateWithGoogleImagen(String recipeTitle, String modelId) throws Exception {
         String prompt = PROMPT_PREFIX + recipeTitle + PROMPT_SUFFIX;
-        String url = String.format(GOOGLE_IMAGEN_URL, modelId);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("x-goog-api-key", googleApiKey);
 
-        ObjectNode instance = objectMapper.createObjectNode();
-        instance.put("prompt", prompt);
+        // Interactions API request: input is an array of typed content parts; response_format asks
+        // for an image at a fixed aspect ratio so the result stays consistent with the other
+        // providers (square food photography).
+        ObjectNode textPart = objectMapper.createObjectNode();
+        textPart.put("type", "text");
+        textPart.put("text", prompt);
 
-        ObjectNode parameters = objectMapper.createObjectNode();
-        parameters.put("sampleCount", 1);
-        parameters.put("aspectRatio", "1:1");
+        ObjectNode responseFormat = objectMapper.createObjectNode();
+        responseFormat.put("type", "image");
+        responseFormat.put("aspect_ratio", "1:1");
 
         ObjectNode requestBody = objectMapper.createObjectNode();
-        requestBody.putArray("instances").add(instance);
-        requestBody.set("parameters", parameters);
+        requestBody.put("model", modelId);
+        requestBody.putArray("input").add(textPart);
+        requestBody.set("response_format", responseFormat);
 
         HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(requestBody), headers);
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(GOOGLE_INTERACTIONS_URL, entity, String.class);
             JsonNode root = objectMapper.readTree(response.getBody());
-            String base64Image = root.path("predictions").get(0).path("bytesBase64Encoded").asText();
+            String base64Image = extractInteractionsImage(root);
+            if (base64Image == null || base64Image.isBlank()) {
+                throw new RuntimeException("Google Nano Banana returned no image data for model " + modelId
+                        + "; response: " + truncate(response.getBody()));
+            }
             return Base64.getDecoder().decode(base64Image);
         } catch (HttpStatusCodeException e) {
-            throw new RuntimeException("Google Imagen API error " + e.getStatusCode() + ": " + e.getResponseBodyAsString(), e);
+            throw new RuntimeException("Google Nano Banana API error " + e.getStatusCode() + ": " + e.getResponseBodyAsString(), e);
         }
+    }
+
+    /**
+     * Pulls the base64 image out of an Interactions API response. Prefers the convenience
+     * {@code output_image.data} field when present, then falls back to scanning the
+     * {@code steps[].content[]} (and {@code steps[].summary[]}) arrays for the first block whose
+     * {@code type} is {@code image}. Structure per
+     * https://ai.google.dev/gemini-api/docs/image-generation
+     */
+    private String extractInteractionsImage(JsonNode root) {
+        JsonNode convenience = root.path("output_image").path("data");
+        if (convenience.isTextual() && !convenience.asText().isBlank()) {
+            return convenience.asText();
+        }
+        JsonNode steps = root.path("steps");
+        if (steps.isArray()) {
+            for (JsonNode step : steps) {
+                String fromContent = firstImageData(step.path("content"));
+                if (fromContent != null) {
+                    return fromContent;
+                }
+                // Interim "thought" images live under summary; only used as a last resort.
+                String fromSummary = firstImageData(step.path("summary"));
+                if (fromSummary != null) {
+                    return fromSummary;
+                }
+            }
+        }
+        return null;
+    }
+
+    private String firstImageData(JsonNode blocks) {
+        if (blocks.isArray()) {
+            for (JsonNode block : blocks) {
+                if ("image".equals(block.path("type").asText())) {
+                    String data = block.path("data").asText(null);
+                    if (data != null && !data.isBlank()) {
+                        return data;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String truncate(String s) {
+        if (s == null) return "null";
+        return s.length() > 500 ? s.substring(0, 500) + "…" : s;
+    }
+
+    /** Sniff the image format from magic bytes; defaults to image/png if unrecognized. */
+    private String detectContentType(byte[] bytes) {
+        if (bytes != null && bytes.length >= 3
+                && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8 && (bytes[2] & 0xFF) == 0xFF) {
+            return "image/jpeg";
+        }
+        if (bytes != null && bytes.length >= 8
+                && (bytes[0] & 0xFF) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G') {
+            return "image/png";
+        }
+        if (bytes != null && bytes.length >= 12
+                && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+                && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') {
+            return "image/webp";
+        }
+        return "image/png";
     }
 
     private byte[] generateWithGptImage(String recipeTitle) throws Exception {
