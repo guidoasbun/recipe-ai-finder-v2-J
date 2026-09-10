@@ -206,8 +206,9 @@ class ComplianceLifecycleIntegrationTest {
         verify(recipeRepository).delete("recipe-1");
         verify(recipeRepository).delete("recipe-2");
         verify(userRepository).delete(USER_ID);
+        // Cognito deletes by the user's Cognito username (not the internal userId).
         verify(cognitoClient).adminDeleteUser(argThat((AdminDeleteUserRequest req) ->
-                req.username().equals(USER_ID) && req.userPoolId().equals("us-east-1_TestPool")));
+                req.username().equals(USERNAME) && req.userPoolId().equals("us-east-1_TestPool")));
 
         // Verify ACCOUNT_DELETION_COMPLETED audit event
         verify(auditRepository).save(argThat(event ->

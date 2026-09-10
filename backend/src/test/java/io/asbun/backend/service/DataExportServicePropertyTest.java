@@ -20,7 +20,6 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -333,12 +332,13 @@ class DataExportServicePropertyTest {
         DataExportService service = createService(
                 userRepository, recipeRepository, s3Client, s3Presigner, auditService, objectMapper);
 
-        // Pre-populate the exportStatuses map with IN_PROGRESS for this user
-        ConcurrentHashMap<String, ExportStatusResponse> statusMap = new ConcurrentHashMap<>();
-        statusMap.put(userId, ExportStatusResponse.builder()
+        // Pre-populate the exportStatuses map with IN_PROGRESS for this user. The status map now
+        // lives on DataExportAsyncWorker (the service reads it via asyncWorker.getExportStatuses()).
+        DataExportAsyncWorker asyncWorker =
+                (DataExportAsyncWorker) ReflectionTestUtils.getField(service, "asyncWorker");
+        asyncWorker.getExportStatuses().put(userId, ExportStatusResponse.builder()
                 .status(ExportStatusResponse.ExportStatus.IN_PROGRESS)
                 .build());
-        ReflectionTestUtils.setField(service, "exportStatuses", statusMap);
 
         // Act & Assert - second call while IN_PROGRESS throws
         assertThatThrownBy(() -> service.startZipExport(userId))
@@ -379,13 +379,13 @@ class DataExportServicePropertyTest {
         DataExportService service = createService(
                 userRepository, recipeRepository, s3Client, s3Presigner, auditService, objectMapper);
 
-        // Pre-populate with COMPLETED status
-        ConcurrentHashMap<String, ExportStatusResponse> statusMap = new ConcurrentHashMap<>();
-        statusMap.put(userId, ExportStatusResponse.builder()
+        // Pre-populate with COMPLETED status on the async worker's status map.
+        DataExportAsyncWorker asyncWorker =
+                (DataExportAsyncWorker) ReflectionTestUtils.getField(service, "asyncWorker");
+        asyncWorker.getExportStatuses().put(userId, ExportStatusResponse.builder()
                 .status(ExportStatusResponse.ExportStatus.COMPLETED)
                 .downloadUrl("https://example.com/download")
                 .build());
-        ReflectionTestUtils.setField(service, "exportStatuses", statusMap);
 
         // Act - new export should be allowed
         ExportStatusResponse response = service.startZipExport(userId);
@@ -428,13 +428,13 @@ class DataExportServicePropertyTest {
         DataExportService service = createService(
                 userRepository, recipeRepository, s3Client, s3Presigner, auditService, objectMapper);
 
-        // Pre-populate with FAILED status
-        ConcurrentHashMap<String, ExportStatusResponse> statusMap = new ConcurrentHashMap<>();
-        statusMap.put(userId, ExportStatusResponse.builder()
+        // Pre-populate with FAILED status on the async worker's status map.
+        DataExportAsyncWorker asyncWorker =
+                (DataExportAsyncWorker) ReflectionTestUtils.getField(service, "asyncWorker");
+        asyncWorker.getExportStatuses().put(userId, ExportStatusResponse.builder()
                 .status(ExportStatusResponse.ExportStatus.FAILED)
                 .error("Previous export failed")
                 .build());
-        ReflectionTestUtils.setField(service, "exportStatuses", statusMap);
 
         // Act - new export should be allowed
         ExportStatusResponse response = service.startZipExport(userId);

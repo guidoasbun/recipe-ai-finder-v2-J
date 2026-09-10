@@ -22,6 +22,7 @@ public class RecipeService {
     private final RecipeRepository recipeRepository;
     private final AsyncImageService asyncImageService;
     private final S3Service s3Service;
+    private final StatsService statsService;
 
     public RecipeDto saveRecipe(SaveRecipeRequest request, String userId) {
         String recipeId = UUID.randomUUID().toString();
@@ -40,6 +41,8 @@ public class RecipeService {
                 .build();
 
         recipeRepository.save(recipe);
+        // Fold this recipe's text-generation latency into the running stats aggregate (O(1)).
+        statsService.recordTextGeneration(request.getModel(), request.getTextGenerationMs());
         asyncImageService.generateAndUpdateRecipe(recipeId, request.getTitle(), request.getImageModel());
         return toDto(recipe);
     }
