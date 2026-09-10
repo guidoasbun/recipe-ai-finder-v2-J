@@ -6,16 +6,21 @@ The **Saved Recipes** page (`/recipes`) currently loads every recipe a user has 
 one request and renders them all at once, sorted newest-first in the browser. As a user's
 saved collection grows, this becomes slow to load and hard to navigate.
 
-This feature adds two things to the Saved Recipes page:
+This feature adds three things to the Saved Recipes page:
 
 1. **Pagination** — show a bounded page of recipes (~6 at a time), with page navigation
    controls (Previous/Next plus numbered pages) at both the top and bottom of the list,
    and a visible total page count where each page number is clickable.
 2. **Search** — a "Search your saved recipes" input that filters the user's own saved
    recipes by keyword (title / description / ingredients).
+3. **Dietary tag display** (added scope, Requirement 7) — recipes now carry dietary tags,
+   derived from their ingredients, shown as chips on generated cards, saved cards, and the
+   detail view.
 
-This is scoped to a user's **own saved recipes** only. It does not touch the shared
-catalog ("Look for Existing Recipes") feature or the AI generation flow.
+The pagination and search are scoped to a user's **own saved recipes** only. They do not
+touch the shared catalog ("Look for Existing Recipes") feature. The dietary-tag work
+(Requirement 7) additively extends the generation and save flows to attach and display
+tags, without changing their existing behavior.
 
 ### Relationship to the existing catalog search
 
@@ -188,8 +193,44 @@ existing features, so that it's safe to ship.
 
 1. The default configuration SHALL add no new always-on infrastructure and SHALL run on
    the compute already used by the backend.
-2. The feature SHALL NOT modify the AI generation flow, the catalog search feature, the
-   OpenSearch catalog index, or the dietary-restriction endpoints.
-3. The feature SHALL NOT change the `Recipe` DynamoDB table schema or the `userId-index`
-   GSI (the in-app path sorts/filters/paginates the queried items in the service layer).
-4. The Saved Recipes detail view, save, and delete behaviors SHALL remain unchanged.
+2. The feature SHALL NOT modify the catalog search feature, the OpenSearch catalog index,
+   or the dietary-restriction endpoints. (The AI generation and save flows are extended by
+   Requirement 7 to attach dietary tags; that change is additive and does not alter existing
+   generation/save behavior for callers that ignore the new field.)
+3. The feature SHALL NOT change the `userId-index` GSI or introduce a DynamoDB schema
+   migration. New attributes MAY be added to `Recipe` items (DynamoDB is schemaless);
+   existing items without those attributes SHALL continue to load unchanged.
+4. The Saved Recipes delete behavior SHALL remain unchanged, and the detail/save flows SHALL
+   remain backward-compatible (see Requirement 7).
+
+---
+
+## Requirement 7 — Dietary tag display on recipes (added scope)
+
+**User story:** As a user, I want to see which dietary restrictions a recipe satisfies on the
+generated cards, the saved cards, and the recipe detail view, so that I can tell at a glance
+whether a recipe fits my diet.
+
+> **Scope note.** This requirement was added after the initial pagination/search scope. It is
+> intentionally additive: it introduces a new `dietaryTags` attribute end to end and renders it,
+> without changing existing generation/save/read behavior for the fields already in use. It only
+> applies to recipes created after this change; existing saved recipes have no tags and simply
+> render no chips.
+
+### Acceptance criteria
+
+1. WHEN the AI generates recipes THEN the system SHALL derive `dietaryTags` for each generated
+   recipe from its ingredients, using the same `DietaryTagger` rule set the catalog uses, and
+   include them in the generate response.
+2. WHEN a user saves a recipe THEN the system SHALL persist its `dietaryTags`, using the
+   client-supplied tags when present and otherwise deriving them from the ingredients, so a
+   saved recipe always carries tags.
+3. WHEN a recipe (generated card, saved card, or detail view) is displayed AND it has
+   `dietaryTags` THEN the system SHALL render them as labeled chips using the existing
+   `DietaryRestriction` vocabulary (`lib/dietary.ts`), and SHALL render nothing when the list
+   is empty or absent.
+4. The `dietaryTags` field SHALL be optional in the API contract: requests omitting it and
+   existing recipes lacking it SHALL be handled without error (backward-compatible).
+5. Tagging SHALL reuse the existing `DietaryTagger`; it SHALL NOT introduce a parallel
+   restriction vocabulary, and (consistent with the tagger) SHALL NOT infer HALAL/KOSHER from
+   ingredient text.

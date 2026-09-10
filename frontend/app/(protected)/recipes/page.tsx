@@ -47,6 +47,20 @@ export default function RecipesPage() {
       const data: SavedRecipeResults = await res.json();
       // Ignore stale responses that resolved after a newer request started.
       if (seq !== requestSeq.current) return;
+
+      // If the collection shrank (e.g. deletions) the requested page can now be out of range:
+      // the server returns the true totalMatches but empty items. Clamp to the last valid page
+      // and let the resulting state change refetch, so we never render an empty grid with an
+      // impossible "Page 100 of 2" label (Requirement 1.5).
+      const lastPage = Math.max(
+        0,
+        Math.ceil(data.totalMatches / data.pageSize) - 1,
+      );
+      if (data.totalMatches > 0 && data.page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
+
       setResults(data);
     } catch (err) {
       if ((err as Error)?.name === "AbortError") return; // superseded, not a failure

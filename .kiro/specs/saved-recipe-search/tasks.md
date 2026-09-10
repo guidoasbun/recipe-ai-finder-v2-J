@@ -87,9 +87,9 @@ consumes it.
     and both empty states. Confirm AI generation, catalog search, save, and delete are
     unaffected.
   - _Requirements: 1.1, 1.3, 2.1, 2.7, 3.2, 6.2, 6.4_
-```
 
-Notes:
+## Notes
+
 - No DynamoDB schema/GSI change and no new infrastructure (Requirement 6). All filtering,
   sorting, and pagination happen in the service layer over the user's GSI-queried items.
 - OpenSearch is intentionally not used for saved recipes; the `SavedRecipeSearchService`

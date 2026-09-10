@@ -42,22 +42,31 @@ public class InAppSavedRecipeSearchService implements SavedRecipeSearchService {
                 .stream()
                 .filter(recipe -> matchesText(recipe, query.text()))
                 // Newest-first, preserving the page's prior client-side sort. Nulls last so a
-                // recipe missing createdAt never jumps ahead of dated ones.
+                // recipe missing createdAt never jumps ahead of dated ones. recipeId is a
+                // deterministic tie-breaker: the userId-index GSI has no sort key, so without it
+                // recipes sharing a createdAt could come back in different order between page
+                // requests and shift across page boundaries (skipped/duplicated items).
                 .sorted(Comparator.comparing(Recipe::getCreatedAt,
-                        Comparator.nullsLast(Comparator.reverseOrder())))
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(Recipe::getRecipeId,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.toList());
 
         long totalMatches = matches.size();
 
-        int from = page * pageSize;
+        // Compute the offset as a long: page is attacker-controlled up to Integer.MAX_VALUE, so
+        // page * pageSize can overflow int (negative) and make subList throw instead of returning
+        // the required empty out-of-range page. (Same guard as InAppCatalogSearchService.)
+        long from = (long) page * pageSize;
         if (from >= matches.size()) {
             // Page is beyond the available range: empty items, but still report the true total
             // and echo the requested page/size so the UI can correct itself.
             return new SavedRecipeSearchResults(List.of(), page, pageSize, totalMatches);
         }
-        int to = Math.min(from + pageSize, matches.size());
+        int fromIndex = (int) from;
+        int toIndex = (int) Math.min(from + pageSize, matches.size());
 
-        List<RecipeDto> items = matches.subList(from, to).stream()
+        List<RecipeDto> items = matches.subList(fromIndex, toIndex).stream()
                 .map(recipeService::toDtoFor)
                 .collect(Collectors.toList());
 

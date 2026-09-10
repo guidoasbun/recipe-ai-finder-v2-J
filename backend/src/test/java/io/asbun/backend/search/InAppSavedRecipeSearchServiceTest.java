@@ -181,6 +181,35 @@ class InAppSavedRecipeSearchServiceTest {
     }
 
     @Test
+    void tiedCreatedAt_ordersDeterministicallyByRecipeId() {
+        // Three recipes share a createdAt; without a tie-breaker their order is unspecified and
+        // could shift between page requests. recipeId ascending makes it stable.
+        java.time.Instant t = Instant.parse("2026-01-01T00:00:00Z");
+        when(repository.findByUserId(USER_ID)).thenReturn(List.of(
+                recipe("c", "C", null, List.of(), t),
+                recipe("a", "A", null, List.of(), t),
+                recipe("b", "B", null, List.of(), t)));
+
+        SavedRecipeSearchResults results =
+                service.search(new SavedRecipeSearchQuery(USER_ID, null, 0, 6));
+
+        assertThat(results.items()).extracting(RecipeDto::getRecipeId)
+                .containsExactly("a", "b", "c");
+    }
+
+    @Test
+    void hugePageNumber_returnsEmptyPageWithoutOverflow() {
+        // Regression: (long) page * pageSize must not overflow int and make subList throw.
+        when(repository.findByUserId(USER_ID)).thenReturn(manyRecipes(3));
+
+        SavedRecipeSearchResults results =
+                service.search(new SavedRecipeSearchQuery(USER_ID, null, Integer.MAX_VALUE, 20));
+
+        assertThat(results.items()).isEmpty();
+        assertThat(results.totalMatches()).isEqualTo(3);
+    }
+
+    @Test
     void noRecipes_returnsEmpty() {
         when(repository.findByUserId(USER_ID)).thenReturn(List.of());
 

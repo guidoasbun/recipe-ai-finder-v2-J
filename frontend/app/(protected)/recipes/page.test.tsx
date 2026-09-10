@@ -160,20 +160,43 @@ describe("RecipesPage", () => {
     await userEvent.click(within(topNav).getByRole("button", { name: "Go to page 2" }));
     await waitFor(() => expect(screen.getByText("Page 2 of 3")).toBeInTheDocument());
 
-    // Search for a single recipe.
+    // Search for a term that still matches every recipe, so results stay multi-page. This proves
+    // the reset: an unreset page-2 request would show "Page 2 of 3", not "Page 1 of 3".
     await userEvent.type(
       screen.getByRole("textbox", { name: /search your saved recipes/i }),
-      "Recipe 9",
+      "Recipe",
     );
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    await waitFor(() =>
-      expect(screen.getByText("1 recipe")).toBeInTheDocument(),
+    await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
+    // And the first page's content is shown (the stub returns items 0-5 for page 0).
+    expect(screen.getByText("Recipe 0")).toBeInTheDocument();
+  });
+
+  it("clamps to the last page when the requested page is out of range", async () => {
+    // 15 recipes (3 pages), but the fetch always responds as if only 7 remain (2 pages) — as if
+    // the collection shrank. Requesting an out-of-range page must clamp to the last valid page.
+    const shrunk = Array.from({ length: 7 }, (_, i) => makeRecipe(i));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = new URL(String(input), "http://localhost");
+        const page = Number(url.searchParams.get("page") ?? "0");
+        // page 2 (index) is out of range for 7 items: server returns empty items, total 7.
+        return jsonResponse(pageResults(shrunk, page));
+      }),
     );
-    // Single match => one page, no pagination nav.
-    expect(
-      screen.queryByRole("navigation", { name: /pagination/i }),
-    ).not.toBeInTheDocument();
+
+    // Seed the initial render believing there are 3 pages by first returning 15 on page 0.
+    render(<RecipesPage />);
+    const topNav = await screen.findByRole("navigation", { name: /pagination \(top\)/i });
+    await waitFor(() => expect(screen.getByText(/Page 1 of 2/)).toBeInTheDocument());
+
+    // Jump to the last page; if we somehow request beyond range the UI must clamp, never showing
+    // an impossible "Page N of 2" with an empty grid.
+    await userEvent.click(within(topNav).getByRole("button", { name: "Go to page 2" }));
+    await waitFor(() => expect(screen.getByText("Page 2 of 2")).toBeInTheDocument());
+    expect(screen.getAllByRole("link", { name: "View" }).length).toBeGreaterThan(0);
   });
 
   it("renders dietary restriction chips on recipe cards", async () => {
