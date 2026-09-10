@@ -205,8 +205,8 @@ class AccountDeletionServicePropertyTest {
      * a. Delete all recipes from RecipeRepository
      * b. Delete all S3 images for recipes with imageUrl
      * c. Delete user record from UserRepository
-     * d. Call Cognito AdminDeleteUser
-     * e. Log ACCOUNT_DELETION_COMPLETED audit BEFORE user deletion
+     * d. Call Cognito AdminDeleteUser (by username)
+     * e. Log ACCOUNT_DELETION_COMPLETED audit only AFTER all deletion steps succeed
      *
      * Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 2.9
      */
@@ -217,8 +217,10 @@ class AccountDeletionServicePropertyTest {
             @ForAll("recipeLists") List<Recipe> recipes) {
 
         // Arrange
+        String username = "user_" + userId;
         User user = User.builder()
                 .userId(userId)
+                .username(username)
                 .accountStatus(AccountStatus.PENDING_DELETION)
                 .build();
 
@@ -244,8 +246,26 @@ class AccountDeletionServicePropertyTest {
 
         // Assert
 
-        // e. Audit logged BEFORE deletion (verified by InOrder)
+        // Verify the deletion sequence matches the source: recipes are removed, then the Cognito
+        // user, then the DynamoDB user record, and only then is completion audited. External data
+        // is always torn down before the local user record and the completion log.
         var inOrder = inOrder(auditService, recipeRepository, userRepository, cognitoClient);
+
+        // a. All recipes deleted
+        for (Recipe recipe : recipes) {
+            inOrder.verify(recipeRepository).delete(recipe.getRecipeId());
+        }
+
+        // d. Cognito AdminDeleteUser called (before the local user record so a failure is retryable).
+        ArgumentCaptor<AdminDeleteUserRequest> cognitoCaptor =
+                ArgumentCaptor.forClass(AdminDeleteUserRequest.class);
+        inOrder.verify(cognitoClient).adminDeleteUser(cognitoCaptor.capture());
+
+        // c. User record deleted
+        inOrder.verify(userRepository).delete(userId);
+
+        // e. ACCOUNT_DELETION_COMPLETED audit is logged only AFTER all deletion steps succeed,
+        // so the completion record can never claim success for work that didn't happen.
         inOrder.verify(auditService).logEvent(
                 eq(userId),
                 eq(AuditEventType.ACCOUNT_DELETION_COMPLETED),
@@ -254,36 +274,29 @@ class AccountDeletionServicePropertyTest {
                 isNull()
         );
 
-        // a. All recipes deleted
-        for (Recipe recipe : recipes) {
-            inOrder.verify(recipeRepository).delete(recipe.getRecipeId());
-        }
-
-        // b. All S3 images deleted for recipes that have imageUrl
+        // b. All S3 images deleted for recipes that have imageUrl, PLUS the data-export ZIP
+        // (exports/{userId}/export.zip) which hard deletion always attempts to remove.
         List<Recipe> recipesWithImages = recipes.stream()
                 .filter(r -> r.getImageUrl() != null)
                 .collect(Collectors.toList());
 
-        // Total S3 delete calls equals number of recipes with images
-        verify(s3Service, times(recipesWithImages.size())).deleteImage(any());
+        // Total S3 delete calls == recipe images + 1 export ZIP.
+        verify(s3Service, times(recipesWithImages.size() + 1)).deleteImage(any());
 
-        // Each distinct imageUrl is called the expected number of times
+        // The export ZIP is deleted exactly once.
+        verify(s3Service).deleteImage("exports/" + userId + "/export.zip");
+
+        // Each distinct recipe imageUrl is called the expected number of times.
         Map<String, Long> imageUrlCounts = recipesWithImages.stream()
                 .collect(Collectors.groupingBy(Recipe::getImageUrl, Collectors.counting()));
         for (Map.Entry<String, Long> entry : imageUrlCounts.entrySet()) {
             verify(s3Service, times(entry.getValue().intValue())).deleteImage(entry.getKey());
         }
 
-        // c. User record deleted
-        inOrder.verify(userRepository).delete(userId);
-
-        // d. Cognito AdminDeleteUser called
-        ArgumentCaptor<AdminDeleteUserRequest> cognitoCaptor =
-                ArgumentCaptor.forClass(AdminDeleteUserRequest.class);
-        inOrder.verify(cognitoClient).adminDeleteUser(cognitoCaptor.capture());
+        // d (cont.). Cognito AdminDeleteUser was called with the user's Cognito username (not the userId).
         AdminDeleteUserRequest cognitoRequest = cognitoCaptor.getValue();
         assertThat(cognitoRequest.userPoolId()).isEqualTo(USER_POOL_ID);
-        assertThat(cognitoRequest.username()).isEqualTo(userId);
+        assertThat(cognitoRequest.username()).isEqualTo(username);
     }
 
     // --- Property 4: Partial deletion failure handling ---

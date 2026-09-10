@@ -19,6 +19,7 @@ public class AsyncImageService {
     private final RecipeRepository recipeRepository;
     private final ImageSseService imageSseService;
     private final MetricsService metricsService;
+    private final StatsService statsService;
 
     @Async("imageGenerationExecutor")
     public void generateAndUpdateRecipe(String recipeId, String title, ImageModel imageModel) {
@@ -47,6 +48,8 @@ public class AsyncImageService {
                 recipeRepository.save(recipe);
                 log.info("Image updated for recipe {}", recipeId);
                 imageSseService.notifyImageReady(recipeId);
+                // Fold this image's generation latency into the running stats aggregate (O(1)).
+                statsService.recordImageGeneration(imageModel, result.generationMs());
                 if (result.generationMs() != null) {
                     metricsService.latencyMs("ImageLatencyMs", result.generationMs(), "ImageModel", modelName);
                 }

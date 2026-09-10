@@ -158,7 +158,7 @@ class AuditServicePropertyTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Failed to persist audit event after 3 attempts");
 
-        // Verify save was attempted
-        verify(mockRepository, times(1)).save(any(AuditEvent.class));
+        // Verify save was attempted MAX_RETRIES times before giving up (retry-with-backoff).
+        verify(mockRepository, times(3)).save(any(AuditEvent.class));
     }
 }
