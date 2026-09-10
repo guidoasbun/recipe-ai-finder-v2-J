@@ -37,6 +37,13 @@ public class StatsAggregate {
     /** ISO-8601 timestamp of the last mutation, surfaced to clients as {@code computedAt}. */
     private String updatedAt;
 
+    /**
+     * True once the historical full-scan backfill has established this aggregate as authoritative.
+     * A partial item created by an early atomic increment (before the first read) will NOT have
+     * this set, which is how we detect that pre-existing recipes still need to be backfilled.
+     */
+    private boolean backfilled;
+
     /** A running sum of latencies plus the number of samples that produced it. */
     @Data
     @NoArgsConstructor

@@ -31,13 +31,29 @@ public class StatsService {
     /** Number of trailing days retained in the daily image-latency chart. */
     private static final int DAILY_WINDOW_DAYS = 30;
 
+    /**
+     * Extra days just past the window edge that each image update also prunes, so a gap in image
+     * generations can't leave stale daily attributes stranded on the item.
+     */
+    private static final int PRUNE_CUSHION_DAYS = 7;
+
     private final StatsRepository statsRepository;
     private final StatsSseService statsSseService;
 
     public Optional<ModelStatsDto> getCachedStatsIfFresh() {
-        // The aggregate item is always current (every write folds into it atomically), so a fresh
-        // load is always "fresh". Returns empty only when the item does not exist yet.
-        return statsRepository.loadAggregate().map(this::toDto);
+        // Serve the aggregate only once it has been backfilled from history. A partial item created
+        // by an early atomic increment (before the first read) is NOT authoritative — treating it
+        // as fresh would omit every pre-existing recipe. loadAuthoritativeAggregate() enforces that.
+        return loadAuthoritativeAggregate().map(this::toDto);
+    }
+
+    /**
+     * Loads the aggregate only if it has been backfilled from history. An item that exists but is
+     * not yet {@code backfilled} (e.g. created by an atomic increment before any read/seed) is
+     * treated as absent so the caller runs the one-time full-scan seed.
+     */
+    private Optional<StatsAggregate> loadAuthoritativeAggregate() {
+        return statsRepository.loadAggregate().filter(StatsAggregate::isBackfilled);
     }
 
     @Async
@@ -53,9 +69,10 @@ public class StatsService {
     }
 
     public ModelStatsDto getStats() {
-        return getCachedStatsIfFresh()
+        return loadAuthoritativeAggregate()
+                .map(this::toDto)
                 .orElseGet(() -> {
-                    log.info("No stats aggregate yet — rebuilding from a full scan");
+                    log.info("No backfilled stats aggregate yet — rebuilding from a full scan");
                     return computeAndStore();
                 });
     }
@@ -78,24 +95,43 @@ public class StatsService {
     }
 
     /**
-     * Record an image-generation latency for {@code imageModel}. Bumps both the per-model bucket
-     * and today's daily bucket in one atomic UpdateItem. O(1). Called when an image finishes
-     * generating.
+     * Record an image-generation latency for {@code imageModel}. Bumps the per-model bucket and the
+     * daily bucket for the recipe's creation date in one atomic UpdateItem, and prunes the day that
+     * has just fallen out of the rolling window so the item stays bounded. O(1). Called when an
+     * image finishes generating.
+     *
+     * <p>The daily bucket is keyed by {@code createdAt} (recipe creation date), matching the rebuild
+     * path — so a rebuild never reshuffles a sample into a different day than the incremental path
+     * assigned it. When {@code createdAt} is unavailable we fall back to the current UTC date.
      */
-    public void recordImageGeneration(ImageModel imageModel, Long imageGenerationMs) {
+    public void recordImageGeneration(ImageModel imageModel, Long imageGenerationMs, Instant createdAt) {
         if (imageModel == null || imageGenerationMs == null) {
             return;
         }
-        String today = LocalDate.now(ZoneOffset.UTC).toString();
-        statsRepository.incrementImageModel(imageModel.name(), today, imageGenerationMs, Instant.now().toString());
+        LocalDate day = (createdAt != null ? createdAt : Instant.now()).atZone(ZoneOffset.UTC).toLocalDate();
+        String isoDate = day.toString();
+
+        // Prune days that have fallen out of the rolling window. We remove a small trailing range
+        // (not just the single boundary day) so that a multi-day gap in image generations can't
+        // leave stale attributes stranded — each generation cleans up a week's cushion just past
+        // the window edge. Removing a non-existent attribute is a no-op in DynamoDB.
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        List<String> expiredIsoDates = IntStream.rangeClosed(DAILY_WINDOW_DAYS, DAILY_WINDOW_DAYS + PRUNE_CUSHION_DAYS)
+                .mapToObj(offset -> today.minusDays(offset).toString())
+                .collect(Collectors.toList());
+
+        statsRepository.incrementImageModel(
+                imageModel.name(), isoDate, imageGenerationMs, Instant.now().toString(),
+                expiredIsoDates);
         broadcastLatest();
     }
 
     private void broadcastLatest() {
-        // Best-effort push of the updated view to any SSE subscribers. A failed read/broadcast
-        // must never fail the write path that triggered it.
+        // Best-effort push of the updated view to any SSE subscribers. Only broadcast an
+        // authoritative (backfilled) aggregate so subscribers never see a partial snapshot. A
+        // failed read/broadcast must never fail the write path that triggered it.
         try {
-            statsRepository.loadAggregate()
+            loadAuthoritativeAggregate()
                     .map(this::toDto)
                     .ifPresent(statsSseService::broadcastStats);
         } catch (Exception e) {
@@ -109,8 +145,14 @@ public class StatsService {
 
     public ModelStatsDto computeAndStore() {
         StatsAggregate agg = rebuildAggregateFromScan();
-        statsRepository.overwriteAggregate(agg);
-        return toDto(agg);
+        agg.setBackfilled(true);
+        boolean won = statsRepository.seedAggregateIfAbsent(agg);
+        if (won) {
+            return toDto(agg);
+        }
+        // Another instance backfilled first (or increments have since advanced the counters). Return
+        // the authoritative stored aggregate rather than our now-possibly-stale scan snapshot.
+        return loadAuthoritativeAggregate().map(this::toDto).orElseGet(() -> toDto(agg));
     }
 
     private StatsAggregate rebuildAggregateFromScan() {

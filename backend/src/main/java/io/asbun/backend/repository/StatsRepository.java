@@ -15,6 +15,7 @@ import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,7 @@ public class StatsRepository {
     private static final String DAY_SUM = "day_sum_";
     private static final String DAY_CNT = "day_cnt_";
     private static final String UPDATED_AT = "updatedAt";
+    private static final String BACKFILLED = "backfilled";
 
     private final DynamoDbTable<Recipe> table;
     private final DynamoDbClient dynamoDbClient;
@@ -68,29 +70,41 @@ public class StatsRepository {
         applyIncrements(
                 Map.of(TEXT_SUM + modelName, ms),
                 Map.of(TEXT_CNT + modelName, 1L),
+                List.of(),
                 updatedAt);
     }
 
     /**
      * Atomically folds one image-generation latency sample into both the per-model bucket and the
-     * given day's bucket, in a single UpdateItem.
+     * bucket for {@code isoDate}, in a single UpdateItem. Any {@code expiredIsoDates} passed in are
+     * removed in the same request, keeping the item bounded without a read.
      */
-    public void incrementImageModel(String modelName, String isoDate, long ms, String updatedAt) {
+    public void incrementImageModel(String modelName, String isoDate, long ms, String updatedAt,
+                                    List<String> expiredIsoDates) {
         String dayKey = dateToDayKey(isoDate);
+        List<String> removes = new ArrayList<>();
+        for (String expired : expiredIsoDates) {
+            String ek = dateToDayKey(expired);
+            removes.add(DAY_SUM + ek);
+            removes.add(DAY_CNT + ek);
+        }
         applyIncrements(
                 Map.of(IMG_SUM + modelName, ms, DAY_SUM + dayKey, ms),
                 Map.of(IMG_CNT + modelName, 1L, DAY_CNT + dayKey, 1L),
+                removes,
                 updatedAt);
     }
 
     /**
-     * Atomically folds a set of latency deltas into the aggregate item in a single UpdateItem.
-     * Every attribute in {@code sumDeltas}/{@code countDeltas} is applied with an ADD expression,
-     * which DynamoDB evaluates server-side — so concurrent writers compose without a read step and
-     * without any locking. {@code updatedAt} is stamped with SET in the same request.
+     * Atomically folds a set of latency deltas into the aggregate item in a single UpdateItem, and
+     * optionally REMOVEs a set of (now out-of-window) attributes. Every attribute in
+     * {@code sumDeltas}/{@code countDeltas} is applied with an ADD expression, which DynamoDB
+     * evaluates server-side — so concurrent writers compose without a read step and without any
+     * locking. {@code updatedAt} is stamped with SET in the same request.
      */
     private void applyIncrements(Map<String, Long> sumDeltas,
                                  Map<String, Long> countDeltas,
+                                 List<String> removeAttrs,
                                  String updatedAt) {
         if (sumDeltas.isEmpty() && countDeltas.isEmpty()) {
             return;
@@ -123,7 +137,18 @@ public class StatsRepository {
         names.put("#u", UPDATED_AT);
         values.put(":u", AttributeValue.fromS(updatedAt));
 
-        String updateExpression = "ADD " + addClause + " SET #u = :u";
+        StringBuilder removeClause = new StringBuilder();
+        int k = 0;
+        for (String attr : removeAttrs) {
+            k++;
+            String nph = "#r" + k;
+            names.put(nph, attr);
+            if (removeClause.length() > 0) removeClause.append(", ");
+            removeClause.append(nph);
+        }
+
+        String updateExpression = "ADD " + addClause + " SET #u = :u"
+                + (removeClause.length() > 0 ? " REMOVE " + removeClause : "");
 
         try {
             dynamoDbClient.updateItem(r -> r
@@ -144,7 +169,10 @@ public class StatsRepository {
      */
     public Optional<StatsAggregate> loadAggregate() {
         Map<String, AttributeValue> key = Map.of("recipeId", AttributeValue.fromS(AGGREGATE_KEY));
-        var response = dynamoDbClient.getItem(r -> r.tableName(tableName).key(key));
+        // Strongly consistent: the aggregate item is the authoritative live counter, and an
+        // eventually-consistent read right after an ADD could return stale data (or no item),
+        // which would publish stale stats and could spuriously re-trigger the full-scan seed.
+        var response = dynamoDbClient.getItem(r -> r.tableName(tableName).key(key).consistentRead(true));
         if (!response.hasItem() || response.item().isEmpty()) {
             return Optional.empty();
         }
@@ -156,6 +184,8 @@ public class StatsRepository {
             AttributeValue v = e.getValue();
             if (UPDATED_AT.equals(attr) && v.s() != null) {
                 agg.setUpdatedAt(v.s());
+            } else if (BACKFILLED.equals(attr) && v.bool() != null) {
+                agg.setBackfilled(v.bool());
             } else if (attr.startsWith(TEXT_SUM)) {
                 bucket(agg.getTextModels(), attr.substring(TEXT_SUM.length())).setSumMs(asDouble(v));
             } else if (attr.startsWith(TEXT_CNT)) {
@@ -174,11 +204,20 @@ public class StatsRepository {
     }
 
     /**
-     * Replaces the aggregate item wholesale from a rebuilt {@link StatsAggregate}. Used only by the
-     * full-scan rebuild path (first run / recovery), not on the hot write path. A PutItem here is
-     * safe because the rebuild computes the authoritative totals from source recipes.
+     * Publishes a rebuilt aggregate as the authoritative snapshot, exactly once. Uses a conditional
+     * PutItem guarded by {@code attribute_not_exists(backfilled)}: only the first caller (across all
+     * instances) that has not yet been backfilled wins; a losing/duplicate rebuild is rejected and
+     * swallowed. The written item carries {@code backfilled=true} so subsequent reads treat it as
+     * authoritative and never re-run the scan.
+     *
+     * <p>This intentionally replaces the item rather than ADDing onto live counters: the scan is the
+     * source of truth for the historical snapshot, and the condition guarantees we can't run it twice
+     * and double-count. Increments that land in the brief window between the scan and this write may
+     * be lost (a sample or two), which is far preferable to permanent double-counting or omission.
+     *
+     * @return true if this call performed the backfill, false if another had already done it.
      */
-    public void overwriteAggregate(StatsAggregate aggregate) {
+    public boolean seedAggregateIfAbsent(StatsAggregate aggregate) {
         Map<String, AttributeValue> item = new HashMap<>();
         item.put("recipeId", AttributeValue.fromS(AGGREGATE_KEY));
         aggregate.getTextModels().forEach((model, b) -> {
@@ -194,10 +233,21 @@ public class StatsRepository {
             item.put(DAY_SUM + dayKey, AttributeValue.fromN(Long.toString(Math.round(b.getSumMs()))));
             item.put(DAY_CNT + dayKey, AttributeValue.fromN(Long.toString(b.getCount())));
         });
-        if (aggregate.getUpdatedAt() != null) {
-            item.put(UPDATED_AT, AttributeValue.fromS(aggregate.getUpdatedAt()));
+        item.put(UPDATED_AT, AttributeValue.fromS(
+                aggregate.getUpdatedAt() != null ? aggregate.getUpdatedAt() : java.time.Instant.now().toString()));
+        item.put(BACKFILLED, AttributeValue.fromBool(true));
+
+        try {
+            dynamoDbClient.putItem(r -> r
+                    .tableName(tableName)
+                    .item(item)
+                    .conditionExpression("attribute_not_exists(#b)")
+                    .expressionAttributeNames(Map.of("#b", BACKFILLED)));
+            return true;
+        } catch (software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException e) {
+            log.info("Stats aggregate already backfilled by another writer — skipping seed");
+            return false;
         }
-        dynamoDbClient.putItem(r -> r.tableName(tableName).item(item));
     }
 
     // --- attribute-name key encoding -------------------------------------------------------
