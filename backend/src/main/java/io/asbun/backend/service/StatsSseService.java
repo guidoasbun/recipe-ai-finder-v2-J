@@ -50,8 +50,11 @@ public class StatsSseService {
         try {
             emitter.send(SseEmitter.event().name("stats-ready").data(objectMapper.writeValueAsString(stats)));
             emitter.complete();
-        } catch (IOException e) {
-            log.debug("SSE client disconnected before stats were sent");
+        } catch (IOException | IllegalStateException e) {
+            // IOException: client disconnected. IllegalStateException: emitter already completed
+            // (e.g. timed out) before we sent. Neither is actionable — the client just won't
+            // receive this payload.
+            log.debug("SSE client disconnected or emitter already completed before stats were sent");
         }
     }
 
@@ -68,7 +71,10 @@ public class StatsSseService {
             try {
                 emitter.send(SseEmitter.event().name("stats-ready").data(json));
                 emitter.complete();
-            } catch (IOException e) {
+            } catch (IOException | IllegalStateException e) {
+                // IOException: client disconnected. IllegalStateException: the emitter was already
+                // completed/timed out concurrently ("ResponseBodyEmitter has already completed").
+                // Either way the emitter is dead — drop it rather than let it escape the loop.
                 emitters.remove(id);
                 metricsService.count("SseBroadcastFailure", 1.0, "Stream", STREAM);
             }
@@ -93,7 +99,11 @@ public class StatsSseService {
         emitters.forEach((id, emitter) -> {
             try {
                 emitter.send(SseEmitter.event().comment("heartbeat"));
-            } catch (IOException e) {
+            } catch (IOException | IllegalStateException e) {
+                // IOException: client disconnected. IllegalStateException: the emitter completed or
+                // timed out between being placed in the map and this heartbeat firing ("...has
+                // already completed"). Drop the dead emitter instead of letting the exception
+                // escape and fail the whole scheduled heartbeat run.
                 emitters.remove(id);
             }
         });

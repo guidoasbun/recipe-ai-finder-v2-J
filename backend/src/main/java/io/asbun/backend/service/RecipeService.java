@@ -23,9 +23,17 @@ public class RecipeService {
     private final AsyncImageService asyncImageService;
     private final S3Service s3Service;
     private final StatsService statsService;
+    private final io.asbun.backend.ingest.DietaryTagger dietaryTagger;
 
     public RecipeDto saveRecipe(SaveRecipeRequest request, String userId) {
         String recipeId = UUID.randomUUID().toString();
+
+        // Persist the client-supplied dietary tags (produced at generation). If the request
+        // omits them, derive from the ingredients so a saved recipe always carries tags,
+        // consistent with how the catalog tags recipes.
+        List<String> dietaryTags = request.getDietaryTags() != null
+                ? request.getDietaryTags()
+                : dietaryTagger.tag(request.getIngredients());
 
         Recipe recipe = Recipe.builder()
                 .recipeId(recipeId)
@@ -34,6 +42,7 @@ public class RecipeService {
                 .description(request.getDescription())
                 .ingredients(request.getIngredients())
                 .steps(request.getSteps())
+                .dietaryTags(dietaryTags)
                 .model(request.getModel())
                 .imageModel(request.getImageModel())
                 .textGenerationMs(request.getTextGenerationMs())
@@ -52,6 +61,16 @@ public class RecipeService {
                 .stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Maps a {@link Recipe} to its {@link RecipeDto}, including S3 presigned-URL generation and
+     * lazy image regeneration. Exposed for {@code InAppSavedRecipeSearchService} so the search
+     * path reuses this logic and runs the (paid) image side effects only for the page of recipes
+     * actually returned, rather than every recipe the user owns.
+     */
+    public RecipeDto toDtoFor(Recipe recipe) {
+        return toDto(recipe);
     }
 
     public RecipeDto getRecipeById(String recipeId, String userId) {
@@ -141,6 +160,7 @@ public class RecipeService {
                 .description(recipe.getDescription())
                 .ingredients(recipe.getIngredients())
                 .steps(recipe.getSteps())
+                .dietaryTags(recipe.getDietaryTags())
                 .imageUrl(imageUrl)
                 .imageWidth(recipe.getImageWidth())
                 .imageHeight(recipe.getImageHeight())

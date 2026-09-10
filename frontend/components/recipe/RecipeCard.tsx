@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Recipe, GeneratedRecipe } from "@/types/recipe";
 import { MODELS, IMAGE_MODELS } from "@/lib/constants";
+import { dietaryLabel } from "@/lib/dietary";
 
 interface Props {
   recipe: Recipe | GeneratedRecipe;
@@ -29,6 +30,8 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
   const [imageFailed, setImageFailed] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(needsImage ? id : null);
   const effectiveId = savedId ?? id;
+
+  const dietaryTags = "dietaryTags" in recipe ? recipe.dietaryTags : undefined;
 
   const recipeModel = "model" in recipe ? recipe.model : undefined;
   const effectiveModel = model ?? recipeModel;
@@ -120,6 +123,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
           description: recipe.description,
           ingredients: recipe.ingredients,
           steps: recipe.steps,
+          dietaryTags,
           model,
           imageModel,
           textGenerationMs,
@@ -170,6 +174,18 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
       <div className="flex flex-1 flex-col p-4">
         <h3 className="mb-1 font-semibold text-gray-900">{recipe.title}</h3>
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.description}</p>
+        {dietaryTags && dietaryTags.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-1">
+            {dietaryTags.map((t) => (
+              <span
+                key={t}
+                className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-600"
+              >
+                {dietaryLabel(t)}
+              </span>
+            ))}
+          </div>
+        )}
         <p className="mb-4 text-sm text-gray-500 line-clamp-6">{recipe.ingredients}</p>
         {createdAt && (
           <p className="mb-2 text-xs text-gray-400">

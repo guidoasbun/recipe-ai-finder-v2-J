@@ -28,6 +28,7 @@ public class RecipeDto {
     private Long imageGenerationMs;
     private List<String> ingredients;
     private List<String> steps;
+    private List<String> dietaryTags;
     private BedrockModel model;
     private ImageModel imageModel;
     private Long textGenerationMs;

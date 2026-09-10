@@ -36,6 +36,11 @@ public class SaveRecipeRequest {
     @Size(min = 1, max = 50)
     private List<@NotBlank @Size(max = 1000) String> steps;
 
+    // DietaryRestriction enum names the recipe satisfies (as produced at generation). Optional:
+    // when absent, the service derives them from the ingredients so tags are always present.
+    @Size(max = 20)
+    private List<@Size(max = 50) String> dietaryTags;
+
     @NotNull
     private BedrockModel model;
 

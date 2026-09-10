@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Recipe } from "@/types/recipe";
 import DeleteRecipeButton from "@/components/recipe/DeleteRecipeButton";
 import { MODELS, IMAGE_MODELS } from "@/lib/constants";
+import { dietaryLabel } from "@/lib/dietary";
 
 export default function RecipeDetailPage() {
   const params = useParams<{ id: string }>();
@@ -89,6 +90,19 @@ export default function RecipeDetailPage() {
         />
       )}
       <h1 className="mb-2 text-3xl font-bold text-gray-900">{recipe.title}</h1>
+
+      {recipe.dietaryTags && recipe.dietaryTags.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1">
+          {recipe.dietaryTags.map((t) => (
+            <span
+              key={t}
+              className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-600"
+            >
+              {dietaryLabel(t)}
+            </span>
+          ))}
+        </div>
+      )}
 
       {(modelLabel || imageModelLabel) && (
         <div className="mb-3 flex flex-col gap-1">
