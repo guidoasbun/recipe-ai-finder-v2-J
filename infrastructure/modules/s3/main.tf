@@ -33,17 +33,23 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "recipe_images" {
   }
 }
 
+# Recipe images are referenced indefinitely by the Recipes DynamoDB table (the system of
+# record), so deleting the S3 object while the recipe still points at it produces broken images
+# on the /recipes page (S3 returns NoSuchKey / 404 for a still-valid presigned URL). Images are
+# now retained for the life of the recipe; deletion happens explicitly in RecipeService.deleteRecipe
+# when the owning recipe is removed. Incomplete multipart uploads are still cleaned up to avoid
+# accumulating orphaned upload parts.
 resource "aws_s3_bucket_lifecycle_configuration" "recipe_images" {
   bucket = aws_s3_bucket.recipe_images.id
 
   rule {
-    id     = "expire-old-images"
+    id     = "abort-incomplete-multipart-uploads"
     status = "Enabled"
 
     filter {}
 
-    expiration {
-      days = 90
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }

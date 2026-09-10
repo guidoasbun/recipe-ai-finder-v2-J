@@ -31,7 +31,7 @@ public class ImageController {
         if (file.getSize() > MAX_FILE_SIZE) {
             return ResponseEntity.badRequest().body("File size must not exceed 5MB");
         }
-        String key = s3Service.uploadImage(recipeId, file.getBytes());
+        String key = s3Service.uploadImage(recipeId, file.getBytes(), contentType);
         return ResponseEntity.ok(key);
     }
 }

@@ -117,8 +117,8 @@ public class StatsService {
         return switch (model) {
             case STABILITY_CORE -> "Stability AI Core";
             case GPT_IMAGE_1_5 -> "GPT Image 1.5";
-            case GOOGLE_IMAGEN_4 -> "Google Imagen 4";
-            case GOOGLE_IMAGEN_4_FAST -> "Imagen 4 Fast";
+            case GOOGLE_IMAGEN_4 -> "Nano Banana 2";
+            case GOOGLE_IMAGEN_4_FAST -> "Nano Banana 2 Lite";
         };
     }
 

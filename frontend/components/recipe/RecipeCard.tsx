@@ -26,6 +26,7 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
   const [deleting, setDeleting] = useState(false);
   const [loadingImage, setLoadingImage] = useState(needsImage);
   const [liveImageUrl, setLiveImageUrl] = useState<string | undefined>(initialImageUrl);
+  const [imageFailed, setImageFailed] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(needsImage ? id : null);
   const effectiveId = savedId ?? id;
 
@@ -81,7 +82,10 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
         const r = await fetch(`/api/backend/api/recipes/${savedId}`);
         if (r.ok) {
           const data: Recipe = await r.json();
-          if (data.imageUrl) setLiveImageUrl(data.imageUrl);
+          if (data.imageUrl) {
+            setImageFailed(false);
+            setLiveImageUrl(data.imageUrl);
+          }
           setLiveImageWidth(data.imageWidth);
           setLiveImageHeight(data.imageHeight);
           setLiveImageType(data.imageType);
@@ -132,11 +136,35 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
 
   return (
     <div className="flex flex-col rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-      {liveImageUrl ? (
-        <img src={liveImageUrl} alt={recipe.title} className="h-40 w-full object-cover" />
+      {liveImageUrl && !imageFailed ? (
+        <img
+          src={liveImageUrl}
+          alt={recipe.title}
+          className="h-40 w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
       ) : loadingImage ? (
         <div className="h-40 w-full bg-gray-100 animate-pulse flex items-center justify-center">
           <span className="text-xs text-gray-400">Generating image…</span>
+        </div>
+      ) : imageFailed ? (
+        <div className="h-40 w-full bg-gray-100 flex flex-col items-center justify-center gap-1 text-gray-400">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="h-8 w-8"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+            />
+          </svg>
+          <span className="text-xs">Image unavailable</span>
         </div>
       ) : null}
       <div className="flex flex-1 flex-col p-4">

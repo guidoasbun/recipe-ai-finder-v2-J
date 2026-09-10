@@ -477,8 +477,8 @@ After recipes are generated, the backend produces a food photography image for e
 | ------------------------ | ------------------------------ | --------------------------------- |
 | **Stability AI Core**    | `stable-image/generate/core`   | 1:1 aspect ratio                  |
 | **OpenAI**               | `gpt-image-1.5`                | 1024×1024; high quality           |
-| **Google Imagen 4**      | `imagen-4.0-generate-001`      | 1:1 aspect ratio; highest quality |
-| **Google Imagen 4 Fast** | `imagen-4.0-fast-generate-001` | 1:1 aspect ratio; lower latency   |
+| **Google Nano Banana 2**      | `gemini-3.1-flash-image`      | 1:1 aspect ratio; Gemini native image generation (Interactions API) |
+| **Google Nano Banana 2 Lite** | `gemini-3.1-flash-lite-image` | 1:1 aspect ratio; lowest latency / cost |
 
 Both providers receive the same prompt template:
 
