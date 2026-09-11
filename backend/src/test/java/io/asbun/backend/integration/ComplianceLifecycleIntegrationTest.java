@@ -57,6 +57,7 @@ class ComplianceLifecycleIntegrationTest {
     @Mock private UserRepository userRepository;
     @Mock private RecipeRepository recipeRepository;
     @Mock private ConsentRepository consentRepository;
+    @Mock private io.asbun.backend.repository.MealPlanRepository mealPlanRepository;
     @Mock private AuditRepository auditRepository;
 
     // AWS clients
@@ -89,8 +90,10 @@ class ComplianceLifecycleIntegrationTest {
         auditService = new AuditService(auditRepository, new com.fasterxml.jackson.databind.ObjectMapper());
         consentService = new ConsentService(consentRepository, auditService);
         accountDeletionService = new AccountDeletionService(
-                userRepository, recipeRepository, consentRepository, s3Service, auditService, cognitoClient);
+                userRepository, recipeRepository, consentRepository, mealPlanRepository,
+                s3Service, auditService, cognitoClient);
         ReflectionTestUtils.setField(accountDeletionService, "userPoolId", "us-east-1_TestPool");
+        lenient().when(mealPlanRepository.findByOwner(any())).thenReturn(java.util.Collections.emptyList());
 
         // DataExportService requires ObjectMapper, S3Client, S3Presigner — we test it separately
         // For the integration tests that need it, we set up inline
@@ -463,10 +466,10 @@ class ComplianceLifecycleIntegrationTest {
         software.amazon.awssdk.services.s3.presigner.S3Presigner mockS3Presigner = mock(software.amazon.awssdk.services.s3.presigner.S3Presigner.class);
 
         DataExportAsyncWorker asyncWorker = new DataExportAsyncWorker(
-                userRepository, recipeRepository, mockS3Client, mockS3Presigner, auditService, objectMapper);
+                userRepository, recipeRepository, mealPlanRepository, mockS3Client, mockS3Presigner, auditService, objectMapper);
         ReflectionTestUtils.setField(asyncWorker, "bucket", "recipe-images-test");
         DataExportService exportService = new DataExportService(
-                userRepository, recipeRepository, auditService, objectMapper, asyncWorker);
+                userRepository, recipeRepository, mealPlanRepository, auditService, objectMapper, asyncWorker);
         ReflectionTestUtils.setField(exportService, "bucket", "recipe-images-test");
 
         DataExportJson result = exportService.exportJson(USER_ID);

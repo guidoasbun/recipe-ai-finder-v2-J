@@ -2,11 +2,13 @@ package io.asbun.backend.service;
 
 import io.asbun.backend.exception.ResourceNotFoundException;
 import io.asbun.backend.model.Consent;
+import io.asbun.backend.model.MealPlan;
 import io.asbun.backend.model.Recipe;
 import io.asbun.backend.model.User;
 import io.asbun.backend.model.enums.AccountStatus;
 import io.asbun.backend.model.enums.AuditEventType;
 import io.asbun.backend.repository.ConsentRepository;
+import io.asbun.backend.repository.MealPlanRepository;
 import io.asbun.backend.repository.RecipeRepository;
 import io.asbun.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class AccountDeletionService {
     private final UserRepository userRepository;
     private final RecipeRepository recipeRepository;
     private final ConsentRepository consentRepository;
+    private final MealPlanRepository mealPlanRepository;
     private final S3Service s3Service;
     private final AuditService auditService;
     private final CognitoIdentityProviderClient cognitoClient;
@@ -126,6 +129,18 @@ public class AccountDeletionService {
                 log.error("Failed to delete consent records for {}: {}", userId, e.getMessage());
                 markDeletionFailed(user, "consent_deletion", userId, e);
                 throw new RuntimeException("Hard deletion failed at consent deletion step", e);
+            }
+
+            // Step 3b: Delete all meal plans (no S3 objects — plans reference recipes by id).
+            try {
+                List<MealPlan> mealPlans = mealPlanRepository.findByOwner(userId);
+                for (MealPlan plan : mealPlans) {
+                    mealPlanRepository.delete(plan.getMealPlanId());
+                }
+            } catch (Exception e) {
+                log.error("Failed to delete meal plans for {}: {}", userId, e.getMessage());
+                markDeletionFailed(user, "meal_plan_deletion", userId, e);
+                throw new RuntimeException("Hard deletion failed at meal plan deletion step", e);
             }
 
             // Step 4: Delete data export ZIP from S3

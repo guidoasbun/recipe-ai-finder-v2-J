@@ -31,6 +31,11 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
     }
 
+    @ExceptionHandler(AccountPendingDeletionException.class)
+    public ResponseEntity<Map<String, Object>> handleAccountPendingDeletion(AccountPendingDeletionException ex) {
+        return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         List<Map<String, String>> errors = ex.getBindingResult().getFieldErrors().stream()

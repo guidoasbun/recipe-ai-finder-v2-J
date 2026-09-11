@@ -27,6 +27,14 @@ output "catalog_full_table_name" {
   value       = var.enable_catalog_full ? aws_dynamodb_table.catalog_full[0].name : ""
 }
 
+output "meal_plans_table_name" {
+  value = aws_dynamodb_table.meal_plans.name
+}
+
+output "meal_plans_table_arn" {
+  value = aws_dynamodb_table.meal_plans.arn
+}
+
 output "consent_table_name" {
   value = aws_dynamodb_table.consent.name
 }

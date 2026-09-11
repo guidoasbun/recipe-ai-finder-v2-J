@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.asbun.backend.dto.DataExportJson;
 import io.asbun.backend.dto.ExportStatusResponse;
 import io.asbun.backend.exception.ResourceNotFoundException;
+import io.asbun.backend.model.MealPlan;
 import io.asbun.backend.model.Recipe;
 import io.asbun.backend.model.User;
 import io.asbun.backend.model.enums.AuditEventType;
+import io.asbun.backend.repository.MealPlanRepository;
 import io.asbun.backend.repository.RecipeRepository;
 import io.asbun.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +46,7 @@ public class DataExportAsyncWorker {
 
     private final UserRepository userRepository;
     private final RecipeRepository recipeRepository;
+    private final MealPlanRepository mealPlanRepository;
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final AuditService auditService;
@@ -68,9 +71,10 @@ public class DataExportAsyncWorker {
                     .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
 
             List<Recipe> recipes = recipeRepository.findByUserId(userId);
+            List<MealPlan> mealPlans = mealPlanRepository.findByOwner(userId);
             List<String> missingImages = new ArrayList<>();
 
-            DataExportJson exportJson = buildDataExportJson(user, recipes, missingImages);
+            DataExportJson exportJson = buildDataExportJson(user, recipes, mealPlans, missingImages);
 
             // Stream ZIP to a temporary file to avoid holding the entire archive in heap
             tempFile = Files.createTempFile("export-" + userId + "-", ".zip");
@@ -180,7 +184,8 @@ public class DataExportAsyncWorker {
         }
     }
 
-    private DataExportJson buildDataExportJson(User user, List<Recipe> recipes, List<String> missingImages) {
+    private DataExportJson buildDataExportJson(User user, List<Recipe> recipes,
+                                               List<MealPlan> mealPlans, List<String> missingImages) {
         DataExportJson.UserExportData userData = DataExportJson.UserExportData.builder()
                 .email(user.getEmail())
                 .username(user.getUsername())
@@ -207,6 +212,7 @@ public class DataExportAsyncWorker {
                 .exportedAt(Instant.now())
                 .user(userData)
                 .recipes(recipeData)
+                .mealPlans(MealPlanExportMapper.map(mealPlans))
                 .missingImages(missingImages)
                 .build();
     }

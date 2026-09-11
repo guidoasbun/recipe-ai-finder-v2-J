@@ -5,6 +5,7 @@ import io.asbun.backend.model.User;
 import io.asbun.backend.model.enums.AccountStatus;
 import io.asbun.backend.model.enums.AuditEventType;
 import io.asbun.backend.repository.ConsentRepository;
+import io.asbun.backend.repository.MealPlanRepository;
 import io.asbun.backend.repository.RecipeRepository;
 import io.asbun.backend.repository.UserRepository;
 import net.jqwik.api.*;
@@ -125,8 +126,24 @@ class AccountDeletionServicePropertyTest {
                                                   S3Service s3Service,
                                                   AuditService auditService,
                                                   CognitoIdentityProviderClient cognitoClient) {
+        // Meal plans: default to none so existing deletion paths are unchanged. Tests that
+        // exercise plan deletion stub findByOwner explicitly.
+        MealPlanRepository mealPlanRepository = mock(MealPlanRepository.class);
+        lenient().when(mealPlanRepository.findByOwner(any())).thenReturn(Collections.emptyList());
+        return createService(userRepository, recipeRepository, consentRepository,
+                mealPlanRepository, s3Service, auditService, cognitoClient);
+    }
+
+    private AccountDeletionService createService(UserRepository userRepository,
+                                                  RecipeRepository recipeRepository,
+                                                  ConsentRepository consentRepository,
+                                                  MealPlanRepository mealPlanRepository,
+                                                  S3Service s3Service,
+                                                  AuditService auditService,
+                                                  CognitoIdentityProviderClient cognitoClient) {
         AccountDeletionService service = new AccountDeletionService(
-                userRepository, recipeRepository, consentRepository, s3Service, auditService, cognitoClient);
+                userRepository, recipeRepository, consentRepository, mealPlanRepository,
+                s3Service, auditService, cognitoClient);
         ReflectionTestUtils.setField(service, "userPoolId", USER_POOL_ID);
         return service;
     }
@@ -297,6 +314,46 @@ class AccountDeletionServicePropertyTest {
         AdminDeleteUserRequest cognitoRequest = cognitoCaptor.getValue();
         assertThat(cognitoRequest.userPoolId()).isEqualTo(USER_POOL_ID);
         assertThat(cognitoRequest.username()).isEqualTo(username);
+    }
+
+    /**
+     * Meal Plan Core: hard deletion also removes every meal plan the user owns (before the
+     * user record is deleted), so account deletion never orphans plan data.
+     */
+    @Property(tries = 50)
+    @Tag("hard-deletion-meal-plans")
+    void hardDeletion_deletesAllMealPlans(@ForAll("userIds") String userId) {
+        User user = User.builder()
+                .userId(userId).username("user_" + userId)
+                .accountStatus(AccountStatus.PENDING_DELETION)
+                .build();
+
+        UserRepository userRepository = mock(UserRepository.class);
+        RecipeRepository recipeRepository = mock(RecipeRepository.class);
+        MealPlanRepository mealPlanRepository = mock(MealPlanRepository.class);
+        S3Service s3Service = mock(S3Service.class);
+        AuditService auditService = mock(AuditService.class);
+        CognitoIdentityProviderClient cognitoClient = mock(CognitoIdentityProviderClient.class);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(recipeRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+        when(mealPlanRepository.findByOwner(userId)).thenReturn(List.of(
+                io.asbun.backend.model.MealPlan.builder().mealPlanId("mp-1").ownerUserId(userId).build(),
+                io.asbun.backend.model.MealPlan.builder().mealPlanId("mp-2").ownerUserId(userId).build()));
+        when(cognitoClient.adminDeleteUser(any(AdminDeleteUserRequest.class)))
+                .thenReturn(AdminDeleteUserResponse.builder().build());
+
+        AccountDeletionService service = createService(
+                userRepository, recipeRepository, mock(ConsentRepository.class), mealPlanRepository,
+                s3Service, auditService, cognitoClient);
+
+        service.executeHardDeletion(userId);
+
+        var inOrder = inOrder(mealPlanRepository, userRepository);
+        inOrder.verify(mealPlanRepository).delete("mp-1");
+        inOrder.verify(mealPlanRepository).delete("mp-2");
+        // Plans are removed before the user record.
+        inOrder.verify(userRepository).delete(userId);
     }
 
     // --- Property 4: Partial deletion failure handling ---

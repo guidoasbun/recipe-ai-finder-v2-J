@@ -7,6 +7,7 @@ const NAV_LINKS = [
   { href: "/dashboard", label: "Generate" },
   { href: "/browse", label: "Look for Existing Recipes" },
   { href: "/recipes", label: "Saved Recipes" },
+  { href: "/meal-plans", label: "Meal Plans" },
   { href: "/model-stats", label: "Model Stats" },
   { href: "/account", label: "Account Settings" },
 ];

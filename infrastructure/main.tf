@@ -123,6 +123,7 @@ module "ecs" {
   dynamodb_catalog_full_table = module.dynamodb.catalog_full_table_name
   dynamodb_consent_table      = module.dynamodb.consent_table_name
   dynamodb_audit_table        = module.dynamodb.audit_log_table_name
+  dynamodb_meal_plans_table   = module.dynamodb.meal_plans_table_name
 
   catalog_search_backend   = var.catalog_search_backend
   catalog_search_mode      = var.catalog_search_mode
@@ -177,6 +178,7 @@ module "monitoring" {
     module.dynamodb.catalog_table_name,
     module.dynamodb.consent_table_name,
     module.dynamodb.audit_log_table_name,
+    module.dynamodb.meal_plans_table_name,
     module.dynamodb.catalog_full_table_name,
   ]
 

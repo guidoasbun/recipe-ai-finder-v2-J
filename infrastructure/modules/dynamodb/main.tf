@@ -74,6 +74,34 @@ resource "aws_dynamodb_table" "catalog_full" {
   }
 }
 
+resource "aws_dynamodb_table" "meal_plans" {
+  name         = "${var.project_name}-${var.environment}-meal-plans"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "mealPlanId"
+
+  attribute {
+    name = "mealPlanId"
+    type = "S"
+  }
+
+  attribute {
+    name = "ownerUserId"
+    type = "S"
+  }
+
+  # A user's plans are one query on this GSI (mirrors the recipes table's userId-index).
+  global_secondary_index {
+    name            = "ownerUserId-index"
+    hash_key        = "ownerUserId"
+    projection_type = "ALL"
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-meal-plans"
+    Environment = var.environment
+  }
+}
+
 resource "aws_dynamodb_table" "consent" {
   name         = "${var.project_name}-${var.environment}-consent"
   billing_mode = "PAY_PER_REQUEST"
