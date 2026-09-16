@@ -19,6 +19,7 @@ import io.asbun.backend.model.enums.RecipeSource;
 import io.asbun.backend.repository.MealPlanRepository;
 import io.asbun.backend.repository.UserRepository;
 import io.asbun.backend.search.CatalogSearchService;
+import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,6 +63,8 @@ class MealPlanServiceTest {
         // that never write don't trip strict stubbing.
         lenient().when(userRepository.findById(anyString())).thenReturn(Optional.empty());
         lenient().when(mealPlanRepository.save(any(MealPlan.class))).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(mealPlanRepository.createIfAbsent(any(MealPlan.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
     private CreateMealPlanRequest createReq(String name) {
@@ -110,8 +113,10 @@ class MealPlanServiceTest {
 
     @Test
     void createPlan_pastPerUserLimit_isRejected() {
-        when(mealPlanRepository.findByOwner(USER_ID))
-                .thenReturn(List.of(plan("a", USER_ID), plan("b", USER_ID), plan("c", USER_ID)));
+        // The limit is now enforced atomically: the conditional counter increment fails when the
+        // user is already at the cap, surfacing as ConditionalCheckFailedException.
+        org.mockito.Mockito.doThrow(ConditionalCheckFailedException.builder().build())
+                .when(mealPlanRepository).reservePlanSlot(USER_ID, 3);
 
         assertThatThrownBy(() -> service.createPlan(createReq("Overflow"), USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -125,6 +130,9 @@ class MealPlanServiceTest {
         p.getEntries().add(MealPlanEntry.builder().entryId("e1").build());
         p.getEntries().add(MealPlanEntry.builder().entryId("e2").build());
         when(mealPlanRepository.findById("p1")).thenReturn(Optional.of(p));
+        // Reference is validated up front now, so make it resolvable to reach the entry-count cap.
+        when(catalogSearchService.findById("cat-1")).thenReturn(Optional.of(
+                CatalogRecipeDto.builder().catalogRecipeId("cat-1").title("Tacos").build()));
 
         assertThatThrownBy(() -> service.addEntry("p1", catalogEntry(), USER_ID))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -140,6 +148,68 @@ class MealPlanServiceTest {
 
         assertThatThrownBy(() -> service.createPlan(createReq("X"), USER_ID))
                 .isInstanceOf(AccountPendingDeletionException.class);
+    }
+
+    @Test
+    void deletePlan_isRefusedWhenAccountPendingDeletion() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(
+                User.builder().userId(USER_ID).accountStatus(AccountStatus.PENDING_DELETION).build()));
+
+        assertThatThrownBy(() -> service.deletePlan("p1", USER_ID))
+                .isInstanceOf(AccountPendingDeletionException.class);
+        verify(mealPlanRepository, never()).delete(anyString());
+    }
+
+    @Test
+    void deletePlan_releasesReservedSlot() {
+        when(mealPlanRepository.findById("p1")).thenReturn(Optional.of(plan("p1", USER_ID)));
+
+        service.deletePlan("p1", USER_ID);
+
+        verify(mealPlanRepository).delete("p1");
+        verify(mealPlanRepository).releasePlanSlot(USER_ID);
+    }
+
+    // ── Strict date validation ───────────────────────────────────────────────────
+
+    @Test
+    void addEntry_impossibleDate_isRejected() {
+        AddEntryRequest r = catalogEntry();
+        r.setDate("2026-02-31"); // shape-valid but not a real day
+
+        assertThatThrownBy(() -> service.addEntry("p1", r, USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(mealPlanRepository, never()).save(any());
+    }
+
+    @Test
+    void updateEntry_impossibleDate_isRejected() {
+        UpdateEntryRequest r = new UpdateEntryRequest();
+        r.setDate("2026-99-01");
+
+        assertThatThrownBy(() -> service.updateEntry("p1", "e1", r, USER_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(mealPlanRepository, never()).save(any());
+    }
+
+    // ── Optimistic locking ────────────────────────────────────────────────────────
+
+    @Test
+    void addEntry_retriesOnVersionConflictThenSucceeds() {
+        // Each load returns a fresh plan (as DynamoDB would), so the retry re-applies the add
+        // against clean state rather than doubling the entry.
+        when(mealPlanRepository.findById("p1")).thenAnswer(inv -> Optional.of(plan("p1", USER_ID)));
+        when(catalogSearchService.findById("cat-1")).thenReturn(Optional.of(
+                CatalogRecipeDto.builder().catalogRecipeId("cat-1").title("Tacos").build()));
+        // First save loses the version race; the retry (fresh load + re-apply) succeeds.
+        when(mealPlanRepository.save(any(MealPlan.class)))
+                .thenThrow(ConditionalCheckFailedException.builder().build())
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        MealPlanDto dto = service.addEntry("p1", catalogEntry(), USER_ID);
+
+        assertThat(dto.getEntries()).hasSize(1);
+        verify(mealPlanRepository, org.mockito.Mockito.times(2)).save(any(MealPlan.class));
     }
 
     @Test
@@ -165,7 +235,7 @@ class MealPlanServiceTest {
 
     @Test
     void addEntry_danglingCatalogRef_isRejected() {
-        when(mealPlanRepository.findById("p1")).thenReturn(Optional.of(plan("p1", USER_ID)));
+        // The reference is validated before the plan is loaded, so no findById stub is needed.
         when(catalogSearchService.findById("cat-1")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.addEntry("p1", catalogEntry(), USER_ID))
@@ -175,7 +245,6 @@ class MealPlanServiceTest {
 
     @Test
     void addEntry_danglingSavedRef_isRejected() {
-        when(mealPlanRepository.findById("p1")).thenReturn(Optional.of(plan("p1", USER_ID)));
         when(recipeService.getRecipeById("rec-1", USER_ID))
                 .thenThrow(new ResourceNotFoundException("Recipe not found: rec-1"));
 
@@ -357,7 +426,49 @@ class MealPlanServiceTest {
 
         assertThat(dto.getOwnerUserId()).isEqualTo(USER_ID);
         assertThat(dto.getMealPlanId()).isNotBlank();
-        verify(mealPlanRepository).save(any(MealPlan.class));
+        // Materialized via a deterministic conditional create, not a blind save.
+        verify(mealPlanRepository).createIfAbsent(any(MealPlan.class));
+    }
+
+    @Test
+    void getOrCreateDefaultPlan_isDeterministicPerUser() {
+        when(mealPlanRepository.findByOwner(USER_ID)).thenReturn(new ArrayList<>());
+
+        String first = service.getOrCreateDefaultPlan(USER_ID).getMealPlanId();
+        String second = service.getOrCreateDefaultPlan(USER_ID).getMealPlanId();
+
+        // The same user always materializes the same default-plan id (closes the duplicate-
+        // default race), and it differs from another user's.
+        assertThat(first).isEqualTo(second);
+        when(mealPlanRepository.findByOwner(OTHER_USER)).thenReturn(new ArrayList<>());
+        assertThat(service.getOrCreateDefaultPlan(OTHER_USER).getMealPlanId()).isNotEqualTo(first);
+    }
+
+    @Test
+    void getOrCreateDefaultPlan_onConcurrentCreate_reloadsWinner() {
+        when(mealPlanRepository.findByOwner(USER_ID)).thenReturn(new ArrayList<>());
+        // The conditional create loses the race; the winner is then loaded by id.
+        when(mealPlanRepository.createIfAbsent(any(MealPlan.class)))
+                .thenThrow(ConditionalCheckFailedException.builder().build());
+        MealPlan winner = plan("winner", USER_ID);
+        when(mealPlanRepository.findById(anyString())).thenReturn(Optional.of(winner));
+
+        MealPlanDto dto = service.getOrCreateDefaultPlan(USER_ID);
+
+        assertThat(dto.getMealPlanId()).isEqualTo("winner");
+    }
+
+    @Test
+    void getOrCreateDefaultPlan_isRefusedWhenPendingDeletionAndNoPlan() {
+        // Materializing the calendar is a write, so a pending-deletion account must be refused
+        // (prevents recreating a plan after the hard-deletion sweep).
+        when(mealPlanRepository.findByOwner(USER_ID)).thenReturn(new ArrayList<>());
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(
+                User.builder().userId(USER_ID).accountStatus(AccountStatus.PENDING_DELETION).build()));
+
+        assertThatThrownBy(() -> service.getOrCreateDefaultPlan(USER_ID))
+                .isInstanceOf(AccountPendingDeletionException.class);
+        verify(mealPlanRepository, never()).createIfAbsent(any());
     }
 
     @Test

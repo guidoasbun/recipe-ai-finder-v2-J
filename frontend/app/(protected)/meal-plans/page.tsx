@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { Loader2, ChevronLeft, ChevronRight, Plus, X, AlertCircle } from "lucide-react";
-import { MealPlan, MealPlanEntry, RecipeSource } from "@/types/mealPlan";
+import { Loader2, ChevronLeft, ChevronRight, Plus, X, AlertCircle, Pencil } from "lucide-react";
+import { MealPlan, MealPlanEntry, RecipeSource, UpdateEntryRequest } from "@/types/mealPlan";
 import { MEAL_SLOTS, MealSlot } from "@/lib/mealSlots";
 import {
   getDefaultMealPlan,
   addEntry as apiAddEntry,
   removeEntry as apiRemoveEntry,
+  updateEntry as apiUpdateEntry,
 } from "@/lib/mealPlanApi";
 import {
   ISODate,
@@ -26,6 +27,7 @@ import {
   startOfWeek,
 } from "@/lib/calendar";
 import RecipePicker from "@/components/mealplan/RecipePicker";
+import EntryEditor from "@/components/mealplan/EntryEditor";
 
 type ViewMode = "week" | "month";
 
@@ -42,6 +44,7 @@ export default function MealCalendarPage() {
   const [view, setView] = useState<ViewMode>("month");
   const [anchor, setAnchor] = useState<ISODate>(todayIso());
   const [picker, setPicker] = useState<{ date: ISODate; slot: MealSlot } | null>(null);
+  const [editing, setEditing] = useState<MealPlanEntry | null>(null);
 
   const requestSeq = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -125,6 +128,20 @@ export default function MealCalendarPage() {
     }
   }
 
+  async function onUpdate(entryId: string, changes: UpdateEntryRequest) {
+    if (!plan) return;
+    setEditing(null);
+    // Nothing changed — skip the round trip.
+    if (Object.keys(changes).length === 0) return;
+    try {
+      const updated = await apiUpdateEntry(plan.mealPlanId, entryId, changes);
+      setPlan(updated);
+    } catch {
+      // Re-sync from the server on failure (e.g. an invalid date rejected by the backend).
+      load();
+    }
+  }
+
   function shift(delta: number) {
     setAnchor((a) => addDays(a, view === "week" ? delta * 7 : shiftMonth(a, delta)));
   }
@@ -144,7 +161,14 @@ export default function MealCalendarPage() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Meal Plan</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Meal Plan</h1>
+          {plan?.servings != null && (
+            <p className="text-sm text-gray-500">
+              Serves {plan.servings} {plan.servings === 1 ? "person" : "people"} by default
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex overflow-hidden rounded-md border border-gray-300">
             <button
@@ -220,9 +244,11 @@ export default function MealCalendarPage() {
       ) : view === "week" ? (
         <WeekView
           anchor={anchor}
+          planServings={plan?.servings ?? null}
           entriesCovering={entriesCovering}
           onAdd={(date, slot) => setPicker({ date, slot })}
           onRemove={onRemove}
+          onEdit={(entry) => setEditing(entry)}
         />
       ) : (
         <MonthView
@@ -240,6 +266,15 @@ export default function MealCalendarPage() {
           onClose={() => setPicker(null)}
         />
       )}
+
+      {editing && (
+        <EntryEditor
+          entry={editing}
+          planServings={plan?.servings ?? null}
+          onSave={(changes) => onUpdate(editing.entryId, changes)}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }
@@ -248,14 +283,18 @@ export default function MealCalendarPage() {
 
 function WeekView({
   anchor,
+  planServings,
   entriesCovering,
   onAdd,
   onRemove,
+  onEdit,
 }: {
   anchor: ISODate;
+  planServings: number | null;
   entriesCovering: (day: ISODate, slot: MealSlot) => MealPlanEntry[];
   onAdd: (day: ISODate, slot: MealSlot) => void;
   onRemove: (entryId: string) => void;
+  onEdit: (entry: MealPlanEntry) => void;
 }) {
   const days = weekDays(anchor);
   const today = todayIso();
@@ -295,7 +334,14 @@ function WeekView({
                   ) : (
                     <ul className="flex flex-col gap-1">
                       {items.map((e) => (
-                        <EntryRow key={e.entryId} entry={e} day={day} onRemove={onRemove} />
+                        <EntryRow
+                          key={e.entryId}
+                          entry={e}
+                          day={day}
+                          planServings={planServings}
+                          onRemove={onRemove}
+                          onEdit={onEdit}
+                        />
                       ))}
                     </ul>
                   )}
@@ -409,15 +455,22 @@ function MonthView({
 function EntryRow({
   entry,
   day,
+  planServings,
   onRemove,
+  onEdit,
 }: {
   entry: MealPlanEntry;
   day: ISODate;
+  planServings: number | null;
   onRemove: (entryId: string) => void;
+  onEdit: (entry: MealPlanEntry) => void;
 }) {
   const href = entry.available ? recipeHref(entry.recipeSource, entry.recipeId) : null;
   const isStart = entry.date === day;
   const span = entry.spanDays ?? 1;
+
+  // Per-entry override wins; otherwise fall back to the plan default for display.
+  const effectiveServings = entry.servings ?? planServings;
 
   // On the start day show the recipe title (+ a meal-prep badge for spans); on continuation
   // days show "Leftovers" so a multi-day meal reads as one cooked dish carried forward.
@@ -430,11 +483,16 @@ function EntryRow({
   const label = (
     <span className="min-w-0 flex-1 truncate">
       <span className="block truncate text-sm text-gray-900">{primary}</span>
-      {span > 1 && (
-        <span className="block truncate text-[10px] text-gray-400">
-          {isStart ? `meal prep · ${span} days` : "from meal prep"}
-        </span>
-      )}
+      <span className="flex items-center gap-1.5 truncate text-[10px] text-gray-400">
+        {span > 1 && <span>{isStart ? `meal prep · ${span} days` : "from meal prep"}</span>}
+        {isStart && effectiveServings != null && (
+          <span>
+            {span > 1 ? "· " : ""}
+            serves {effectiveServings}
+            {entry.servings == null ? "" : "*"}
+          </span>
+        )}
+      </span>
     </span>
   );
 
@@ -458,16 +516,26 @@ function EntryRow({
       ) : (
         inner
       )}
-      {/* Only offer remove on the start day so a span is removed once, as a unit. */}
+      {/* Edit + remove are offered on the start day so a span is acted on once, as a unit. */}
       {isStart && (
-        <button
-          type="button"
-          aria-label="Remove from plan"
-          onClick={() => onRemove(entry.entryId)}
-          className="flex-shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+        <>
+          <button
+            type="button"
+            aria-label="Edit entry"
+            onClick={() => onEdit(entry)}
+            className="flex-shrink-0 rounded p-1 text-gray-400 hover:bg-blue-50 hover:text-blue-600"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Remove from plan"
+            onClick={() => onRemove(entry.entryId)}
+            className="flex-shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </>
       )}
     </li>
   );

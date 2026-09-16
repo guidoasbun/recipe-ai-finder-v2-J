@@ -143,6 +143,7 @@ public class DataExportAsyncWorker {
 
             auditService.logEvent(userId, AuditEventType.DATA_EXPORT_COMPLETED,
                     Map.of("format", "zip", "recipeCount", String.valueOf(recipes.size()),
+                            "mealPlanCount", String.valueOf(mealPlans.size()),
                             "missingImages", String.valueOf(missingImages.size())), null, null);
 
             log.info("ZIP export completed for user {}: {} recipes, {} missing images",

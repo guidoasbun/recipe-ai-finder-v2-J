@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.extensions.annotations.DynamoDbVersionAttribute;
 
 import java.time.Instant;
 import java.util.List;
@@ -50,6 +51,16 @@ public class MealPlan {
     private Instant updatedAt;
 
     /**
+     * Optimistic-locking version. Managed by the enhanced client's {@code VersionedRecordExtension}:
+     * every {@code putItem} writes a conditional update requiring the stored version to match the
+     * one loaded, then increments it. Concurrent read-modify-write of the embedded {@code entries}
+     * list from two tabs no longer silently clobbers each other — the losing write fails its
+     * condition and is retried against fresh state. Null on legacy items → treated as a first
+     * write. The annotation lives on the getter (a method-target annotation, like the keys below).
+     */
+    private Long version;
+
+    /**
      * RESERVED, UNUSED this spec: future shared/household-plan members. Absent on existing
      * plans (schemaless); adding it later is non-breaking. Not written or read here.
      */
@@ -63,5 +74,10 @@ public class MealPlan {
     @DynamoDbSecondaryPartitionKey(indexNames = "ownerUserId-index")
     public String getOwnerUserId() {
         return ownerUserId;
+    }
+
+    @DynamoDbVersionAttribute
+    public Long getVersion() {
+        return version;
     }
 }

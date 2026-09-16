@@ -142,6 +142,59 @@ describe("MealCalendarPage", () => {
     expect(screen.getAllByText("Leftovers")).toHaveLength(2);
   });
 
+  it("shows the plan's default servings", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => jsonResponse(planWith([]))));
+    render(<MealCalendarPage />);
+
+    expect(await screen.findByText(/Serves 4 people by default/)).toBeInTheDocument();
+  });
+
+  it("opens the entry editor and sends only changed fields (move + servings)", async () => {
+    const user = userEvent.setup();
+    const start = startOfWeek(todayIso());
+    const plan = planWith([
+      {
+        entryId: "e1",
+        date: start,
+        slot: "DINNER",
+        servings: null,
+        spanDays: 1,
+        recipeSource: "CATALOG",
+        recipeId: "cat-1",
+        available: true,
+        title: "Tacos",
+        imageUrl: null,
+      },
+    ]);
+    const fetchMock = vi.fn(() => jsonResponse(plan));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<MealCalendarPage />);
+
+    // Week view exposes per-entry edit controls.
+    await user.click(await screen.findByRole("button", { name: "Week" }));
+    await user.click(await screen.findByRole("button", { name: "Edit entry" }));
+
+    // The editor dialog opens with the current values.
+    expect(await screen.findByRole("dialog", { name: "Edit entry" })).toBeInTheDocument();
+
+    // Set a per-entry servings override and save.
+    const servings = screen.getByLabelText("Servings");
+    await user.clear(servings);
+    await user.type(servings, "2");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // The last call is a PUT to the entry with only the changed field in the body.
+    const putCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        typeof url === "string" &&
+        url.includes("/entries/e1") &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse((putCall![1] as RequestInit).body as string);
+    expect(body).toEqual({ servings: 2 });
+  });
+
   it("shows an error with retry when loading fails", async () => {
     const fetchMock = vi.fn(() => jsonResponse(null, false, 500));
     vi.stubGlobal("fetch", fetchMock);
