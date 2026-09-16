@@ -24,6 +24,11 @@ export async function getMealPlan(id: string, signal?: AbortSignal): Promise<Mea
   return json<MealPlan>(await fetch(`${BASE}/${id}`, { signal }));
 }
 
+/** The user's single implicit calendar (Option A): returns it or creates it on first access. */
+export async function getDefaultMealPlan(signal?: AbortSignal): Promise<MealPlan> {
+  return json<MealPlan>(await fetch(`${BASE}/default`, { signal }));
+}
+
 export async function createMealPlan(body: CreateMealPlanRequest): Promise<MealPlan> {
   return json<MealPlan>(
     await fetch(BASE, {

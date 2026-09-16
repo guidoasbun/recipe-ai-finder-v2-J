@@ -9,19 +9,17 @@ interface PickResult {
   source: RecipeSource;
   recipeId: string;
   title: string;
+  spanDays: number;
 }
 
 interface RawRecipe {
-  // saved recipe
-  recipeId?: string;
-  // catalog recipe
-  catalogRecipeId?: string;
+  recipeId?: string; // saved
+  catalogRecipeId?: string; // catalog
   title: string;
   imageUrl?: string | null;
 }
 
-// Normalized, ready-to-render item. Only items with a usable id survive normalization, so we
-// never render an empty React key or let the user add an entry with a blank recipeId.
+// Normalized item; only items with a usable id survive (no empty keys / no blank recipeId adds).
 interface PickerItem {
   id: string;
   title: string;
@@ -37,8 +35,9 @@ interface Props {
 
 /**
  * Touch-first, full-screen/bottom-sheet recipe picker. Reuses the existing search endpoints
- * (saved recipes + shared catalog) via the proxy path. Picking a result hands the chosen
- * source + id back to the caller, which adds the entry to the already-chosen date/slot.
+ * (saved recipes + shared catalog). Includes a meal-prep span control so a picked recipe can
+ * cover several consecutive days from the chosen date. Picking hands the source + id + span
+ * back to the caller, which adds the entry.
  */
 export default function RecipePicker({ date, slot, onPick, onClose }: Props) {
   const [source, setSource] = useState<RecipeSource>("CATALOG");
@@ -47,6 +46,7 @@ export default function RecipePicker({ date, slot, onPick, onClose }: Props) {
   const [items, setItems] = useState<PickerItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [spanDays, setSpanDays] = useState(1);
 
   const requestSeq = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -71,8 +71,6 @@ export default function RecipePicker({ date, slot, onPick, onClose }: Props) {
       const data = await res.json();
       if (seq !== requestSeq.current) return;
       const raw: RawRecipe[] = data.items ?? [];
-      // Normalize per source and drop anything without an id (unusable — would collide as an
-      // empty key and can't be added as an entry).
       const normalized: PickerItem[] = raw
         .map((r) => ({
           id: (source === "CATALOG" ? r.catalogRecipeId : r.recipeId) ?? "",
@@ -117,6 +115,28 @@ export default function RecipePicker({ date, slot, onPick, onClose }: Props) {
           >
             <X className="h-5 w-5" />
           </button>
+        </div>
+
+        {/* Meal-prep span control */}
+        <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
+          <label htmlFor="span-days" className="text-sm font-medium text-gray-700">
+            Meal prep for
+          </label>
+          <select
+            id="span-days"
+            value={spanDays}
+            onChange={(e) => setSpanDays(Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+          >
+            {Array.from({ length: 14 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                {n === 1 ? "1 day" : `${n} days`}
+              </option>
+            ))}
+          </select>
+          {spanDays > 1 && (
+            <span className="text-xs text-gray-400">cook once, covers {spanDays} days</span>
+          )}
         </div>
 
         <div className="flex gap-2 p-4">
@@ -196,7 +216,9 @@ export default function RecipePicker({ date, slot, onPick, onClose }: Props) {
                 <li key={r.id}>
                   <button
                     type="button"
-                    onClick={() => onPick({ source, recipeId: r.id, title: r.title })}
+                    onClick={() =>
+                      onPick({ source, recipeId: r.id, title: r.title, spanDays })
+                    }
                     className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-3 text-left hover:border-blue-400 hover:bg-blue-50 transition-colors"
                   >
                     {r.imageUrl ? (

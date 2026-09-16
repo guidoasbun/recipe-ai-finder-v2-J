@@ -82,6 +82,7 @@ public class DataExportJson {
         private String date;
         private String slot;
         private Integer servings;
+        private Integer spanDays;
         private String recipeSource;
         private String recipeId;
     }

@@ -118,3 +118,23 @@ Add-to-plan buttons on recipe cards (spec 2), grocery lists / structured ingredi
 (spec 3–4), recipe enrichment (spec 5), nutrition (spec 6), the AI assistant (spec 7),
 calendar export (spec 8), and shared/household plans (data shape reserved via the unused
 `members` field; behavior not built).
+
+---
+
+## Update R1 — Unified calendar + meal-prep spans
+
+The Meal Plans UI is now a single calendar per user (not a list of named plans), with Week
+and Month views, plus multi-day "meal prep" meals. See design.md / requirements.md "Revision
+R1".
+
+- New endpoint: `GET /api/meal-plans/default` — returns the user's calendar (creates one on
+  first access; reuses the most-recently-updated existing plan so older data folds in). The
+  multi-plan CRUD endpoints still exist but are no longer used by the UI.
+- New field: `spanDays` on an entry (add/update requests + responses). Meal-prep span in
+  consecutive days from the entry's date; 1 (or absent) = single day; display-only (no
+  quantity scaling). Additive and non-breaking — no infra or table change (DynamoDB is
+  schemaless; only PK/GSI attributes are declared in Terraform).
+- No new Terraform. The `recipe-ai-dev-meal-plans` table already covers this.
+- Frontend: calendar logic is in `frontend/lib/calendar.ts` (pure, unit-tested). The old
+  `/meal-plans/[id]` route was removed; `/meal-plans` is the calendar.
+- Tests: `./mvnw test` (backend) and `npm run test` (frontend, incl. `lib/calendar.test.ts`).

@@ -38,4 +38,12 @@ public class AddEntryRequest {
     @Positive
     @Max(50)
     private Integer servings;
+
+    /**
+     * Meal-prep span: number of consecutive days from {@code date} this meal covers. Null or 1
+     * means a normal single-day meal. Bounded to keep a span sane.
+     */
+    @Positive
+    @Max(31)
+    private Integer spanDays;
 }

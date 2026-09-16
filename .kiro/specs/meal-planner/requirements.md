@@ -287,3 +287,39 @@ later specs land. They are **not** implemented in this spec.
   input a future grocery-list feature will aggregate over.
 - **AI assistant (spec 7).** The meal-plan CRUD defined here is intended to be the tool
   surface the assistant will later call; keep operations clean and id-based.
+
+---
+
+## Revision R1 — Unified calendar + meal-prep spans (post-hands-on)
+
+After using Meal Plan Core, we reworked the UX (roadmap "Option A") and added meal prep.
+The backend contract is unchanged except for one additive field; this revision supersedes
+the parts of Requirements 2 and 4 that assumed a user-visible list of multiple named plans.
+
+### R1.1 — One calendar per user (supersedes the multi-plan UI)
+1. The planner UI SHALL present a single calendar per user rather than a list of named
+   plans. The `MealPlan` entity is unchanged; the UI resolves the user's calendar via a
+   default-plan endpoint (get-or-create).
+2. WHEN a user has existing plans (created under the old multi-plan UI) THEN the system
+   SHALL reuse the most-recently-updated one as their calendar (no data loss); WHEN they
+   have none THEN it SHALL create one.
+3. The multiple-plans CRUD endpoints remain available on the backend but are no longer
+   surfaced in the UI.
+
+### R1.2 — Week and month views
+1. The calendar SHALL offer a Week view and a Month view, toggleable by the user.
+2. Larger screens SHALL default to Month; phone-sized screens SHALL default to Week.
+3. The month view SHALL render a grid with numbered day cells; the week view SHALL show
+   the 7 days with their meal slots.
+
+### R1.3 — Meal-prep multi-day meals (spans)
+1. WHEN adding a meal the user MAY specify a meal-prep span of N consecutive days
+   (cook once, covers N days) from the chosen start date.
+2. An entry SHALL carry a `spanDays` value (≥1; absent/1 = a normal single-day meal),
+   bounded to a sane maximum.
+3. A multi-day meal SHALL render across every day it covers: the recipe title on the start
+   day (with a meal-prep indicator) and a "leftovers/from meal prep" marker on continuation
+   days, reading as one cooked dish carried forward.
+4. Removing a multi-day meal SHALL remove it as a unit (offered on its start day).
+5. `spanDays` is stored/displayed only; it does NOT scale ingredient quantities (that stays
+   deferred to the structured-ingredients/grocery work).

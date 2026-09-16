@@ -6,9 +6,11 @@ export type RecipeSource = "SAVED" | "CATALOG";
 // referenced recipe is missing/inaccessible; the UI shows a placeholder for that slot.
 export interface MealPlanEntry {
   entryId: string;
-  date: string; // ISO yyyy-MM-dd
+  date: string; // ISO yyyy-MM-dd (start day)
   slot: MealSlot;
   servings: number | null;
+  /** Consecutive days covered from `date` (meal-prep). 1 = single day. */
+  spanDays: number;
   recipeSource: RecipeSource | null;
   recipeId: string | null;
   available: boolean;
@@ -42,10 +44,13 @@ export interface AddEntryRequest {
   source: RecipeSource;
   recipeId: string;
   servings?: number;
+  /** Meal-prep span; omit or 1 for a single-day meal. */
+  spanDays?: number;
 }
 
 export interface UpdateEntryRequest {
   date?: string;
   slot?: MealSlot;
   servings?: number;
+  spanDays?: number;
 }

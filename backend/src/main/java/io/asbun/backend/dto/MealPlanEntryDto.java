@@ -23,6 +23,8 @@ public class MealPlanEntryDto {
     private String date;
     private MealSlot slot;
     private Integer servings;
+    /** Consecutive days covered from {@code date} (meal-prep). 1 = single day. */
+    private Integer spanDays;
 
     // Recipe reference + resolved display view
     private RecipeSource recipeSource;

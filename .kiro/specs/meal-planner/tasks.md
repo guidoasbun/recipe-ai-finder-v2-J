@@ -177,3 +177,28 @@ the API contract is real before the UI consumes it. Nothing here modifies the `R
     to exercise the endpoints, and a note that visual/layout details are expected to be
     refined after hands-on use (no backend change needed for pure UI tweaks).
   - _Requirements: 1.1, 1.2 | Design: §2.1, "UI iteration" note_
+
+---
+
+## Revision R1 — Unified calendar + meal-prep spans (complete)
+
+Post-hands-on rework (roadmap "Option A") + meal prep. Backend tests pass (202) and frontend
+tests pass (40). No new infrastructure.
+
+- [x] R1.1 Backend: add `spanDays` to `MealPlanEntry` + `MealPlanEntryDto` +
+  `Add/UpdateEntryRequest` (`@Positive @Max(31)`), default 1, carried through the resolver,
+  `MealPlanExportMapper`, and `DataExportJson`. Additive/non-breaking.
+- [x] R1.2 Backend: `getOrCreateDefaultPlan(userId)` + `GET /api/meal-plans/default`
+  (reuse most-recently-updated plan, else create; folds in old multi-plan data).
+- [x] R1.3 Backend tests: span defaulting/persist/update, null-span → 1 on read,
+  default-plan create vs reuse. `./mvnw test` green.
+- [x] R1.4 Frontend: `lib/calendar.ts` pure date/grid/span helpers (+ `calendar.test.ts`);
+  `spanDays` + `getDefaultMealPlan` in types/api.
+- [x] R1.5 Frontend: unified `/meal-plans` calendar with Week/Month toggle (month default on
+  desktop, week on phones); removed the old `[id]` detail route and plans-list page.
+- [x] R1.6 Frontend: meal-prep span selector in the (relocated) `RecipePicker`; add flow
+  passes `spanDays`.
+- [x] R1.7 Frontend: multi-day rendering (title + meal-prep badge on start day, leftovers on
+  continuation days; remove as a unit).
+- [x] R1.8 Frontend tests + lint/typecheck green.
+- [x] R1.9 Spec updated (requirements/design/tasks/RUNBOOK).

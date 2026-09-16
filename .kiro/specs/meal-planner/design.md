@@ -346,3 +346,47 @@ entries, entries referencing recipe ids — **not** copied recipe content) into 
 - Grocery list, nutrition, cuisine/prep-time enrichment → later specs.
 - Shared/household plans → data shape reserved (`members`), behavior not built.
 - AI assistant → the clean, id-based CRUD here is the intended future tool surface.
+
+---
+
+## Revision R1 — Unified calendar + meal-prep spans
+
+Implements requirements R1.1–R1.3. Backend change is additive (one field + one endpoint);
+the bulk is a frontend rework.
+
+### R1.1 Data model — `spanDays` on the entry
+`MealPlanEntry` gains `Integer spanDays`: the number of consecutive days the entry covers
+from its `date` (meal prep). Null/1 = single day. Non-breaking (DynamoDB schemaless; older
+entries read back as null and are treated as 1 in the DTO). Carried through `MealPlanEntryDto`,
+`AddEntryRequest`/`UpdateEntryRequest` (`@Positive @Max(31)`), the resolver mapping, and the
+data-export shape. No quantity scaling.
+
+### R1.2 Default (implicit) calendar
+`MealPlanService.getOrCreateDefaultPlan(userId)` + `GET /api/meal-plans/default`: returns the
+user's most-recently-updated plan or creates one ("My Meal Plan"). This lets the UI expose a
+single calendar (Option A) while the `MealPlan` entity and multi-plan endpoints stay intact.
+Not gated on account status (a lazy read that materializes an empty calendar shouldn't 403).
+Existing plans from the old UI fold in automatically — no migration.
+
+### R1.3 Frontend — unified calendar
+- `/meal-plans/page.tsx` is now the calendar (the old `/meal-plans/[id]` detail route and the
+  plans-list page were removed). It fetches the default plan and renders Week or Month.
+- View toggle: Month default on `md+`, Week default on phones (via `matchMedia`), user can switch.
+- Date math lives in a pure, tested `lib/calendar.ts` (`weekDays`, `monthGrid`, `spanCoversDay`,
+  local-day ISO strings only — no UTC). This keeps the calendar logic unit-testable.
+- Week view: each day shows its four slots; a per-day/slot "+" opens the picker.
+- Month view: a weekday-headed grid of numbered cells; each cell lists its meals (compact),
+  with "+N more" overflow; an in-cell "+" adds to that day.
+- Multi-day meals: placed into every covered day via `spanCoversDay`. Start day shows the
+  title + meal-prep badge; continuation days show "Leftovers"/"from meal prep". Remove is
+  offered only on the start day so a span is deleted as a unit. (Rendered per-day rather than as
+  an absolutely-positioned bar, which keeps week-row wrapping on the month grid trivial and
+  avoids brittle layout — the visual "span" is the repeated, connected styling.)
+- `components/mealplan/RecipePicker.tsx` adds a meal-prep span selector (1–N days) to the
+  existing touch-first picker; it returns `{source, recipeId, title, spanDays}`.
+- Entry cards link to the existing recipe detail pages (`/browse/[id]`, `/recipes/[id]`).
+
+### R1.4 Tests
+`lib/calendar.test.ts` (date/grid/span math) and the rewritten `meal-plans/page.test.tsx`
+(view default + toggle, default-plan fetch, picker open with span control, multi-day rendering,
+error/retry). Backend: span + default-plan cases in `MealPlanServiceTest`.

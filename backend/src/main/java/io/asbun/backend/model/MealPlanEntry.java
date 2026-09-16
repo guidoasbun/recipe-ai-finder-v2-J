@@ -28,6 +28,13 @@ public class MealPlanEntry {
     /** The meal slot. Stored as the {@link MealSlot} enum name. */
     private MealSlot slot;
 
+    /**
+     * Number of consecutive days this entry covers starting at {@code date} (meal-prep: cook
+     * once, eat for N days). 1 (or null, for older entries) = a normal single-day meal. The
+     * entry covers {@code date} .. {@code date + spanDays - 1} in {@code slot}.
+     */
+    private Integer spanDays;
+
     /** Which recipe this entry points to. */
     private RecipeRef recipeRef;
 

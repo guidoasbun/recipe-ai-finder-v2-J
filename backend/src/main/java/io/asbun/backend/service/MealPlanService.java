@@ -99,6 +99,37 @@ public class MealPlanService {
                 .toList();
     }
 
+    /**
+     * Resolves the user's single implicit calendar (Option A: the UI exposes one calendar per
+     * user rather than multiple named plans). Returns the most-recently-updated existing plan
+     * so users who created plans under the old multi-plan UI keep their data folded into the
+     * calendar; if the user has none, creates one. Idempotent-ish: only creates when empty.
+     */
+    public MealPlanDto getOrCreateDefaultPlan(String userId) {
+        List<MealPlan> plans = mealPlanRepository.findByOwner(userId);
+        if (!plans.isEmpty()) {
+            MealPlan plan = plans.stream()
+                    .max(Comparator.comparing(
+                            MealPlan::getUpdatedAt,
+                            Comparator.nullsFirst(Comparator.naturalOrder())))
+                    .orElse(plans.get(0));
+            return toDto(plan);
+        }
+        // No plan yet — create the user's calendar. Not gated on account status: a read that
+        // lazily materializes the empty calendar shouldn't 403 a pending-deletion account.
+        Instant now = Instant.now();
+        MealPlan plan = MealPlan.builder()
+                .mealPlanId(UUID.randomUUID().toString())
+                .ownerUserId(userId)
+                .name("My Meal Plan")
+                .entries(new ArrayList<>())
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        mealPlanRepository.save(plan);
+        return toDto(plan);
+    }
+
     public MealPlanDto getPlan(String mealPlanId, String userId) {
         return toDto(loadOwned(mealPlanId, userId));
     }
@@ -144,6 +175,8 @@ public class MealPlanService {
                 .date(request.getDate())
                 .slot(request.getSlot())
                 .servings(request.getServings())
+                // Meal-prep span: default to a single day when omitted.
+                .spanDays(request.getSpanDays() == null ? 1 : request.getSpanDays())
                 .recipeRef(RecipeRef.builder()
                         .source(request.getSource())
                         .recipeId(request.getRecipeId())
@@ -171,6 +204,9 @@ public class MealPlanService {
         }
         if (request.getServings() != null) {
             entry.setServings(request.getServings());
+        }
+        if (request.getSpanDays() != null) {
+            entry.setSpanDays(request.getSpanDays());
         }
         touch(plan);
         mealPlanRepository.save(plan);
@@ -290,6 +326,8 @@ public class MealPlanService {
                     .date(e.getDate())
                     .slot(e.getSlot())
                     .servings(e.getServings())
+                    // Default older/null spans to 1 so the client always gets a concrete span.
+                    .spanDays(e.getSpanDays() == null ? 1 : e.getSpanDays())
                     .recipeSource(ref != null ? ref.getSource() : null)
                     .recipeId(ref != null ? ref.getRecipeId() : null)
                     .available(resolved.available)

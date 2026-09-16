@@ -46,6 +46,15 @@ public class MealPlanController {
         return ResponseEntity.ok(mealPlanService.listPlans(getUserId(authentication)));
     }
 
+    /**
+     * The user's single implicit calendar (Option A). Returns the existing calendar or creates
+     * one on first access. The frontend uses this instead of managing multiple named plans.
+     */
+    @GetMapping("/default")
+    public ResponseEntity<MealPlanDto> getDefault(Authentication authentication) {
+        return ResponseEntity.ok(mealPlanService.getOrCreateDefaultPlan(getUserId(authentication)));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<MealPlanDto> get(
             @PathVariable @Pattern(regexp = ID_PATTERN) String id,

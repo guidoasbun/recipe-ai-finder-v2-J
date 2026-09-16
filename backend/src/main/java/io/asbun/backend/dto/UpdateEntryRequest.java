@@ -23,4 +23,9 @@ public class UpdateEntryRequest {
     @Positive
     @Max(50)
     private Integer servings;
+
+    /** Meal-prep span; null = unchanged. 1 = single day. */
+    @Positive
+    @Max(31)
+    private Integer spanDays;
 }

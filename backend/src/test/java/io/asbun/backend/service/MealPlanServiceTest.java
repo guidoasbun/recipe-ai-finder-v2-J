@@ -286,6 +286,94 @@ class MealPlanServiceTest {
 
     // ── Servings ─────────────────────────────────────────────────────────────────
 
+    // ── Meal-prep span ───────────────────────────────────────────────────────────
+
+    @Test
+    void addEntry_defaultsSpanToOneWhenOmitted() {
+        when(mealPlanRepository.findById("p1")).thenReturn(Optional.of(plan("p1", USER_ID)));
+        when(catalogSearchService.findById("cat-1")).thenReturn(Optional.of(
+                CatalogRecipeDto.builder().catalogRecipeId("cat-1").title("Tacos").build()));
+
+        MealPlanDto dto = service.addEntry("p1", catalogEntry(), USER_ID);
+
+        assertThat(dto.getEntries().get(0).getSpanDays()).isEqualTo(1);
+    }
+
+    @Test
+    void addEntry_persistsMultiDaySpan() {
+        when(mealPlanRepository.findById("p1")).thenReturn(Optional.of(plan("p1", USER_ID)));
+        when(catalogSearchService.findById("cat-1")).thenReturn(Optional.of(
+                CatalogRecipeDto.builder().catalogRecipeId("cat-1").title("Meal-prep chili").build()));
+
+        AddEntryRequest r = catalogEntry();
+        r.setSpanDays(4);
+        MealPlanDto dto = service.addEntry("p1", r, USER_ID);
+
+        assertThat(dto.getEntries().get(0).getSpanDays()).isEqualTo(4);
+    }
+
+    @Test
+    void updateEntry_changesSpan() {
+        MealPlan p = plan("p1", USER_ID);
+        p.getEntries().add(MealPlanEntry.builder()
+                .entryId("e1").date("2026-01-06").slot(MealSlot.DINNER).spanDays(1)
+                .recipeRef(RecipeRef.builder().source(RecipeSource.CATALOG).recipeId("cat-1").build())
+                .build());
+        when(mealPlanRepository.findById("p1")).thenReturn(Optional.of(p));
+        when(catalogSearchService.findById("cat-1")).thenReturn(Optional.of(
+                CatalogRecipeDto.builder().catalogRecipeId("cat-1").title("Chili").build()));
+
+        UpdateEntryRequest r = new UpdateEntryRequest();
+        r.setSpanDays(3);
+        MealPlanDto dto = service.updateEntry("p1", "e1", r, USER_ID);
+
+        assertThat(dto.getEntries().get(0).getSpanDays()).isEqualTo(3);
+    }
+
+    @Test
+    void resolve_defaultsNullStoredSpanToOne() {
+        MealPlan p = plan("p1", USER_ID);
+        // Older entry persisted before spanDays existed → null span.
+        p.getEntries().add(MealPlanEntry.builder()
+                .entryId("e1").date("2026-01-06").slot(MealSlot.DINNER)
+                .recipeRef(RecipeRef.builder().source(RecipeSource.CATALOG).recipeId("cat-1").build())
+                .build());
+        when(mealPlanRepository.findById("p1")).thenReturn(Optional.of(p));
+        when(catalogSearchService.findById("cat-1")).thenReturn(Optional.of(
+                CatalogRecipeDto.builder().catalogRecipeId("cat-1").title("Chili").build()));
+
+        MealPlanDto dto = service.getPlan("p1", USER_ID);
+
+        assertThat(dto.getEntries().get(0).getSpanDays()).isEqualTo(1);
+    }
+
+    // ── Default (implicit) calendar ───────────────────────────────────────────────
+
+    @Test
+    void getOrCreateDefaultPlan_createsWhenNone() {
+        when(mealPlanRepository.findByOwner(USER_ID)).thenReturn(new ArrayList<>());
+
+        MealPlanDto dto = service.getOrCreateDefaultPlan(USER_ID);
+
+        assertThat(dto.getOwnerUserId()).isEqualTo(USER_ID);
+        assertThat(dto.getMealPlanId()).isNotBlank();
+        verify(mealPlanRepository).save(any(MealPlan.class));
+    }
+
+    @Test
+    void getOrCreateDefaultPlan_reusesMostRecentExisting() {
+        MealPlan older = plan("old", USER_ID);
+        older.setUpdatedAt(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        MealPlan newer = plan("new", USER_ID);
+        newer.setUpdatedAt(java.time.Instant.parse("2026-02-01T00:00:00Z"));
+        when(mealPlanRepository.findByOwner(USER_ID)).thenReturn(List.of(older, newer));
+
+        MealPlanDto dto = service.getOrCreateDefaultPlan(USER_ID);
+
+        assertThat(dto.getMealPlanId()).isEqualTo("new");
+        verify(mealPlanRepository, never()).save(any());
+    }
+
     @Test
     void createPlan_storesServings() {
         MealPlanDto dto = service.createPlan(createReq("Week"), USER_ID);

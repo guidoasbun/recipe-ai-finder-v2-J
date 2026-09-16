@@ -45,6 +45,7 @@ final class MealPlanExportMapper {
                             .date(e.getDate())
                             .slot(e.getSlot() != null ? e.getSlot().name() : null)
                             .servings(e.getServings())
+                            .spanDays(e.getSpanDays())
                             .recipeSource(ref != null && ref.getSource() != null ? ref.getSource().name() : null)
                             .recipeId(ref != null ? ref.getRecipeId() : null)
                             .build();
