@@ -192,6 +192,11 @@ variable "dynamodb_audit_table" {
   description = "DynamoDB table name for audit log records"
 }
 
+variable "dynamodb_meal_plans_table" {
+  type        = string
+  description = "DynamoDB table name for meal plans"
+}
+
 variable "cognito_user_pool_id" {
   type        = string
   description = "Cognito User Pool ID for admin operations"

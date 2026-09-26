@@ -28,7 +28,10 @@ function GenerateContent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ingredients: ingredients.split(",").map((i) => i.trim()),
+            ingredients: ingredients
+              .split(",")
+              .map((i) => i.trim())
+              .filter((i) => i.length > 0),
             model,
           }),
         });

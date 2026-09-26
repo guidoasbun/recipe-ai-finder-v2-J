@@ -88,3 +88,5 @@ backend/src/main/resources/application-local.properties
 # .githooks/README.md). Enable per clone with: git config core.hooksPath .githooks
 # Keep real keys in AWS Secrets Manager (deploy) or application-local.properties (local);
 # *.tfvars must hold only Secrets Manager ARNs.
+
+commands.txt

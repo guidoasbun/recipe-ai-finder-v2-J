@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.asbun.backend.dto.DataExportJson;
 import io.asbun.backend.dto.ExportStatusResponse;
 import io.asbun.backend.exception.ResourceNotFoundException;
+import io.asbun.backend.model.MealPlan;
 import io.asbun.backend.model.Recipe;
 import io.asbun.backend.model.User;
 import io.asbun.backend.model.enums.AuditEventType;
+import io.asbun.backend.repository.MealPlanRepository;
 import io.asbun.backend.repository.RecipeRepository;
 import io.asbun.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class DataExportService {
 
     private final UserRepository userRepository;
     private final RecipeRepository recipeRepository;
+    private final MealPlanRepository mealPlanRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
     private final DataExportAsyncWorker asyncWorker;
@@ -40,11 +43,14 @@ public class DataExportService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
 
         List<Recipe> recipes = recipeRepository.findByUserId(userId);
+        List<MealPlan> mealPlans = mealPlanRepository.findByOwner(userId);
 
-        DataExportJson exportJson = buildDataExportJson(user, recipes);
+        DataExportJson exportJson = buildDataExportJson(user, recipes, mealPlans);
 
         auditService.logEvent(userId, AuditEventType.DATA_EXPORT_COMPLETED,
-                Map.of("format", "json", "recipeCount", String.valueOf(recipes.size())), null, null);
+                Map.of("format", "json",
+                        "recipeCount", String.valueOf(recipes.size()),
+                        "mealPlanCount", String.valueOf(mealPlans.size())), null, null);
 
         return exportJson;
     }
@@ -73,7 +79,7 @@ public class DataExportService {
         return asyncWorker.getExportStatuses().get(userId);
     }
 
-    private DataExportJson buildDataExportJson(User user, List<Recipe> recipes) {
+    private DataExportJson buildDataExportJson(User user, List<Recipe> recipes, List<MealPlan> mealPlans) {
         DataExportJson.UserExportData userData = DataExportJson.UserExportData.builder()
                 .email(user.getEmail())
                 .username(user.getUsername())
@@ -100,6 +106,7 @@ public class DataExportService {
                 .exportedAt(Instant.now())
                 .user(userData)
                 .recipes(recipeData)
+                .mealPlans(MealPlanExportMapper.map(mealPlans))
                 .missingImages(List.of())
                 .build();
     }

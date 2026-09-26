@@ -117,11 +117,15 @@ class DataExportServicePropertyTest {
                                             S3Presigner s3Presigner,
                                             AuditService auditService,
                                             ObjectMapper objectMapper) {
+        io.asbun.backend.repository.MealPlanRepository mealPlanRepository =
+                mock(io.asbun.backend.repository.MealPlanRepository.class);
+        lenient().when(mealPlanRepository.findByOwner(any()))
+                .thenReturn(java.util.Collections.emptyList());
         DataExportAsyncWorker asyncWorker = new DataExportAsyncWorker(
-                userRepository, recipeRepository, s3Client, s3Presigner, auditService, objectMapper);
+                userRepository, recipeRepository, mealPlanRepository, s3Client, s3Presigner, auditService, objectMapper);
         ReflectionTestUtils.setField(asyncWorker, "bucket", "test-bucket");
         DataExportService service = new DataExportService(
-                userRepository, recipeRepository, auditService, objectMapper, asyncWorker);
+                userRepository, recipeRepository, mealPlanRepository, auditService, objectMapper, asyncWorker);
         ReflectionTestUtils.setField(service, "bucket", "test-bucket");
         return service;
     }
