@@ -58,7 +58,7 @@ oci_tenancy_ocid      = "ocid1.tenancy.oc1..aaaaaaaacirtpm74wletcnptrkct4stvu3rd
 oci_user_ocid         = "ocid1.user.oc1..aaaaaaaavmdgwndvsxuimimhof27g4f4ygmxe5f2nitbvk2vnu4rgebxp5sa"
 oci_fingerprint       = "69:59:91:1b:1a:e7:38:53:fe:60:33:d9:66:83:1e:d4"
 oci_region            = "us-sanjose-1"
-oci_private_key_path  = "/Users/rodrigo/Oracle/guido@asbun.io-2026-09-04T19_21_11.946Z.pem"
+oci_private_key_path  = "~/.oci/oci_api_key.pem"
 oci_admin_cidr        = "70.95.245.8/32"
 
 # Shape: 2 OCPU / 24 GB (PAYG, ~$13/mo) → fp16 quantization at reindex time.
