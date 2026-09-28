@@ -119,11 +119,13 @@ backend, DTO, DynamoDB, IAM, or Terraform changes, and no changes to the `Recipe
 Follows hands-on use ("can users add to plan from the catalog detail page too?") and the
 Copilot review on PR #54. All frontend; no backend/infra change. Full suite green.
 
-- [x] R.1 Mount `AddToPlanButton` on the catalog detail page
-  - `frontend/app/(protected)/browse/[id]/page.tsx`: a primary "Add to plan" button next to
-    the title (`variant="button"`, `source="CATALOG"`, `recipeId={recipe.catalogRecipeId}`).
-    Brought into scope in requirements (1.6), design (§1.3), and the RUNBOOK.
-  - _Requirements: 1.6 | Design: §1.3_
+- [x] R.1 Mount `AddToPlanButton` on both detail pages
+  - `frontend/app/(protected)/browse/[id]/page.tsx`: primary "Add to plan" button next to the
+    title (`variant="button"`, `source="CATALOG"`, `recipeId={recipe.catalogRecipeId}`).
+  - `frontend/app/(protected)/recipes/[id]/page.tsx`: same, `source="SAVED"`,
+    `recipeId={recipe.recipeId}`.
+  - Brought into scope in requirements (1.6, 2.5), design (§1.3), and the RUNBOOK.
+  - _Requirements: 1.6, 2.5 | Design: §1.3_
 
 - [x] R.2 Fix invalid nested-interactive card markup + image-less overlap (review: medium)
   - Browse card is now a non-interactive `<div>` wrapper with the detail `<Link>` and the

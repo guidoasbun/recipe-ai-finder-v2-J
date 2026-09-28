@@ -47,6 +47,8 @@ the UI; it does not re-implement any of that logic.
 - **Changed** `frontend/app/(protected)/browse/[id]/page.tsx` — mounts `AddToPlanButton`
   (`variant="button"`, `source="CATALOG"`) next to the title so a recipe can be scheduled from
   the catalog detail page too.
+- **Changed** `frontend/app/(protected)/recipes/[id]/page.tsx` — mounts `AddToPlanButton`
+  (`variant="button"`, `source="SAVED"`) next to the title on the saved-recipe detail page.
 - **New** `frontend/lib/ingredient.test.ts` — table-driven tests for the ingredient-label
   parser used on browse cards.
 
@@ -61,8 +63,8 @@ No new API helper was added — it calls the existing `getDefaultMealPlan` and `
 - **Saved card (`/recipes`):** an "Add to plan" button appears below View/Delete, only when
   the card is a persisted saved recipe (`effectiveId` present). It never shows for an unsaved
   generated recipe.
-- **Catalog detail (`/browse/[id]`):** an "Add to plan" button sits next to the recipe title
-  and opens the same sheet.
+- **Detail pages (`/browse/[id]`, `/recipes/[id]`):** an "Add to plan" button sits next to the
+  recipe title and opens the same sheet.
 - **Accessibility:** the sheet moves focus to the date field on open, traps Tab within the
   sheet, closes on Escape, and restores focus to the trigger on close. The date field is
   `required`, so an empty date is blocked in-browser (and guarded in code) rather than failing
@@ -113,8 +115,7 @@ need no logic or backend change — the component just composes the existing API
 
 ## 8. Not in this spec (see ROADMAP)
 
-Add-to-plan is wired on the browse cards, the saved-recipe cards, and the **catalog detail
-page** (`/browse/[id]`). The **saved-recipe detail page** (`/recipes/[id]`) is the same
-trivial mount and is a follow-on (no API change). Also still later: grocery lists / structured
+Add-to-plan is wired on the browse cards, the saved-recipe cards, and **both detail pages**
+(`/browse/[id]` and `/recipes/[id]`). Still later (see ROADMAP): grocery lists / structured
 ingredients (spec 3–4), recipe enrichment (spec 5), nutrition (spec 6), the AI assistant
 (spec 7), and calendar export (spec 8).

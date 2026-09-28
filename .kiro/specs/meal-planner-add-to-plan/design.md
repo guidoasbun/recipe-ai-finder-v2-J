@@ -115,9 +115,12 @@ Reuse note: date/ISO helpers come from the existing pure `lib/calendar.ts` (`tod
   `recipeId={recipe.catalogRecipeId}`) in the header row next to the title, styled as a
   primary button via `className`. Not inside a link here, so no bubbling concern.
 
+- **Saved-recipe detail — `/recipes/[id]`** (`frontend/app/(protected)/recipes/[id]/page.tsx`):
+  same mount as the catalog detail page but `source="SAVED"`, `recipeId={recipe.recipeId}`,
+  next to the title.
+
 Because `AddToPlanButton` is self-contained and parameterized by `{source, recipeId, title}`,
-the same component also drops onto the saved-recipe detail page (`/recipes/[id]`) later with
-no API change.
+both detail-page mounts are one-liners over the existing add path — no API change.
 
 ---
 
@@ -235,7 +238,7 @@ Run `npm run test` (and lint/typecheck) in `frontend/`. No backend tests change.
 ## 7. What this design deliberately excludes
 
 - Any backend/infra change — the spec 1 API is complete for this.
-- Bulk add and drag-and-drop — out of scope. (Adding from the **catalog detail** page
-  `/browse/[id]` **is** included, §1.3; the saved-recipe detail page is a trivial follow-on.)
+- Bulk add and drag-and-drop — out of scope. (Adding from **both detail pages** —
+  `/browse/[id]` and `/recipes/[id]` — is included, §1.3.)
 - Changes to the in-calendar `RecipePicker` — untouched.
 - A shared UI component library — we reuse the existing hand-rolled Tailwind patterns.

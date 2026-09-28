@@ -49,9 +49,9 @@ no changes to the `Recipe`/`CatalogRecipe` models.
 - Any backend change (new endpoints, DTOs, persistence, Terraform) — not needed.
 - Grocery lists, structured ingredients, nutrition, recipe enrichment, AI assistant,
   calendar export (specs 3–8).
-- Adding from the **saved-recipe detail** page (`/recipes/[id]`) — a possible small follow-on,
-  not required here. (The **catalog** detail page `/browse/[id]` **is** in scope — see
-  Requirement 1.6.)
+- Both recipe **detail** pages — the catalog `/browse/[id]` and the saved-recipe
+  `/recipes/[id]` — are in scope (see Requirement 2.5 and 1.6). Bulk add and drag-and-drop
+  remain out of scope.
 - Bulk "add multiple recipes at once" / drag-and-drop onto the calendar.
 - Changing the in-calendar `RecipePicker` flow (it stays as-is).
 
@@ -98,6 +98,9 @@ on each recipe card, so that I can schedule one of my own recipes onto my calend
    user's default plan with `source = SAVED` and `recipeId = recipeId`.
 4. WHEN the add succeeds THEN the card SHALL confirm it (transient/inline), without a
    full-page reload, and without disturbing the card's existing Save/Delete/image behavior.
+5. WHEN a user views the saved-recipe **detail** page (`/recipes/[id]`) THEN it SHALL present
+   an "Add to plan" action (same component and add path), so a saved recipe can be scheduled
+   from the detail view as well as the card.
 
 ## Requirement 3 — Date and meal-slot selection
 
@@ -197,9 +200,8 @@ to work well on a small touch screen.
 Recorded so this spec doesn't paint later specs into a corner. Not implemented here.
 
 - **Add from the detail pages.** The same self-contained component (parameterized by
-  `{source, recipeId, title}`) is mounted on the catalog detail page `/browse/[id]` in this
-  spec (Requirement 1.6). The saved-recipe detail page `/recipes/[id]` is the same trivial
-  mount and can follow with no new API.
+  `{source, recipeId, title}`) is mounted on both detail pages in this spec: catalog
+  `/browse/[id]` (Requirement 1.6) and saved-recipe `/recipes/[id]` (Requirement 2.5).
 - **Add-to-plan for AI assistant (spec 7).** The assistant will add entries through the same
   `addEntry` path; keeping this feature purely client-side over the existing API keeps that
   surface clean.
