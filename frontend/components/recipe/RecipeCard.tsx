@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Recipe, GeneratedRecipe } from "@/types/recipe";
 import { MODELS, IMAGE_MODELS } from "@/lib/constants";
 import { dietaryLabel } from "@/lib/dietary";
+import AddToPlanButton from "@/components/mealplan/AddToPlanButton";
 
 interface Props {
   recipe: Recipe | GeneratedRecipe;
@@ -285,6 +286,11 @@ export default function RecipeCard({ recipe, saved = false, model, imageModel }:
             </>
           )}
         </div>
+        {saved_ && effectiveId && (
+          <div className="mt-2 flex">
+            <AddToPlanButton source="SAVED" recipeId={effectiveId} title={recipe.title} />
+          </div>
+        )}
       </div>
     </div>
   );

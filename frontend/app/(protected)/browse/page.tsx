@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Loader2, Search } from "lucide-react";
 import { DIETARY_RESTRICTIONS, dietaryLabel } from "@/lib/dietary";
+import { ingredientName } from "@/lib/ingredient";
+import AddToPlanButton from "@/components/mealplan/AddToPlanButton";
 
 interface CatalogRecipe {
   catalogRecipeId: string;
@@ -201,8 +203,16 @@ export default function BrowsePage() {
               <Link
                 key={r.catalogRecipeId}
                 href={`/browse/${r.catalogRecipeId}`}
-                className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md"
+                className="relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md"
               >
+                <div className="absolute right-2 top-2 z-10">
+                  <AddToPlanButton
+                    source="CATALOG"
+                    recipeId={r.catalogRecipeId}
+                    title={r.title}
+                    variant="icon"
+                  />
+                </div>
                 {r.imageUrl && (
                   <img
                     src={r.imageUrl}
@@ -215,6 +225,12 @@ export default function BrowsePage() {
                   {r.description && (
                     <p className="mb-2 line-clamp-2 text-xs text-gray-500">
                       {r.description}
+                    </p>
+                  )}
+                  {r.ingredients?.length > 0 && (
+                    <p className="mb-2 line-clamp-2 text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">Ingredients: </span>
+                      {r.ingredients.map(ingredientName).join(", ")}
                     </p>
                   )}
                   <div className="mt-auto flex flex-wrap gap-1 pt-2">
