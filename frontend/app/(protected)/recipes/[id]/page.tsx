@@ -5,6 +5,7 @@ import { useParams, notFound } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Recipe } from "@/types/recipe";
 import DeleteRecipeButton from "@/components/recipe/DeleteRecipeButton";
+import AddToPlanButton from "@/components/mealplan/AddToPlanButton";
 import { MODELS, IMAGE_MODELS } from "@/lib/constants";
 import { dietaryLabel } from "@/lib/dietary";
 
@@ -89,7 +90,15 @@ export default function RecipeDetailPage() {
           className="mb-6 w-full rounded-2xl object-cover h-64"
         />
       )}
-      <h1 className="mb-2 text-3xl font-bold text-gray-900">{recipe.title}</h1>
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-3xl font-bold text-gray-900">{recipe.title}</h1>
+        <AddToPlanButton
+          source="SAVED"
+          recipeId={recipe.recipeId}
+          title={recipe.title}
+          className="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        />
+      </div>
 
       {recipe.dietaryTags && recipe.dietaryTags.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1">

@@ -5,6 +5,7 @@ import { useParams, notFound } from "next/navigation";
 import Link from "next/link";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { dietaryLabel } from "@/lib/dietary";
+import AddToPlanButton from "@/components/mealplan/AddToPlanButton";
 
 interface CatalogRecipe {
   catalogRecipeId: string;
@@ -98,7 +99,15 @@ export default function CatalogRecipeDetailPage() {
         />
       )}
 
-      <h1 className="mb-2 text-3xl font-bold text-gray-900">{recipe.title}</h1>
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-3xl font-bold text-gray-900">{recipe.title}</h1>
+        <AddToPlanButton
+          source="CATALOG"
+          recipeId={recipe.catalogRecipeId}
+          title={recipe.title}
+          className="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        />
+      </div>
 
       {recipe.dietaryTags?.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1">
