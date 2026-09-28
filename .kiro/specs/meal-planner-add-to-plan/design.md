@@ -110,8 +110,14 @@ Reuse note: date/ISO helpers come from the existing pure `lib/calendar.ts` (`tod
   control (e.g. top-right of the image or in the card footer) whose click is stopped from
   bubbling into the link (Req 1.2). Do not restructure the card beyond inserting the control.
 
+- **Catalog detail — `/browse/[id]`** (`frontend/app/(protected)/browse/[id]/page.tsx`):
+  mount `AddToPlanButton` (`variant="button"`, `source="CATALOG"`,
+  `recipeId={recipe.catalogRecipeId}`) in the header row next to the title, styled as a
+  primary button via `className`. Not inside a link here, so no bubbling concern.
+
 Because `AddToPlanButton` is self-contained and parameterized by `{source, recipeId, title}`,
-the same component drops onto the detail pages later with no API change (design-forward note).
+the same component also drops onto the saved-recipe detail page (`/recipes/[id]`) later with
+no API change.
 
 ---
 
@@ -212,7 +218,15 @@ tests do.
     sheet open.
   - In-flight state disables the confirm button (no double submit).
 - **Mount-point smoke:** `RecipeCard` renders "Add to plan" only when `saved` and an id
-  exists; a browse card renders the affordance for each result.
+  exists; a browse card renders the affordance for each result; the catalog detail page
+  renders it next to the title.
+- **`lib/ingredient.ts`:** table-driven unit tests for `ingredientName` (plain names, mixed
+  fractions, unit/descriptor stripping, parenthetical notes, unicode fractions, and the
+  empty/lone-quantity fallbacks) — it drives the label shown on every browse card.
+
+The sheet also implements modal keyboard/focus behavior (initial focus, Escape to close,
+Tab/Shift+Tab containment, focus restoration to the trigger) and marks the date input
+`required` so an empty date can't be submitted.
 
 Run `npm run test` (and lint/typecheck) in `frontend/`. No backend tests change.
 
@@ -221,7 +235,7 @@ Run `npm run test` (and lint/typecheck) in `frontend/`. No backend tests change.
 ## 7. What this design deliberately excludes
 
 - Any backend/infra change — the spec 1 API is complete for this.
-- Adding from detail pages, bulk add, drag-and-drop — out of scope (component is built to
-  make the detail-page case trivial later).
+- Bulk add and drag-and-drop — out of scope. (Adding from the **catalog detail** page
+  `/browse/[id]` **is** included, §1.3; the saved-recipe detail page is a trivial follow-on.)
 - Changes to the in-calendar `RecipePicker` — untouched.
 - A shared UI component library — we reuse the existing hand-rolled Tailwind patterns.

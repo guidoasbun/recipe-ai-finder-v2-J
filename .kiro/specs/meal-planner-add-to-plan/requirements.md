@@ -49,8 +49,9 @@ no changes to the `Recipe`/`CatalogRecipe` models.
 - Any backend change (new endpoints, DTOs, persistence, Terraform) — not needed.
 - Grocery lists, structured ingredients, nutrition, recipe enrichment, AI assistant,
   calendar export (specs 3–8).
-- Adding from surfaces other than the browse catalog cards and saved-recipe cards (e.g. the
-  recipe **detail** pages) — a possible small follow-on, not required here.
+- Adding from the **saved-recipe detail** page (`/recipes/[id]`) — a possible small follow-on,
+  not required here. (The **catalog** detail page `/browse/[id]` **is** in scope — see
+  Requirement 1.6.)
 - Bulk "add multiple recipes at once" / drag-and-drop onto the calendar.
 - Changing the in-calendar `RecipePicker` flow (it stays as-is).
 
@@ -77,6 +78,9 @@ leaving the browse page.
    inline confirmed state) and return the user to browsing, without a full-page reload.
 5. IF the recipe card has no usable `catalogRecipeId` THEN the "Add to plan" affordance SHALL
    NOT attempt an add with a blank id (consistent with the picker's blank-id guard).
+6. WHEN a user views the catalog recipe **detail** page (`/browse/[id]`) THEN it SHALL present
+   an "Add to plan" action (using the same component and add path as the card), so a recipe
+   can be scheduled from the detail view as well as the grid.
 
 ## Requirement 2 — "Add to plan" on saved-recipe cards
 
@@ -192,9 +196,10 @@ to work well on a small touch screen.
 
 Recorded so this spec doesn't paint later specs into a corner. Not implemented here.
 
-- **Add from the detail pages.** The same date/slot add component built here should be
-  reusable from `/browse/[id]` and `/recipes/[id]` later with no new API — keep it a
-  self-contained component parameterized by `{source, recipeId, title}`.
+- **Add from the detail pages.** The same self-contained component (parameterized by
+  `{source, recipeId, title}`) is mounted on the catalog detail page `/browse/[id]` in this
+  spec (Requirement 1.6). The saved-recipe detail page `/recipes/[id]` is the same trivial
+  mount and can follow with no new API.
 - **Add-to-plan for AI assistant (spec 7).** The assistant will add entries through the same
   `addEntry` path; keeping this feature purely client-side over the existing API keeps that
   surface clean.

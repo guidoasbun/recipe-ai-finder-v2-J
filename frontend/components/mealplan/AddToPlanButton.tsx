@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarPlus, Check, Loader2, X } from "lucide-react";
 import { RecipeSource } from "@/types/mealPlan";
 import { MEAL_SLOTS, MealSlot, mealSlotLabel } from "@/lib/mealSlots";
@@ -165,8 +165,64 @@ function AddToPlanSheet({ title, busy, errorMsg, onConfirm, onClose }: SheetProp
   const [slot, setSlot] = useState<MealSlot>("DINNER");
   const [spanDays, setSpanDays] = useState(1);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+
+  // Modal keyboard/focus behavior: move focus in on open, keep Tab within the sheet, close on
+  // Escape, and restore focus to the trigger on close. (aria-modal alone does none of this.)
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    // Focus the first field once the sheet is mounted.
+    dateRef.current?.focus();
+
+    function focusable(): HTMLElement[] {
+      const root = panelRef.current;
+      if (!root) return [];
+      return Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      // Wrap focus at the edges so it never escapes to content behind the overlay.
+      if (e.shiftKey && (active === first || !panelRef.current?.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      // Restore focus to whatever opened the sheet (the trigger button).
+      previouslyFocused?.focus?.();
+    };
+  }, [onClose]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Guard against an empty/cleared date so we never post an invalid entry (the required
+    // attribute blocks it in-browser; this covers programmatic submits too).
+    if (!date) {
+      dateRef.current?.focus();
+      return;
+    }
     onConfirm({ date, slot, spanDays });
   }
 
@@ -178,7 +234,10 @@ function AddToPlanSheet({ title, busy, errorMsg, onConfirm, onClose }: SheetProp
       aria-label={`Add ${title ?? "recipe"} to plan`}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex w-full flex-col sm:h-auto sm:max-w-md sm:rounded-xl sm:bg-white sm:shadow-xl">
+      <div
+        ref={panelRef}
+        className="flex w-full flex-col sm:h-auto sm:max-w-md sm:rounded-xl sm:bg-white sm:shadow-xl"
+      >
         <div className="flex items-center justify-between border-b border-gray-200 p-4">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-gray-900">Add to plan</h2>
@@ -201,7 +260,10 @@ function AddToPlanSheet({ title, busy, errorMsg, onConfirm, onClose }: SheetProp
             </label>
             <input
               id="add-date"
+              ref={dateRef}
               type="date"
+              required
+              aria-required="true"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"

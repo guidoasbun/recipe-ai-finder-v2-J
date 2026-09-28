@@ -40,9 +40,15 @@ the UI; it does not re-implement any of that logic.
   (`variant="button"`, `source="SAVED"`) below the action row, only for a saved recipe with an
   id.
 - **Changed** `frontend/app/(protected)/browse/page.tsx` — mounts `AddToPlanButton`
-  (`variant="icon"`, `source="CATALOG"`) as an overlay control on each catalog card; the card
-  is now `relative` so the button sits top-right and its click is stopped from following the
-  card's `next/link`.
+  (`variant="icon"`, `source="CATALOG"`) as an overlay control on each catalog card. The card
+  is a non-interactive wrapper (`relative`) with the detail `<Link>` and the button as
+  **siblings** (not a button nested in an anchor), and the title reserves right padding so the
+  overlay never covers it.
+- **Changed** `frontend/app/(protected)/browse/[id]/page.tsx` — mounts `AddToPlanButton`
+  (`variant="button"`, `source="CATALOG"`) next to the title so a recipe can be scheduled from
+  the catalog detail page too.
+- **New** `frontend/lib/ingredient.test.ts` — table-driven tests for the ingredient-label
+  parser used on browse cards.
 
 No new API helper was added — it calls the existing `getDefaultMealPlan` and `addEntry` in
 `frontend/lib/mealPlanApi.ts`.
@@ -55,6 +61,12 @@ No new API helper was added — it calls the existing `getDefaultMealPlan` and `
 - **Saved card (`/recipes`):** an "Add to plan" button appears below View/Delete, only when
   the card is a persisted saved recipe (`effectiveId` present). It never shows for an unsaved
   generated recipe.
+- **Catalog detail (`/browse/[id]`):** an "Add to plan" button sits next to the recipe title
+  and opens the same sheet.
+- **Accessibility:** the sheet moves focus to the date field on open, traps Tab within the
+  sheet, closes on Escape, and restores focus to the trigger on close. The date field is
+  `required`, so an empty date is blocked in-browser (and guarded in code) rather than failing
+  a backend round-trip.
 - **The sheet:** full-screen on phones, centered card on `sm+` (mirrors `EntryEditor`/
   `RecipePicker`). Collects a **date** (native date input, defaults to today), a **meal slot**
   (`MEAL_SLOTS`, defaults to Dinner), and an optional **meal-prep span** (1–14 days, default
@@ -101,7 +113,8 @@ need no logic or backend change — the component just composes the existing API
 
 ## 8. Not in this spec (see ROADMAP)
 
-Add-to-plan from the recipe **detail** pages (`/browse/[id]`, `/recipes/[id]`) — the component
-is built to make that a trivial follow-on with no API change, but it isn't wired here. Also
-still later: grocery lists / structured ingredients (spec 3–4), recipe enrichment (spec 5),
-nutrition (spec 6), the AI assistant (spec 7), and calendar export (spec 8).
+Add-to-plan is wired on the browse cards, the saved-recipe cards, and the **catalog detail
+page** (`/browse/[id]`). The **saved-recipe detail page** (`/recipes/[id]`) is the same
+trivial mount and is a follow-on (no API change). Also still later: grocery lists / structured
+ingredients (spec 3–4), recipe enrichment (spec 5), nutrition (spec 6), the AI assistant
+(spec 7), and calendar export (spec 8).

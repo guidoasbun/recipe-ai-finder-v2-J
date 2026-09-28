@@ -72,6 +72,43 @@ describe("AddToPlanButton", () => {
     expect(screen.getByLabelText("Meal prep for")).toBeInTheDocument();
   });
 
+  it("closes the sheet on Escape", async () => {
+    const user = userEvent.setup();
+    stubHappyPath();
+    render(<AddToPlanButton source="SAVED" recipeId="r1" title="Tacos" />);
+
+    await user.click(screen.getByRole("button", { name: /Add to plan/i }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("does not submit (or call the API) when the date is cleared", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubHappyPath();
+    render(<AddToPlanButton source="SAVED" recipeId="r1" title="Tacos" />);
+
+    await user.click(screen.getByRole("button", { name: /Add to plan/i }));
+    const dateInput = await screen.findByLabelText("Date");
+    expect(dateInput).toBeRequired();
+
+    await user.clear(dateInput);
+    const buttons = screen.getAllByRole("button", { name: /Add to plan/i });
+    await user.click(buttons[buttons.length - 1]);
+
+    // No entry POST should have fired; the sheet stays open.
+    const post = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        typeof url === "string" &&
+        url.includes("/entries") &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(post).toBeFalsy();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("adds a SAVED recipe to the default plan with the chosen date/slot/span", async () => {
     const user = userEvent.setup();
     const fetchMock = stubHappyPath();

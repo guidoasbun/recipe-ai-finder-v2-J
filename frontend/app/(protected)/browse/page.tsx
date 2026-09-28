@@ -200,11 +200,51 @@ export default function BrowsePage() {
         <>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {results.items.map((r) => (
-              <Link
+              // Non-interactive card wrapper: the detail link and the add-to-plan control are
+              // siblings, not nested, so we don't put a <button> inside an <a> (invalid markup
+              // with unreliable keyboard/AT behavior).
+              <div
                 key={r.catalogRecipeId}
-                href={`/browse/${r.catalogRecipeId}`}
                 className="relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md"
               >
+                <Link
+                  href={`/browse/${r.catalogRecipeId}`}
+                  className="flex flex-1 flex-col"
+                >
+                  {r.imageUrl && (
+                    <img
+                      src={r.imageUrl}
+                      alt={r.title}
+                      className="h-40 w-full object-cover"
+                    />
+                  )}
+                  <div className="flex flex-1 flex-col p-4">
+                    {/* Reserve room on the first line so the overlay control never covers the
+                        title on image-less cards. */}
+                    <h2 className="mb-1 pr-10 font-semibold text-gray-900">{r.title}</h2>
+                    {r.description && (
+                      <p className="mb-2 line-clamp-2 text-xs text-gray-500">
+                        {r.description}
+                      </p>
+                    )}
+                    {r.ingredients?.length > 0 && (
+                      <p className="mb-2 line-clamp-2 text-xs text-gray-600">
+                        <span className="font-medium text-gray-700">Ingredients: </span>
+                        {r.ingredients.map(ingredientName).join(", ")}
+                      </p>
+                    )}
+                    <div className="mt-auto flex flex-wrap gap-1 pt-2">
+                      {r.dietaryTags?.slice(0, 3).map((t) => (
+                        <span
+                          key={t}
+                          className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600"
+                        >
+                          {dietaryLabel(t)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </Link>
                 <div className="absolute right-2 top-2 z-10">
                   <AddToPlanButton
                     source="CATALOG"
@@ -213,38 +253,7 @@ export default function BrowsePage() {
                     variant="icon"
                   />
                 </div>
-                {r.imageUrl && (
-                  <img
-                    src={r.imageUrl}
-                    alt={r.title}
-                    className="h-40 w-full object-cover"
-                  />
-                )}
-                <div className="flex flex-1 flex-col p-4">
-                  <h2 className="mb-1 font-semibold text-gray-900">{r.title}</h2>
-                  {r.description && (
-                    <p className="mb-2 line-clamp-2 text-xs text-gray-500">
-                      {r.description}
-                    </p>
-                  )}
-                  {r.ingredients?.length > 0 && (
-                    <p className="mb-2 line-clamp-2 text-xs text-gray-600">
-                      <span className="font-medium text-gray-700">Ingredients: </span>
-                      {r.ingredients.map(ingredientName).join(", ")}
-                    </p>
-                  )}
-                  <div className="mt-auto flex flex-wrap gap-1 pt-2">
-                    {r.dietaryTags?.slice(0, 3).map((t) => (
-                      <span
-                        key={t}
-                        className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600"
-                      >
-                        {dietaryLabel(t)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </Link>
+              </div>
             ))}
           </div>
 

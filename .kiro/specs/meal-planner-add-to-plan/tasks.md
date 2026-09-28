@@ -96,8 +96,10 @@ backend, DTO, DynamoDB, IAM, or Terraform changes, and no changes to the `Recipe
       calendar shows it" is best confirmed with a hands-on pass in the running app.
 - [x] Adding from a saved-recipe card posts a `SAVED` entry to the default plan (asserted in
       tests).
-- [x] Catalog "Add to plan" never navigates to the detail page (test: click does not bubble
-      to the surrounding clickable card; component calls `preventDefault`/`stopPropagation`).
+- [x] Catalog "Add to plan" never navigates to the detail page. The button and the detail
+      `<Link>` are now **siblings** (not nested), so this is structural; the component also
+      calls `preventDefault`/`stopPropagation` as belt-and-suspenders (test: click does not
+      bubble to a surrounding clickable ancestor).
 - [x] The date/slot sheet defaults to today + Dinner and uses the shared full-screen/bottom-
       sheet skeleton (`fixed inset-0`, native date input, tap-only). Actual phone
       layout/no-horizontal-scroll is a visual check to do on a device (per the UI-iteration
@@ -109,3 +111,37 @@ backend, DTO, DynamoDB, IAM, or Terraform changes, and no changes to the `Recipe
       pre-existing tuple-typing errors in spec 1's `meal-plans/page.test.tsx`, unrelated to
       this change.
 - [x] No backend/infra/Terraform diff — the change set is only frontend files.
+
+---
+
+## Revision — catalog detail page + PR #54 review fixes (complete)
+
+Follows hands-on use ("can users add to plan from the catalog detail page too?") and the
+Copilot review on PR #54. All frontend; no backend/infra change. Full suite green.
+
+- [x] R.1 Mount `AddToPlanButton` on the catalog detail page
+  - `frontend/app/(protected)/browse/[id]/page.tsx`: a primary "Add to plan" button next to
+    the title (`variant="button"`, `source="CATALOG"`, `recipeId={recipe.catalogRecipeId}`).
+    Brought into scope in requirements (1.6), design (§1.3), and the RUNBOOK.
+  - _Requirements: 1.6 | Design: §1.3_
+
+- [x] R.2 Fix invalid nested-interactive card markup + image-less overlap (review: medium)
+  - Browse card is now a non-interactive `<div>` wrapper with the detail `<Link>` and the
+    `AddToPlanButton` as **siblings** (no `<button>` inside an `<a>`). Title reserves right
+    padding so the top-right overlay never covers it, including on image-less cards.
+
+- [x] R.3 Modal focus/keyboard behavior on the sheet (review: medium)
+  - Initial focus to the date field, Tab/Shift+Tab containment within the sheet, Escape to
+    close, and focus restoration to the trigger on close.
+
+- [x] R.4 Require the date (review: medium)
+  - Date input is `required` + `aria-required`; `handleSubmit` guards an empty date so no
+    invalid entry is posted.
+
+- [x] R.5 Unit tests for `lib/ingredient.ts` (review: low)
+  - `frontend/lib/ingredient.test.ts`: 22 table-driven cases (plain names, mixed/decimal/
+    range/unicode fractions, unit + descriptor stripping, parentheticals, fallbacks).
+
+- [x] R.6 Align docs with the expanded scope (review: low)
+  - requirements/design/tasks/RUNBOOK updated so the catalog detail-page mount is described
+    as in-scope (the saved-recipe detail page remains a noted follow-on).
