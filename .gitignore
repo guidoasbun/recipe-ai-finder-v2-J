@@ -90,3 +90,4 @@ backend/src/main/resources/application-local.properties
 # *.tfvars must hold only Secrets Manager ARNs.
 
 commands.txt
+.idea/
