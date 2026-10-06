@@ -31,6 +31,13 @@ public class CatalogRecipe {
     private String title;
     private String description;
     private List<String> ingredients;
+    /**
+     * Structured breakdown of {@link #ingredients}, added additively (Structured Ingredients
+     * spec). When present it corresponds positionally and in count to {@code ingredients}
+     * (one entry per raw string). Null on catalog recipes not yet backfilled; {@code
+     * ingredients} stays the authoritative display text and the embedding input is unchanged.
+     */
+    private List<StructuredIngredient> structuredIngredients;
     private List<String> steps;
     private String imageUrl;
 

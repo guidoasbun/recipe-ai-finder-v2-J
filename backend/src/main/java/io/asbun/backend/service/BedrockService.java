@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.asbun.backend.dto.GenerateRecipeResponse;
+import io.asbun.backend.ingest.IngredientParser;
+import io.asbun.backend.model.StructuredIngredient;
 import io.asbun.backend.model.enums.BedrockModel;
 import io.asbun.backend.model.enums.DietaryRestriction;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,8 @@ import java.util.stream.Collectors;
 public class BedrockService {
 
     private final BedrockRuntimeClient bedrockRuntimeClient;
+    /** Fallback/normalizer that derives structured ingredients from the display strings. */
+    private final IngredientParser ingredientParser;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public List<GenerateRecipeResponse> generateRecipes(List<String> ingredients,
@@ -74,7 +78,11 @@ public class BedrockService {
         String outputInstructions =
             "Respond ONLY with a valid JSON array of 3 recipe objects. Each object must have these exact fields: " +
             "\"title\" (string), \"description\" (string, 1-2 sentences), " +
-            "\"ingredients\" (array of strings with quantities), \"steps\" (array of strings). " +
+            "\"ingredients\" (array of strings with quantities), " +
+            "\"structuredIngredients\" (array of objects, one per entry in \"ingredients\", in the same " +
+            "order and the same length, each with \"quantity\" (number or null), \"unit\" (string or null, " +
+            "e.g. \"cup\", \"tsp\", \"g\"), and \"item\" (string, the ingredient name without the amount)), " +
+            "\"steps\" (array of strings). " +
             "Do not include any text before or after the JSON array.";
 
         return basePrompt + dietaryClause + outputInstructions;
@@ -178,6 +186,7 @@ public class BedrockService {
                         .title(recipe.path("title").asText())
                         .description(recipe.path("description").asText())
                         .ingredients(ingredients)
+                        .structuredIngredients(resolveStructured(recipe, ingredients))
                         .steps(steps)
                         .build());
             }
@@ -185,5 +194,45 @@ public class BedrockService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse Bedrock response", e);
         }
+    }
+
+    /**
+     * Resolves a recipe's structured ingredients. Uses the model's {@code structuredIngredients}
+     * array only when it is present and its length matches the display {@code ingredients} count
+     * (the positional-correspondence invariant, spec §1.3), binding each entry's {@code raw} to
+     * the corresponding display string. Otherwise — absent, malformed, or length mismatch — it
+     * derives the whole list from the display strings via {@link IngredientParser}, so a model
+     * that ignores the structured instruction never breaks generation.
+     */
+    private List<StructuredIngredient> resolveStructured(JsonNode recipe, List<String> ingredients) {
+        JsonNode node = recipe.path("structuredIngredients");
+        if (node.isArray() && node.size() == ingredients.size()) {
+            try {
+                List<StructuredIngredient> structured = new ArrayList<>(ingredients.size());
+                for (int i = 0; i < ingredients.size(); i++) {
+                    JsonNode e = node.get(i);
+                    String raw = ingredients.get(i);
+                    Double quantity = e.hasNonNull("quantity") ? e.path("quantity").asDouble() : null;
+                    String unit = e.hasNonNull("unit") && !e.path("unit").asText().isBlank()
+                            ? e.path("unit").asText() : null;
+                    String item = e.hasNonNull("item") && !e.path("item").asText().isBlank()
+                            ? e.path("item").asText()
+                            // Blank/absent item for this one entry: parse it from its raw string.
+                            : ingredientParser.parse(raw).getItem();
+                    structured.add(StructuredIngredient.builder()
+                            .quantity(quantity)
+                            .unit(unit)
+                            .item(item)
+                            .raw(raw)
+                            .build());
+                }
+                return structured;
+            } catch (RuntimeException malformed) {
+                log.debug("Malformed structuredIngredients from model; falling back to parser: {}",
+                        malformed.getMessage());
+            }
+        }
+        // Absent, not an array, length mismatch, or malformed → derive from the display strings.
+        return ingredientParser.parseAll(ingredients);
     }
 }

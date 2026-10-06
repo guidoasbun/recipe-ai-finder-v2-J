@@ -1,5 +1,6 @@
 package io.asbun.backend.dto;
 
+import io.asbun.backend.model.StructuredIngredient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,6 +21,8 @@ public class CatalogRecipeDto {
     private String title;
     private String description;
     private List<String> ingredients;
+    /** Structured breakdown of {@link #ingredients}; additive, absent/empty until backfilled. */
+    private List<StructuredIngredient> structuredIngredients;
     private List<String> steps;
     private String imageUrl;
     private List<String> dietaryTags;

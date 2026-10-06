@@ -2,8 +2,10 @@ package io.asbun.backend.service;
 
 import io.asbun.backend.dto.RecipeDto;
 import io.asbun.backend.dto.SaveRecipeRequest;
+import io.asbun.backend.dto.StructuredIngredientRequest;
 import io.asbun.backend.exception.ResourceNotFoundException;
 import io.asbun.backend.model.Recipe;
+import io.asbun.backend.model.StructuredIngredient;
 import io.asbun.backend.repository.RecipeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +26,7 @@ public class RecipeService {
     private final S3Service s3Service;
     private final StatsService statsService;
     private final io.asbun.backend.ingest.DietaryTagger dietaryTagger;
+    private final io.asbun.backend.ingest.IngredientParser ingredientParser;
 
     public RecipeDto saveRecipe(SaveRecipeRequest request, String userId) {
         String recipeId = UUID.randomUUID().toString();
@@ -35,12 +38,19 @@ public class RecipeService {
                 ? request.getDietaryTags()
                 : dietaryTagger.tag(request.getIngredients());
 
+        // Persist the client-supplied structured ingredients when they line up with the string
+        // list (one entry per raw string, spec §1.3); otherwise derive them from the strings so
+        // a saved recipe always carries structure (Req 4.2). The string list stays authoritative.
+        List<StructuredIngredient> structuredIngredients =
+                resolveStructuredIngredients(request.getIngredients(), request.getStructuredIngredients());
+
         Recipe recipe = Recipe.builder()
                 .recipeId(recipeId)
                 .userId(userId)
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .ingredients(request.getIngredients())
+                .structuredIngredients(structuredIngredients)
                 .steps(request.getSteps())
                 .dietaryTags(dietaryTags)
                 .model(request.getModel())
@@ -139,6 +149,37 @@ public class RecipeService {
                 recipe.getRecipeId(), recipe.getTitle(), recipe.getImageModel());
     }
 
+    /**
+     * Resolves the structured ingredients to persist. Uses the client-submitted list only when
+     * it is present and lines up one-to-one with the string {@code ingredients} (the
+     * positional-correspondence invariant, spec §1.3), binding each entry's {@code raw} to the
+     * corresponding string. Otherwise — absent or count mismatch — it derives the whole list
+     * from the strings via {@link io.asbun.backend.ingest.IngredientParser} so a saved recipe
+     * always carries structure (Req 4.2).
+     */
+    private List<StructuredIngredient> resolveStructuredIngredients(
+            List<String> ingredients, List<StructuredIngredientRequest> submitted) {
+        if (submitted != null && ingredients != null && submitted.size() == ingredients.size()) {
+            List<StructuredIngredient> out = new java.util.ArrayList<>(ingredients.size());
+            for (int i = 0; i < ingredients.size(); i++) {
+                StructuredIngredientRequest req = submitted.get(i);
+                String raw = ingredients.get(i);
+                String item = (req.getItem() != null && !req.getItem().isBlank())
+                        ? req.getItem()
+                        // Blank item for this one entry: parse it from its raw string.
+                        : ingredientParser.parse(raw).getItem();
+                out.add(StructuredIngredient.builder()
+                        .quantity(req.getQuantity())
+                        .unit((req.getUnit() != null && !req.getUnit().isBlank()) ? req.getUnit() : null)
+                        .item(item)
+                        .raw(raw)
+                        .build());
+            }
+            return out;
+        }
+        return ingredientParser.parseAll(ingredients);
+    }
+
     private RecipeDto toDto(Recipe recipe) {
         String imageUrl = null;
         if (recipe.getImageUrl() != null) {
@@ -159,6 +200,7 @@ public class RecipeService {
                 .title(recipe.getTitle())
                 .description(recipe.getDescription())
                 .ingredients(recipe.getIngredients())
+                .structuredIngredients(recipe.getStructuredIngredients())
                 .steps(recipe.getSteps())
                 .dietaryTags(recipe.getDietaryTags())
                 .imageUrl(imageUrl)

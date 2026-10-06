@@ -1,6 +1,7 @@
 package io.asbun.backend.ingest;
 
 import io.asbun.backend.model.CatalogRecipe;
+import io.asbun.backend.model.StructuredIngredient;
 import io.asbun.backend.repository.CatalogRecipeRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -34,6 +35,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
 
     private final CatalogRecipeRepository repository;
     private final DietaryTagger dietaryTagger;
+    private final IngredientParser ingredientParser;
     private final SynchronousEmbeddingStrategy syncStrategy;
     private final BatchEmbeddingStrategy batchStrategy;
     private final Path sourceDir;
@@ -46,6 +48,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
 
     public CatalogIngestionRunner(CatalogRecipeRepository repository,
                                   DietaryTagger dietaryTagger,
+                                  IngredientParser ingredientParser,
                                   SynchronousEmbeddingStrategy syncStrategy,
                                   BatchEmbeddingStrategy batchStrategy,
                                   @Value("${catalog.ingest.source-dir}") String sourceDir,
@@ -61,6 +64,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
         // the separate table without touching the in-app table (rollback preservation).
         this.repository = repository.forTable(targetTable);
         this.dietaryTagger = dietaryTagger;
+        this.ingredientParser = ingredientParser;
         this.syncStrategy = syncStrategy;
         this.batchStrategy = batchStrategy;
         this.sourceDir = Path.of(sourceDir);
@@ -90,7 +94,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
             log.info("RecipeNLG source enabled: file={}, skip={}, cap={}", recipeNlgFile,
                     recipeNlgSkipRecords, cap == Integer.MAX_VALUE ? "none (full set)" : cap);
         } else {
-            sources.add(new XlsxMealDbSource(sourceDir.resolveSibling("archive")));
+            sources.add(new XlsxMealDbSource(sourceDir.resolveSibling("archive"), ingredientParser));
             sources.add(new CsvBetterRecipesSource(sourceDir.resolveSibling("archive-1").resolve("recipes.csv")));
         }
 
@@ -136,6 +140,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                             .title(p.title())
                             .description(p.description())
                             .ingredients(p.ingredients())
+                            .structuredIngredients(resolveStructured(p))
                             .steps(p.steps())
                             .imageUrl(p.imageUrl())
                             .dietaryTags(tags)
@@ -254,6 +259,7 @@ public class CatalogIngestionRunner implements CommandLineRunner {
                     .title(p.title())
                     .description(p.description())
                     .ingredients(p.ingredients())
+                    .structuredIngredients(resolveStructured(p))
                     .steps(p.steps())
                     .imageUrl(p.imageUrl())
                     .dietaryTags(dietaryTagger.tag(p.ingredients()))
@@ -281,6 +287,22 @@ public class CatalogIngestionRunner implements CommandLineRunner {
         int missing = (int) (toEmbed.size() - emitted);
         log.info("Chunk persisted: {} saved, {} missing-vector", persisted[0], missing);
         return new int[]{persisted[0], missing};
+    }
+
+    /**
+     * Structured ingredients for a parsed recipe (Structured Ingredients spec §5.1). Uses the
+     * source's own structure when it provided one that lines up with the string list (one entry
+     * per raw string); otherwise derives it from the strings via the parser. Purely additive —
+     * {@code searchText}, {@code dietaryTags}, and {@link #embeddingInput} are unaffected, so no
+     * vector changes.
+     */
+    private List<StructuredIngredient> resolveStructured(ParsedRecipe p) {
+        List<StructuredIngredient> fromSource = p.structuredIngredients();
+        if (fromSource != null && p.ingredients() != null
+                && fromSource.size() == p.ingredients().size()) {
+            return fromSource;
+        }
+        return ingredientParser.parseAll(p.ingredients());
     }
 
     private String embeddingInput(ParsedRecipe p) {

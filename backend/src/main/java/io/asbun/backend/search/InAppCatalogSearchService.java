@@ -257,6 +257,7 @@ public class InAppCatalogSearchService implements CatalogSearchService {
                 .title(r.getTitle())
                 .description(r.getDescription())
                 .ingredients(r.getIngredients())
+                .structuredIngredients(r.getStructuredIngredients())
                 .steps(r.getSteps())
                 .imageUrl(r.getImageUrl())
                 .dietaryTags(r.getDietaryTags())

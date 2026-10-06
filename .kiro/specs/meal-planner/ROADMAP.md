@@ -56,7 +56,7 @@ are read from DynamoDB). The only change that would force a rebuild is altering 
 
 ## Specs, in dependency order
 
-### 1. Meal Plan Core  ← critical path, start here
+### 1. Meal Plan Core  ✅ DONE — spec: `../meal-planner/`
 The `MealPlan` entity + DynamoDB table + repository, `MealPlanController` CRUD, and a
 basic calendar UI that adds recipes from the existing search. Everything else depends on
 this. Ships as a working planner end-to-end.
@@ -65,21 +65,31 @@ this. Ships as a working planner end-to-end.
 - **Design-forward notes:** model plan **ownership** so it can grow to shared/household
   without a breaking change; make a plan entry's recipe reference able to carry
   future per-entry data (e.g. servings) without reshaping.
+- **Status:** complete, incl. revision R1 (unified single-calendar UX + meal-prep spans).
+  Backend + frontend tests green.
 
-### 2. Add-to-Plan Integration
+### 2. Add-to-Plan Integration  ✅ DONE — folded into the Meal Plan Core spec
 "Add to plan" buttons on the existing browse and saved recipe cards, wiring the planner
 into what's already there.
 
 - **Depends on:** spec 1.
 - Small, high-value.
+- **Status:** complete. `AddToPlanButton` (date/slot/meal-prep-span sheet, button + icon
+  variants, tests) is wired into the saved recipe cards, the saved recipe detail page, the
+  catalog browse grid, and the catalog detail page. Reuses the existing planner API
+  (`getDefaultMealPlan` → `addEntry`); no new backend surface.
 
-### 3. Structured Ingredients
+### 3. Structured Ingredients  ← NEXT (specced) — spec: `../meal-planner-structured-ingredients/`
 Quantity / unit / item on recipes, added **additively** alongside the existing
 `List<String>` (nothing breaks). Includes the Bedrock generation prompt change to emit
 structured ingredients, and the backfill approach for existing recipes.
 
 - **Depends on:** nothing (independent), but is the **prerequisite for spec 4**.
 - Only pursue when grocery lists are on the near horizon.
+- **Status:** requirements + design + tasks written (not yet implemented). Core design:
+  a `{quantity, unit, item, raw}` field added alongside the string list; one server-side
+  parser feeds generation-fallback, save, and an idempotent/resumable backfill; **no
+  re-embed and no OpenSearch index rebuild** (the embedding input is untouched).
 
 ### 4. Grocery List
 Aggregate ingredients across a plan's date range into a shopping list (unit
@@ -149,10 +159,13 @@ alongside a user's real calendar.
 
 ---
 
-## First milestone
+## First milestone  ✅ REACHED
 
 Specs **1 (Meal Plan Core)** and **2 (Add-to-Plan Integration)** together are the first
-meaningful milestone: a planner users can actually use. Everything after is enhancement.
+meaningful milestone: a planner users can actually use. Both are complete — users can plan
+meals on a calendar and add recipes to their plan from the browse/saved recipe surfaces.
+Everything after is enhancement.
 
-We write specs **one at a time**, starting with Meal Plan Core (requirements → design →
-tasks), since the others reference its data model.
+We write specs **one at a time** (requirements → design → tasks), since each references the
+data model of the ones before it. Specs 1 and 2 are done; **spec 3 (Structured Ingredients)
+is written and is the next to implement**, as the prerequisite for the grocery list (spec 4).

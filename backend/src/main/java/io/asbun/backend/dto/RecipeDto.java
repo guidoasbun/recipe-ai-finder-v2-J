@@ -1,5 +1,6 @@
 package io.asbun.backend.dto;
 
+import io.asbun.backend.model.StructuredIngredient;
 import io.asbun.backend.model.enums.BedrockModel;
 import io.asbun.backend.model.enums.ImageModel;
 import lombok.AllArgsConstructor;
@@ -27,6 +28,8 @@ public class RecipeDto {
     private Long imageSizeBytes;
     private Long imageGenerationMs;
     private List<String> ingredients;
+    /** Structured breakdown of {@link #ingredients}; additive, absent/empty until backfilled. */
+    private List<StructuredIngredient> structuredIngredients;
     private List<String> steps;
     private List<String> dietaryTags;
     private BedrockModel model;

@@ -1,8 +1,12 @@
 # Tasks — Structured Ingredients
 
-> Status: not started. This spec is forward planning (roadmap spec 3). All work is
-> **additive and non-breaking**: the existing `List<String> ingredients` stays as the
-> authoritative display text everywhere; a parallel structured field is added alongside it.
+> Status: in progress. Tasks 1–7 complete (generate + save path end-to-end, plus forward
+> catalog ingestion). Backend tests pass (`./mvnw test`, 262). Remaining: backfills (8–9),
+> optional OpenSearch projection (10), export (11), backend verify (12), frontend (13–15),
+> RUNBOOK (16).
+>
+> All work is **additive and non-breaking**: the existing `List<String> ingredients` stays as
+> the authoritative display text everywhere; a parallel structured field is added alongside it.
 > No embeddings are recomputed and no OpenSearch index is recreated.
 
 Implementation plan. Each task is incremental and test-backed. Requirement references map to
@@ -10,13 +14,13 @@ Implementation plan. Each task is incremental and test-backed. Requirement refer
 contract is real before the UI consumes it. Nothing here changes the `knn_vector` mapping or
 the embedding input.
 
-- [ ] 1. Add the shared `StructuredIngredient` type
+- [x] 1. Add the shared `StructuredIngredient` type
   - Add `model/StructuredIngredient` as a nested `@DynamoDbBean` (Lombok
     `@Data/@Builder/@NoArgsConstructor`) with `Double quantity`, `String unit`, `String
     item`, `String raw`. Reused by models and DTOs (defined once).
   - _Requirements: 1.1, 1.6 | Design: §1.1_
 
-- [ ] 2. Implement the server-side `IngredientParser`
+- [x] 2. Implement the server-side `IngredientParser`
   - One deterministic, side-effect-free component: `parse(String raw) ->
     StructuredIngredient` and `parseAll(List<String>) -> List<StructuredIngredient>`
     (preserving order/count). Extract leading quantity (int/decimal/`a/b`/`a b/c`/unicode
@@ -29,14 +33,14 @@ the embedding input.
     all inputs.
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5 | Design: §2_
 
-- [ ] 3. Add the structured field to the recipe models
+- [x] 3. Add the structured field to the recipe models
   - Add `List<StructuredIngredient> structuredIngredients` to `Recipe` and `CatalogRecipe`,
     additive to the existing `ingredients` (unchanged). Confirm the enhanced mapper
     round-trips the nested list and that items without the field read back as null.
   - Repository round-trip test: save with/without the field; null-safe read.
   - _Requirements: 1.2, 1.5 | Design: §1.2_
 
-- [ ] 4. Thread the field through the DTOs (read + response)
+- [x] 4. Thread the field through the DTOs (read + response)
   - Add `structuredIngredients` to `RecipeDto`, `CatalogRecipeDto`, and
     `GenerateRecipeResponse`, mapped straight through. Absent/empty when not set; the
     string `ingredients` field is never replaced or reordered.
@@ -44,7 +48,7 @@ the embedding input.
     unaffected.
   - _Requirements: 2.1, 2.2, 2.3, 2.4 | Design: §4_
 
-- [ ] 5. Generation: prompt + tolerant parse with fallback
+- [x] 5. Generation: prompt + tolerant parse with fallback
   - Extend `BedrockService#buildPrompt` output instruction to request a parallel
     `structuredIngredients` array (same length/order as `ingredients`), each `{quantity
     (number|null), unit (string|null), item (string)}`; keep the string `ingredients` and
@@ -57,7 +61,7 @@ the embedding input.
     absent/malformed/length-mismatch; string ingredients unchanged.
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 1.3 | Design: §3_
 
-- [ ] 6. Save path: validate, persist, derive-on-omit
+- [x] 6. Save path: validate, persist, derive-on-omit
   - Add an optional `List<StructuredIngredientRequest>` to `SaveRecipeRequest` with Jakarta
     validation (list size matching the string-list bound; `item`/`raw` `@NotBlank`;
     `quantity` `@PositiveOrZero`; `unit` `@Size`). In `RecipeService.saveRecipe`, persist
@@ -67,7 +71,7 @@ the embedding input.
     `GlobalExceptionHandler`.
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 8.3 | Design: §4_
 
-- [ ] 7. Forward ingestion populates the structured field
+- [x] 7. Forward ingestion populates the structured field
   - `ParsedRecipe` gains optional `structuredIngredients`. In `CatalogIngestionRunner`,
     populate it per recipe (via the parser; `XlsxMealDbSource` MAY emit structure directly
     from its already-separate quantity/name columns). Additive only — `searchText`,

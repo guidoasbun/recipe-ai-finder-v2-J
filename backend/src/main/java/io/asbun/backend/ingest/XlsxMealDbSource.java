@@ -7,6 +7,8 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
+import io.asbun.backend.model.StructuredIngredient;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -27,9 +29,11 @@ public class XlsxMealDbSource implements RecipeSource {
     private static final String SOURCE_LICENSE = "TheMealDB (Kaggle export) - free for education/development; attribution requested";
 
     private final Path directory;
+    private final IngredientParser ingredientParser;
 
-    public XlsxMealDbSource(Path directory) {
+    public XlsxMealDbSource(Path directory, IngredientParser ingredientParser) {
         this.directory = directory;
+        this.ingredientParser = ingredientParser;
     }
 
     @Override
@@ -86,10 +90,24 @@ public class XlsxMealDbSource implements RecipeSource {
             List<String> names = parseList(ingredientsRaw);
             List<String> qtys = parseList(quantityRaw);
             List<String> ingredients = new ArrayList<>();
+            // The xlsx keeps name and quantity in separate parallel columns, so we can emit a
+            // precise structured breakdown directly (spec §5.1): item = the name column, and
+            // quantity/unit parsed from the quantity token (no stripping heuristic needed).
+            List<StructuredIngredient> structured = new ArrayList<>();
             for (int k = 0; k < names.size(); k++) {
                 String n = names.get(k).trim();
                 String q = k < qtys.size() ? qtys.get(k).trim() : "";
-                ingredients.add(q.isBlank() ? n : (q + " " + n));
+                String raw = q.isBlank() ? n : (q + " " + n);
+                ingredients.add(raw);
+
+                // Parse the quantity token alone for its amount/unit; keep the name verbatim.
+                StructuredIngredient parsedQty = ingredientParser.parse(q);
+                structured.add(StructuredIngredient.builder()
+                        .quantity(parsedQty.getQuantity())
+                        .unit(parsedQty.getUnit())
+                        .item(n.isBlank() ? raw : n)
+                        .raw(raw)
+                        .build());
             }
 
             List<String> steps = parseList(instructions);
@@ -107,7 +125,8 @@ public class XlsxMealDbSource implements RecipeSource {
                     SOURCE_NAME,
                     decode(imageUrl) != null ? "https://www.themealdb.com" : null,
                     SOURCE_LICENSE,
-                    ctry
+                    ctry,
+                    structured
             ));
         }
     }

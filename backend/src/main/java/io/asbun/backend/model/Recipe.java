@@ -31,6 +31,13 @@ public class Recipe {
     private Long imageSizeBytes;
     private Long imageGenerationMs;
     private List<String> ingredients;
+    /**
+     * Structured breakdown of {@link #ingredients}, added additively (Structured Ingredients
+     * spec). When present it corresponds positionally and in count to {@code ingredients}
+     * (one entry per raw string). Null on recipes not yet backfilled; {@code ingredients}
+     * stays the authoritative display text.
+     */
+    private List<StructuredIngredient> structuredIngredients;
     private List<String> steps;
     private List<String> dietaryTags;
     private BedrockModel model;

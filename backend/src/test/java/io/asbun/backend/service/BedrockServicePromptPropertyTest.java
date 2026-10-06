@@ -104,7 +104,8 @@ class BedrockServicePromptPropertyTest {
     // ========================================================================
 
     private String buildPrompt(List<String> ingredients, List<String> restrictions) {
-        BedrockService service = new BedrockService(mock(BedrockRuntimeClient.class));
+        BedrockService service =
+                new BedrockService(mock(BedrockRuntimeClient.class), new io.asbun.backend.ingest.IngredientParser());
         return (String) ReflectionTestUtils.invokeMethod(
                 service, "buildPrompt", ingredients, restrictions);
     }
